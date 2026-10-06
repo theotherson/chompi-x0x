@@ -34,6 +34,9 @@ enum Param : uint8_t
     MOD,
     VOLUME,
     DRIVE,
+    ARP_MODE,
+    ARP_RANGE,
+    ARP_ON,
     NUM_PARAMS
 };
 
@@ -66,6 +69,9 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"mod",         0.f,      0, 93},  // doubler, chorus, flanger
     {"volume",      .7f,      0, 7},
     {"drive",       .15f,     0, 17},
+    {"arp_mode",    0.f,      5, 0},   // up, down, up-down, random, as played
+    {"arp_range",   0.f,      3, 0},   // 1-3 octaves
+    {"arp_on",      0.f,      2, 0},   // CHOMPI + F#4 in live mode
 };
 // clang-format on
 
@@ -86,15 +92,16 @@ constexpr uint8_t kKnobLength = 254;
 constexpr uint8_t kKnobNone   = 255;
 
 /** Knobs left to right: knobs 1-4, the big purple knob, volume.
- *  [knob][page][CHOMPI held]. Clicking knobs 1-4 flips their page; the big
- *  knob and volume have one. */
-constexpr uint8_t kKnobMap[6][2][2] = {
-    {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}},
-    {{ENV_MOD, DECAY}, {ACCENT, SLIDE_TIME}},
-    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}},
-    {{DELAY, DELAY_TIME}, {CRUSH, MOD}},
-    {{CUTOFF, RESONANCE}, {CUTOFF, RESONANCE}},
-    {{VOLUME, DRIVE}, {VOLUME, DRIVE}},
+ *  [knob][page][CHOMPI held]. Clicking knobs 1-4 steps through their pages;
+ *  the big knob and volume have one. */
+constexpr int     kKnobPages[6]       = {2, 2, 3, 2, 1, 1};
+constexpr uint8_t kKnobMap[6][3][2] = {
+    {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}, {kKnobNone, kKnobNone}},
+    {{ENV_MOD, DECAY}, {ACCENT, SLIDE_TIME}, {kKnobNone, kKnobNone}},
+    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}, {ARP_MODE, ARP_RANGE}},
+    {{DELAY, DELAY_TIME}, {CRUSH, MOD}, {kKnobNone, kKnobNone}},
+    {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }

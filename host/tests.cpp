@@ -254,7 +254,7 @@ static void TestStepKeys()
     r.White(0);
     r.White(7);
     CHECK(r.ui.Selected() == 7);
-    r.ui.Loop(); // LOOP flips middle C by hand
+    r.Key(Ui::kKeyView); // D#4 flips middle C by hand
     r.White(7);
     CHECK(r.ui.Selected() == 8);
 
@@ -405,7 +405,7 @@ static void TestRealtimeRecording()
     r.ui.KeyUp(7, r.now);
 
     r.ui.Play(); // running, then record
-    r.ui.Loop();
+    r.ui.Loop(r.now);
     CHECK(r.m.Recording() && !r.ui.StepInput());
     r.Run(10); // early in step 1
     r.ui.KeyDown(3, r.now), r.Run(5), r.ui.KeyUp(3, r.now);
@@ -440,9 +440,8 @@ static void TestRealtimeRecording()
     r.Black(2); // accent
     r.Black(3); // slide
     r.Black(4); // tie
-    r.Black(1); // octave up
     r.ui.Chompi(false);
-    CHECK(r.S(10).accent && r.S(10).slide && r.S(10).tie && r.S(10).on && r.S(10).octave == 1);
+    CHECK(r.S(10).accent && r.S(10).slide && r.S(10).tie && r.S(10).on);
 
     // Transpose mode: CHOMPI + C#4 latches it; keys then set the transpose.
     r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
@@ -457,35 +456,134 @@ static void TestRealtimeRecording()
 
 static void TestStepInput()
 {
-    printf("pitch mode: step input\n");
+    printf("pitch mode: step input, keyboard octave, LOOP hold clears\n");
     Rig r;
     DemoPattern(r.m.patterns[0]);
     r.ui.SetMode(Ui::Mode::PITCH);
-    r.ui.Loop(); // stopped + record = step input
+    r.ui.Loop(r.now); // stopped + record = step input
     CHECK(r.ui.StepInput() && r.ui.Cursor() == 0);
-    r.Key(0), r.Key(7), r.Key(12);
+    r.Key(0), r.Key(7);
+    r.ui.Chompi(true), r.Black(1), r.ui.Chompi(false); // keyboard up an octave
+    CHECK(r.ui.KeyboardOctave() == 1);
+    r.ui.KeyDown(12, r.now);
+    CHECK(r.m.SoundingNote() == kBaseNote + 24);
+    r.ui.KeyUp(12, r.now);
     CHECK(r.m.Current().length == 3);
-    CHECK(r.S(0).note == 0 && r.S(1).note == 7 && r.S(2).note == 12 && r.S(2).on);
-    CHECK(!r.S(2).accent && !r.S(2).slide);
+    CHECK(r.S(0).note == 0 && r.S(1).note == 7 && r.S(2).note == 12 && r.S(2).octave == 1);
     r.ui.Chompi(true);
     r.Black(2); // accent on the last step
     r.Black(3); // slide
-    r.Black(1); // octave up
     r.Black(4); // a tie
-    r.Black(8); // a rest (G#4)
+    r.Black(9); // a rest (A#4)
+    r.Black(0); // keyboard back down
     r.ui.Chompi(false);
-    CHECK(r.S(2).accent && r.S(2).slide && r.S(2).octave == 1);
+    CHECK(r.S(2).accent && r.S(2).slide);
     CHECK(r.S(3).on && r.S(3).tie);
     CHECK(!r.S(4).on);
     CHECK(r.m.Current().length == 5);
-    r.ui.Chompi(true), r.Black(9), r.ui.Chompi(false); // delete the last (A#4)
-    CHECK(r.m.Current().length == 4 && r.ui.Cursor() == 4);
-    r.Key(4);
-    CHECK(r.S(4).on && r.S(4).note == 4 && r.m.Current().length == 5);
+    CHECK(r.ui.KeyboardOctave() == 0);
     // CHOMPI + D#4 switches the view of steps 1-8 / 9-16.
     const bool second = r.ui.SecondHalf();
     r.ui.Chompi(true), r.Key(Ui::kKeyView), r.ui.Chompi(false);
     CHECK(r.ui.SecondHalf() != second);
+
+    // LOOP held 2 s clears the pattern (and doesn't toggle record).
+    r.ui.LoopDown(r.now);
+    r.Run(1500);
+    CHECK(!r.m.Current().Empty());
+    r.Run(600);
+    r.ui.LoopUp(r.now);
+    CHECK(r.m.Current().Empty() && !r.m.Recording());
+}
+
+static void TestArp()
+{
+    printf("pitch mode: arpeggiator\n");
+    Rig r;
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.Chompi(true), r.Key(Ui::kBlack[7]), r.ui.Chompi(false); // F#4: arp on
+    CHECK(r.m.ArpOn());
+    // Stopped: it runs on its own clock, sixteenths at 120 BPM, up.
+    r.ui.KeyDown(0, r.now), r.ui.KeyDown(4, r.now), r.ui.KeyDown(7, r.now);
+    std::vector<int> heard;
+    int last = -2;
+    for(int i = 0; i < 1000; i++)
+    {
+        r.Run(1);
+        const int n = r.m.SoundingNote();
+        if(n != last && n >= 0)
+            heard.push_back(n);
+        last = n;
+    }
+    CHECK(heard.size() >= 7 && heard.size() <= 9); // 8 sixteenths in a second
+    CHECK(heard.size() > 3 && heard[0] == kBaseNote && heard[1] == kBaseNote + 4
+          && heard[2] == kBaseNote + 7 && heard[3] == kBaseNote);
+    r.ui.KeyUp(0, r.now), r.ui.KeyUp(4, r.now), r.ui.KeyUp(7, r.now);
+    r.Run(200);
+    CHECK(r.m.SoundingNote() == -1); // stops when let go
+
+    // Latch: keeps going after the keys are let go.
+    r.ui.Chompi(true), r.Key(Ui::kBlack[8]), r.ui.Chompi(false);
+    CHECK(r.m.ArpLatch());
+    r.ui.KeyDown(2, r.now), r.ui.KeyUp(2, r.now);
+    r.Run(300);
+    bool sounded = false;
+    for(int i = 0; i < 200; i++)
+        r.Run(1), sounded |= r.m.SoundingNote() == kBaseNote + 2;
+    CHECK(sounded);
+
+    // Running and recording: the arpeggio lands in the steps.
+    r.ui.Chompi(true), r.Key(Ui::kBlack[8]), r.ui.Chompi(false); // unlatch
+    r.Run(300);
+    r.ui.Play();
+    r.ui.Loop(r.now); // record
+    r.ui.KeyDown(0, r.now), r.ui.KeyDown(12, r.now);
+    r.Run(510); // steps 1-4 and the start of 5
+    r.ui.KeyUp(0, r.now), r.ui.KeyUp(12, r.now);
+    CHECK(r.S(1).on && r.S(2).on && r.S(3).on);
+    CHECK(r.S(1).note != r.S(2).note);
+
+    // Knob 3 page 3: arp mode and range.
+    r.ui.KnobClick(2, r.now), r.ui.KnobClick(2, r.now);
+    CHECK(r.ui.KnobPage(2) == 2);
+    r.ui.KnobTurn(2, 1, false);
+    CHECK(StepIndex(r.m.settings.params[ARP_MODE], 5) == 1);
+    r.ui.Chompi(true), r.ui.KnobTurn(2, 1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(r.m.settings.params[ARP_RANGE], 3) == 1);
+    r.ui.KnobClick(2, r.now);
+    CHECK(r.ui.KnobPage(2) == 0); // three pages, then round again
+}
+
+static void TestLiveLights()
+{
+    printf("pitch mode lights, LOOP tap tempo in step mode\n");
+    Rig r;
+    DemoPattern(r.m.patterns[0]);
+    r.ui.SetMode(Ui::Mode::PITCH);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    bool any = false;
+    for(int w = 0; w < 15; w++)
+        any |= f.key[Ui::kWhite[w]].r > 0.f;
+    CHECK(!any); // stopped, not recording: no step lights
+    r.ui.Play();
+    r.Run(30);
+    r.ui.Draw(f, r.now + 200);
+    any = false;
+    for(int w = 0; w < 15; w++)
+        any |= f.key[Ui::kWhite[w]].r > 0.f;
+    CHECK(any);
+    r.ui.Play();
+    // Transpose mode: C#4 dim, the amount bright.
+    r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    r.Key(14); // +2
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyTranspose].r < 0.3f && f.key[14].r > 0.9f);
+
+    r.ui.SetMode(Ui::Mode::STEP);
+    for(int i = 0; i < 4; i++) // LOOP taps every 500 ms: 120 BPM
+        r.ui.Loop(8000 + i * 500);
+    CHECK(fabsf(TempoBpm(r.m.settings.params[TEMPO]) - 120.f) < 0.5f);
 }
 
 static void TestNudgeTiming()
@@ -621,6 +719,8 @@ int main()
     TestRealtimeRecording();
     TestStepInput();
     TestStepModeExtras();
+    TestArp();
+    TestLiveLights();
     TestSettingsOptions();
     TestMidiClock();
     printf(g_fail ? "%d FAILED\n" : "all passed\n", g_fail);

@@ -9,6 +9,7 @@
  *  and state for the LEDs.
  */
 #pragma once
+#include "arp.h"
 #include "fx.h"
 #include "params.h"
 #include "pattern.h"
@@ -108,6 +109,12 @@ class Machine
 
     void PatternEdited() { pattern_changes++; }
 
+    void ClearPattern()
+    {
+        Current().Clear();
+        pattern_changes++;
+    }
+
     void SetTranspose(int st) { seq_.SetTranspose(st); }
     int  Transpose() const { return seq_.Transpose(); }
 
@@ -159,12 +166,44 @@ class Machine
 
     // ------------------------------------------------------------ live notes
 
+    // ------------------------------------------------------------ arpeggiator
+
+    bool ArpOn() const { return StepIndex(settings.params[ARP_ON], 2) == 1; }
+
+    void SetArpOn(bool on)
+    {
+        SetParam(ARP_ON, on ? 1.f : 0.f);
+        if(!on)
+        {
+            arp_.Clear();
+            ArpGateOff();
+        }
+    }
+
+    bool ArpLatch() const { return arp_.Latch(); }
+    void SetArpLatch(bool on) { arp_.SetLatch(on); }
+
+    /** Live notes go to the arpeggiator when it's on, except in step input
+     *  (record armed, stopped), where each key is a step. */
+    bool ArpEngaged() const { return ArpOn() && !(recording_ && !Running()); }
+
+    // ------------------------------------------------------------ live notes
+
     /** A key (or MIDI note) played live: it takes over the voice from the
      *  pattern while held. Overlapping notes slide. While recording with the
-     *  pattern running it is written to the nearest step. */
+     *  pattern running it is written to the nearest step. With the
+     *  arpeggiator on, it joins the chord the arpeggiator plays instead. */
     void LiveNoteOn(int note, bool accent = false)
     {
         note = ClampInt(note, 0, 127);
+        if(ArpEngaged())
+        {
+            const bool was = arp_.Active();
+            arp_.NoteOn(note);
+            if(!was && !Running())
+                arp_clock_ = 0.0; // start straight away
+            return;
+        }
         for(int i = 0; i < live_count_; i++)
             if(live_[i] == note)
                 return;
@@ -180,6 +219,11 @@ class Machine
 
     void LiveNoteOff(int note)
     {
+        if(ArpEngaged())
+        {
+            arp_.NoteOff(note);
+            return;
+        }
         int i = 0;
         for(; i < live_count_; i++)
             if(live_[i] == note)
@@ -324,7 +368,7 @@ class Machine
         if(!seq_.Queued())
             queued_ = -1;
 
-        Sequencer::Event ev[Sequencer::kMaxEvents];
+        Sequencer::Event ev[Sequencer::kMaxEvents + 4];
         int              count = 0;
         if(ext)
         {
@@ -344,6 +388,21 @@ class Machine
         if(since_ext_ < 0x7FFFFFFF)
             since_ext_ += static_cast<uint32_t>(n);
 
+        // The arpeggiator: its gate ends half a step after it starts; while
+        // the pattern runs its steps come with the pattern's, otherwise from
+        // its own clock at the tempo.
+        arp_.SetMode(static_cast<ArpMode>(StepIndex(p[ARP_MODE], static_cast<int>(ArpMode::COUNT))));
+        arp_.SetOctaves(StepIndex(p[ARP_RANGE], 3) + 1);
+        arp_step_samples_ = sr_ * 60.f / (seq_.Tempo() * 4.f);
+        if(arp_gate_left_ >= 0.0 && arp_gate_left_ < n)
+            ev[count++] = ArpEvent(Sequencer::Event::NOTE_OFF, arp_gate_left_);
+        if(!Running() && ArpEngaged() && arp_.Active() && arp_clock_ < n)
+        {
+            ev[count++] = ArpEvent(Sequencer::Event::NOTE_ON, arp_clock_);
+            arp_clock_ += arp_step_samples_;
+        }
+        SortByOffset(ev, count);
+
         float  mono[64];
         size_t pos = 0;
         for(size_t i = 0; i < n; i++)
@@ -360,6 +419,10 @@ class Machine
         }
         if(pos < n)
             voice_.Process(vp_, mono + pos, n - pos);
+        if(arp_gate_left_ >= 0.0)
+            arp_gate_left_ -= n;
+        if(arp_clock_ > 0.0)
+            arp_clock_ -= n;
 
         fx_.Process(mono, left, right, n);
         const float vol = settings.params[VOLUME] * settings.params[VOLUME] * 1.5f;
@@ -371,13 +434,75 @@ class Machine
     }
 
   private:
+    static constexpr int kArpEvent = -2; // Event::step of an arpeggiator event
+
+    Sequencer::Event ArpEvent(Sequencer::Event::Type type, double offset) const
+    {
+        Sequencer::Event e{type, static_cast<uint32_t>(offset > 0.0 ? offset : 0.0)};
+        e.step = kArpEvent;
+        return e;
+    }
+
+    /** Stable, by sample offset (the lists are a handful long). */
+    static void SortByOffset(Sequencer::Event* ev, int count)
+    {
+        for(int i = 1; i < count; i++)
+            for(int j = i; j > 0 && ev[j].offset < ev[j - 1].offset; j--)
+            {
+                const Sequencer::Event t = ev[j];
+                ev[j]                    = ev[j - 1];
+                ev[j - 1]                = t;
+            }
+    }
+
+    /** The pattern is silent while live keys or the arpeggiator play. */
+    bool LiveSounding() const { return live_count_ > 0 || (ArpEngaged() && (arp_.Active() || arp_note_ >= 0)); }
+
+    /** The arpeggiator's next note; recorded into `step` (when >= 0) while
+     *  recording with the pattern running. */
+    void ArpStep(uint32_t offset, int step)
+    {
+        ArpGateOff();
+        if(!ArpEngaged() || !arp_.Active())
+            return;
+        const int note = ClampInt(arp_.Next(), 0, 127);
+        voice_.NoteOn(note, false, false);
+        voice_note_ = note;
+        arp_note_   = note;
+        if(options.notes_out)
+            PushMidi(0x90 | (options.channel_out - 1), note, 100);
+        arp_gate_left_ = offset + 0.5 * arp_step_samples_;
+        if(recording_ && Running() && step >= 0)
+            RecordAt(step, note, 0);
+    }
+
+    void ArpGateOff()
+    {
+        if(arp_note_ < 0)
+            return;
+        if(voice_note_ == arp_note_ && live_count_ == 0)
+            voice_.NoteOff();
+        if(options.notes_out)
+            PushMidi(0x80 | (options.channel_out - 1), arp_note_, 0);
+        arp_note_      = -1;
+        arp_gate_left_ = -1.0;
+    }
+
     void Handle(const Sequencer::Event& e)
     {
         const uint8_t ch = options.channel_out - 1;
+        if(e.step == kArpEvent)
+        {
+            if(e.type == Sequencer::Event::NOTE_ON)
+                ArpStep(e.offset, -1);
+            else
+                ArpGateOff();
+            return;
+        }
         switch(e.type)
         {
             case Sequencer::Event::NOTE_ON:
-                if(live_count_ == 0)
+                if(!LiveSounding())
                 {
                     voice_.NoteOn(e.note, e.accent, e.slide);
                     voice_note_ = e.note;
@@ -386,13 +511,15 @@ class Machine
                     PushMidi(0x90 | ch, e.note, e.accent ? 127 : 100);
                 break;
             case Sequencer::Event::NOTE_OFF:
-                if(live_count_ == 0 && e.note == voice_note_)
+                if(!LiveSounding() && e.note == voice_note_)
                     voice_.NoteOff();
                 if(options.notes_out)
                     PushMidi(0x80 | ch, e.note, 0);
                 break;
             case Sequencer::Event::STEP:
                 step_count_++;
+                if(ArpEngaged() && (arp_.Active() || arp_note_ >= 0))
+                    ArpStep(e.offset, e.step);
                 // A key held while recording ties through the steps it covers.
                 if(rec_key_ >= 0 && e.step != rec_step_)
                 {
@@ -440,6 +567,14 @@ class Machine
             if(nudge >= Sequencer::kTicksPerStep)
                 step = seq_.NextStep(), nudge = 0;
         }
+        RecordAt(step, midi, nudge);
+        rec_key_  = midi;
+        rec_step_ = step;
+    }
+
+    /** Writes `midi` into `step` as a plain note. */
+    void RecordAt(int step, int midi, int nudge)
+    {
         int rel = midi - kBaseNote, oct = 0;
         while(rel < 0 && oct > -1)
             rel += 12, oct--;
@@ -453,8 +588,6 @@ class Machine
         s.octave = static_cast<int8_t>(oct);
         s.on     = true;
         s.nudge  = static_cast<uint8_t>(nudge);
-        rec_key_  = midi;
-        rec_step_ = step;
         pattern_changes++;
     }
 
@@ -490,6 +623,11 @@ class Machine
     Voice       voice_;
     VoiceParams vp_;
     Fx          fx_;
+    Arp         arp_;
+    int         arp_note_         = -1;   // the arpeggiator's sounding note
+    double      arp_gate_left_    = -1.0; // samples until its gate ends
+    double      arp_clock_        = 0.0;  // samples until its next step (own clock)
+    float       arp_step_samples_ = 6000.f;
     Sequencer   seq_;
     int         queued_     = -1;
     int         voice_note_ = -1;

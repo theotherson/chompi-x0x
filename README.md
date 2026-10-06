@@ -15,7 +15,7 @@ PLAY runs and stops the pattern in both.
 
 ## The 16 steps on 15 white keys
 
-White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other half dimmed. The view follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. D#4 flips it by hand (CHOMPI + D#4 in pitch mode); LOOP is lit green while steps 9-16 are in view.
+White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other half dimmed. The view follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. D#4 flips it by hand (CHOMPI + D#4 in pitch mode).
 
 **Step lights:** on = red, accent = bright red, tie = dim red; steps past the pattern's length dimmer still.
 
@@ -33,6 +33,7 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | Black F#4 (key 8) | PATTERN page: the step keys pick pattern 1-16 |
 | Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that pattern number |
 | Black A#4 (key 10) | CLEAR: tap clears the selected step; hold 1 s clears the whole pattern |
+| LOOP | Tap tempo |
 
 **Pages.** On a parameter page the step keys toggle that setting for each step, lit in the page's colour (DOWN purple, UP cyan, ACCENT orange, SLIDE blue, TIE green). The page's key again goes back to the notes page.
 
@@ -44,34 +45,35 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 
 | Do | Does |
 |---|---|
-| Keys | Play the voice live (C3-C5). Overlapping notes slide |
-| LOOP | Record on/off (LOOP red) |
-| CHOMPI + C#4 | Transpose mode on/off: while on, keys set the transpose instead of playing (middle C = none) |
+| Keys | Play the voice live. Overlapping notes slide |
+| LOOP (tap) | Record on/off (LOOP red) |
+| LOOP (hold 2 s) | Clear the pattern (LOOP fills red as you hold) |
+| CHOMPI + C#3 / D#3 | Live keyboard an octave down / up (one each way) |
+| CHOMPI + F#3 / G#3 / A#3 | Accent / slide / tie (see below) |
+| CHOMPI + C#4 | Transpose mode on/off: while on, keys set the transpose instead of playing (middle C = none). C#4 dims and the amount's key lights yellow |
 | CHOMPI + D#4 | View steps 1-8 / 9-16 |
+| CHOMPI + F#4 | Arpeggiator on/off (CHOMPI lit teal while on) |
+| CHOMPI + G#4 | Arpeggiator latch: keeps going after you let go; a fresh chord replaces it |
+| CHOMPI + A#4 | Step input: add a rest |
 
-**Recording while running.** A played note goes into the pattern; a note held across steps ties through them. Hold CHOMPI and press C#3 / D#3 / F#3 / G#3 / A#3 to toggle octave down / up, accent, slide or tie on the step playing now. With quantize on (knob 3, page 2) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat.
+The step lights only show while the pattern plays or you're recording; otherwise the keybed is just a keyboard.
 
-**Step input (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step, its white key lights up, and the pattern grows to it. Hold CHOMPI and use the black keys:
+**Recording while running.** A played note goes into the pattern; a note held across steps ties through them. With quantize on (knob 3, page 2) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat. CHOMPI + F#3 / G#3 / A#3 toggle accent, slide or tie on the step playing now. For octave jumps, shift the keyboard with CHOMPI + C#3 / D#3 and play.
 
-| CHOMPI + | Does |
-|---|---|
-| C#3 / D#3 | Octave down / up on the last step |
-| F#3 / G#3 | Accent / slide on the last step |
-| A#3 | Add a tie (holds the note before through one more step) |
-| G#4 | Add a rest |
-| A#4 | Delete the last step |
+**Step input (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step (in the keyboard's octave), its white key lights up, and the pattern grows to it. CHOMPI + F#3 / G#3 put an accent / slide on the last step, CHOMPI + A#3 adds a tie step, CHOMPI + A#4 a rest. Press PLAY with record still on to carry on recording in real time.
 
-Press PLAY with record still on to carry on recording in real time.
+**Arpeggiator.** With it on, the keys you hold are played one at a time in sixteenths at the tempo: up, down, up-down, random or as played, over 1-3 octaves (knob 3, page 3). While the pattern runs it locks to the pattern's steps (and swing), and the pattern is silent while it plays; with record on, the arpeggio is written into the steps. In step input the keys go into the steps as usual.
 
 ## Knobs
 
-Click knobs 1-4 to flip each between two pages; its light changes colour. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
+Click knobs 1-4 to step through their pages (knob 3 has three); its light changes colour. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
 | Knob 1 | Saw / square (amber / cyan) | Pulse width | Pattern length | Tuning (+/- 1 semitone) |
 | Knob 2 | Env mod | Decay | Accent | Slide time |
 | Knob 3 | Tempo, 1 BPM a click (60-200) | Swing | Quantize on/off | Quantize grid: 1/16, 1/8, 1/4 |
+| Knob 3, page 3 | Arpeggiator mode: up, down, up-down, random, as played | Arpeggiator range: 1-3 octaves | | |
 | Knob 4 | Delay amount | Delay time: 1/16, 1/8, 3/16, 1/4, 3/8, 1/2 | Bit crusher | Doubler, chorus, flanger |
 | Big purple | Cutoff | Resonance | | |
 | Volume | Volume | Drive | | |
@@ -146,6 +148,7 @@ A CHOMPI that has never had the bootloader needs `bin/install_bootloader.sh` onc
 |---|---|
 | `code/src/x0x/voice.h` | The 303-style voice |
 | `code/src/x0x/fx.h` | Bit crusher, doubler / chorus / flanger, delay |
+| `code/src/x0x/arp.h` | The arpeggiator |
 | `code/src/x0x/sequencer.h` | Step timing, gates, slides, ties, swing, clock |
 | `code/src/x0x/pattern.h` | Patterns and their text format |
 | `code/src/x0x/params.h` | Knob parameters and pages, settings and MIDI options |

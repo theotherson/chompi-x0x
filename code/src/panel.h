@@ -87,8 +87,11 @@ class Panel
 
         if(Pressed(kSwPlay))
             ui_->Play();
-        if(Pressed(kSwLoop))
-            ui_->Loop();
+        // LOOP: both edges (a tap and a 2 s hold do different things).
+        if(sr.RisingEdge(static_cast<int>(kSwLoop)))
+            ui_->LoopDown(now);
+        else if(sr.FallingEdge(static_cast<int>(kSwLoop)))
+            ui_->LoopUp(now);
 
         for(int k = 0; k < 6; k++)
         {
