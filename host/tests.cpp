@@ -551,6 +551,29 @@ static void TestArp()
         r.Run(1), sounded |= r.m.SoundingNote() == kBaseNote + 2;
     CHECK(sounded);
 
+    // Latched: each press adds a note, a second press takes it out.
+    r.ui.KeyDown(9, r.now), r.ui.KeyUp(9, r.now); // add A3
+    CHECK(r.m.GetArp().Count() == 2);
+    r.ui.KeyDown(2, r.now), r.ui.KeyUp(2, r.now); // D3 again: out
+    CHECK(r.m.GetArp().Count() == 1 && r.m.GetArp().NoteAt(0) == kBaseNote + 9);
+
+    // Lights: the latched note steady in the arp colour, and a white flash
+    // on each note as it plays.
+    {
+        LedFrame f;
+        bool     flashed = false, steady = false;
+        for(int i = 0; i < 300; i++)
+        {
+            r.Run(1);
+            r.ui.NoteStep(r.now);
+            r.ui.Draw(f, r.now);
+            const Rgb k = f.key[9];
+            flashed |= k.r > 0.9f && k.g > 0.9f && k.b > 0.9f;
+            steady |= k.r == 0.f && k.g > 0.3f && k.b > 0.2f;
+        }
+        CHECK(flashed && steady);
+    }
+
     // Running and recording: the arpeggio lands in the steps.
     r.ui.Chompi(true), r.Key(Ui::kBlack[8]), r.ui.Chompi(false); // unlatch
     r.Run(300);

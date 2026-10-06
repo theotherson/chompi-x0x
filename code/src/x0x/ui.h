@@ -52,7 +52,8 @@
  *    CHOMPI + D#4                  view steps 1-8 / 9-16
  *    CHOMPI + F#4                  arpeggiator on/off (knob 3, page 3: mode
  *                                  and range)
- *    CHOMPI + G#4                  arpeggiator latch
+ *    CHOMPI + G#4                  arpeggiator latch: latched, each key adds
+ *                                  its note to the chord or takes it out
  *    CHOMPI + A#4                  step input: a rest
  *
  *  Knobs: clicking knobs 1-4 flips each between two pages; CHOMPI + click
@@ -300,6 +301,13 @@ class Ui
             last_step_count_ = c;
             step_seen_at_    = now;
         }
+        const uint32_t a = m_->ArpNoteCount();
+        if(a != last_arp_count_)
+        {
+            last_arp_count_ = a;
+            arp_seen_at_    = now;
+            arp_flash_note_ = m_->ArpLastSource();
+        }
     }
 
     void Draw(LedFrame& f, uint32_t now) const
@@ -317,6 +325,8 @@ class Ui
             DrawPitchMode(f, blink, cur_step, step_lit);
         if(transpose_mode_ && !chompi_)
             DrawTranspose(f);
+        if(mode_ == Mode::PITCH && m_->ArpEngaged())
+            DrawArp(f, now);
 
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -800,6 +810,34 @@ class Ui
                 f.key[i] = {0.f, .4f, 1.f};
     }
 
+    /** The keybed key that plays MIDI note `note` in pitch mode now, -1 if
+     *  it's off the keybed (the keyboard octave counts). */
+    int KeyOfNote(int note) const
+    {
+        const int k = note - kBaseNote - 12 * kbd_octave_;
+        return k >= 0 && k < kKeyNotes ? k : -1;
+    }
+
+    /** The arpeggiator: latched notes steady in its colour, and each note
+     *  flashing white as it plays, on top of everything. */
+    void DrawArp(LedFrame& f, uint32_t now) const
+    {
+        const Arp& arp = m_->GetArp();
+        if(arp.Latch() && !chompi_)
+            for(int i = 0; i < arp.Count(); i++)
+            {
+                const int k = KeyOfNote(arp.NoteAt(i));
+                if(k >= 0)
+                    f.key[k] = Scale(kArpColour, 0.45f);
+            }
+        if(now - arp_seen_at_ < 80 && (arp.Active() || m_->SoundingNote() >= 0))
+        {
+            const int k = KeyOfNote(arp_flash_note_);
+            if(k >= 0)
+                f.key[k] = {1.f, 1.f, 1.f};
+        }
+    }
+
     /** Transpose mode: C#4 and the key of the transpose amount in yellow,
      *  middle C (none) dim white. */
     void DrawTranspose(LedFrame& f) const
@@ -860,6 +898,9 @@ class Ui
     uint32_t cleared_at_      = 0x80000000u;
     uint32_t last_step_count_ = 0;
     uint32_t step_seen_at_    = 0;
+    uint32_t last_arp_count_  = 0;
+    uint32_t arp_seen_at_     = 0x80000000u;
+    int      arp_flash_note_  = -1;
 };
 
 // Out-of-class definitions for the arrays, which C++14 (the firmware's

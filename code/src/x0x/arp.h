@@ -1,8 +1,9 @@
 /** @file arp.h
  *  @brief The arpeggiator: the keys held in live mode, played one at a time
  *  in sixteenths, up, down, up-down, at random or as played, over 1-3
- *  octaves. Latch keeps a chord going after the keys are let go; the next
- *  fresh chord replaces it.
+ *  octaves. Latch keeps the chord going after the keys are let go; while
+ *  latched, each key pressed adds its note to the chord, or takes it out if
+ *  it is already there.
  *
  *  It only decides which note comes next; Machine times the steps (locked to
  *  the pattern when it runs) and plays them.
@@ -50,13 +51,16 @@ class Arp
 
     void NoteOn(int note)
     {
-        // The first key of a new chord while latched replaces the old one.
-        if(pressed_ == 0 && latch_)
-            count_ = 0;
         pressed_++;
         for(int i = 0; i < count_; i++)
+        {
             if(notes_[i] == note)
+            {
+                if(latch_)
+                    Remove(i); // latched: a second press takes it out
                 return;
+            }
+        }
         if(count_ < kMaxNotes)
             notes_[count_++] = note;
         if(count_ == 1)
@@ -73,13 +77,18 @@ class Arp
         {
             if(notes_[i] == note)
             {
-                for(int j = i; j < count_ - 1; j++)
-                    notes_[j] = notes_[j + 1];
-                count_--;
+                Remove(i);
                 return;
             }
         }
     }
+
+    /** The notes in the chord now (for the LEDs). */
+    int Count() const { return count_; }
+    int NoteAt(int i) const { return notes_[i]; }
+
+    /** The held note the last Next() came from, before its octave. */
+    int LastSource() const { return last_source_; }
 
     /** The next note to play; only call while Active(). */
     int Next()
@@ -127,16 +136,25 @@ class Arp
                 idx  = pos_;
                 break;
         }
-        return order[idx % count_] + 12 * (idx / count_);
+        last_source_ = order[idx % count_];
+        return last_source_ + 12 * (idx / count_);
     }
 
   private:
+    void Remove(int i)
+    {
+        for(int j = i; j < count_ - 1; j++)
+            notes_[j] = notes_[j + 1];
+        count_--;
+    }
+
     int      notes_[kMaxNotes];
     int      count_   = 0;
     int      pressed_ = 0;
     int      pos_     = -1;
     int      dir_     = 1;
     int      octaves_ = 1;
+    int      last_source_ = -1;
     bool     latch_   = false;
     ArpMode  mode_    = ArpMode::UP;
     uint32_t rng_     = 0x9E3779B9u;
