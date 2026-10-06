@@ -34,6 +34,7 @@ struct VoiceParams
     float drive      = 0.f;   // 0..1
     float slide_s    = 0.06f; // slide time
     bool  square     = false;
+    float pulse_width = 0.5f; // square only: 0.05..0.95
 };
 
 class Voice
@@ -133,7 +134,7 @@ class Voice
             const float g   = tanf(kPi * fc / sr2);
             const float G   = g / (1.f + g);
 
-            const float x = Osc(inc, p.square);
+            const float x = Osc(inc, p.square, p.pulse_width);
 
             // Two filter steps per sample, the input held; the output is
             // their average (a simple decimator).
@@ -156,8 +157,8 @@ class Voice
     }
 
   private:
-    /** polyBLEP saw, or square from two offset saws. */
-    float Osc(float inc, bool square)
+    /** polyBLEP saw, or a pulse from two offset saws (`pw` = its width). */
+    float Osc(float inc, bool square, float pw)
     {
         phase_ += inc;
         if(phase_ >= 1.f)
@@ -165,11 +166,13 @@ class Voice
         float saw = 2.f * phase_ - 1.f - Blep(phase_, inc);
         if(!square)
             return saw;
-        float p2 = phase_ + 0.5f;
+        float p2 = phase_ + pw;
         if(p2 >= 1.f)
             p2 -= 1.f;
         const float saw2 = 2.f * p2 - 1.f - Blep(p2, inc);
-        return 0.5f * (saw - saw2) * 1.4f;
+        // The difference of the saws is a pulse between -2pw and 2 - 2pw,
+        // whose average is zero at any width.
+        return 0.7f * (saw - saw2);
     }
 
     /** One trapezoidal (TPT) one-pole low-pass stage. */

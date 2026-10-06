@@ -9,54 +9,73 @@ Built from scratch on top of CHOMPI Club's TEMPO firmware, whose hardware layer,
 ## The toggle switch: two modes
 
 **Up: STEP mode.** Program the pattern step by step.
-**Down: PITCH mode.** Play live, and record into the pattern while it runs.
+**Down: PITCH mode.** Play live, record in real time while it runs, or enter steps one note at a time while it's stopped.
 
 PLAY runs and stops the pattern in both.
+
+## The 16 steps on 15 white keys
+
+White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9: it follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. In step mode LOOP flips it by hand (LOOP lit green = step 9).
 
 ## Step mode
 
 | Do | Does |
 |---|---|
-| White keys 1-8 | Steps 1-8 (or 9-16: LOOP flips; LOOP lit green = 9-16) |
-| Tap a step | Select it |
-| Tap the selected step again | Turn it on or off (its note is kept) |
-| Hold CHOMPI | The keybed becomes a two-octave keyboard (C3-C5): the key you press is the selected step's note, and the step turns on. The selected step's key flashes |
-| Black C# / D# (keys 1-2) | Octave DOWN / UP page |
-| Black F# / G# / A# (keys 3-5) | ACCENT / SLIDE / TIE page |
-| Black C# (key 6) | PATTERN page: step keys pick pattern 1-8 (9-16 with LOOP) |
-| Black D# (key 7) | LENGTH page: a step key makes it the last step |
-| Black F# (key 8) | Saw / square (amber = saw, cyan = square) |
-| Black G# (key 9) | COPY: hold it and press a step key to copy this pattern to that pattern number |
-| Black A# (key 10) | CLEAR: tap clears the selected step; hold 1 s clears the whole pattern |
+| White key | Select that step |
+| The selected step again | Turn it on or off (its note is kept) |
+| Hold CHOMPI | The keybed becomes a two-octave keyboard (C3-C5): the key you press is the selected step's note, and the step turns on. The selected step flashes |
+| Black C#3 / D#3 (keys 1-2) | Octave DOWN / UP page |
+| Black F#3 / G#3 / A#3 (keys 3-5) | ACCENT / SLIDE / TIE page |
+| Black C#4 (key 6) | PATTERN page: the step keys pick pattern 1-16 |
+| Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that pattern number |
+| Black A#4 (key 10) | CLEAR: tap clears the selected step; hold 1 s clears the whole pattern |
 
 **Pages.** On a parameter page the step keys toggle that setting for each step, lit in the page's colour (DOWN purple, UP cyan, ACCENT orange, SLIDE blue, TIE green). The page's key again goes back to the notes page.
 
-**Lights.** On the notes page, steps that are on are red, the selected one brightest; a selected empty step is dim white. The playing step flashes white.
+**Lights.** Steps that are on are red, the selected one brightest; a selected empty step is dim white; steps past the pattern's length are dimmer. The playing step flashes white.
 
-**Patterns.** While the pattern runs, a new one waits for the end of the bar (it blinks); press it again to switch at once. Stopped, it switches at once.
+**Patterns.** While the pattern runs, a new one waits for the end of the bar (it blinks); press it again to switch at once.
 
 ## Pitch mode
 
 | Do | Does |
 |---|---|
 | Keys | Play the voice live (C3-C5). Overlapping notes slide |
-| LOOP | Record on/off (LOOP red). While the pattern runs, a played note goes to the nearest step; a note held across steps ties through them |
+| LOOP | Record on/off (LOOP red) |
 | CHOMPI + key | Transpose the pattern: middle C = none, up to an octave either way |
 
-Live notes take over the voice from the pattern while you hold them.
+**Recording while running.** A played note goes into the pattern; a note held across steps ties through them. With quantize on (knob 3, page 2) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat.
 
-## Knobs (both modes)
+**Step input (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step, its white key lights up, and the pattern grows to it. Hold CHOMPI and use the black keys:
 
-| Knob | Turn | CHOMPI + turn |
-|---|---|---|
-| Knob 1 | Resonance | Tuning (+/- 1 semitone) |
-| Knob 2 | Env mod | Swing |
-| Knob 3 | Decay | Drive |
-| Knob 4 | Accent | Slide time |
-| Big purple | Cutoff | |
-| Volume | Volume | Tempo, 1 BPM a click (60-200) |
+| CHOMPI + | Does |
+|---|---|
+| C#3 / D#3 | Octave down / up on the last step |
+| F#3 / G#3 | Accent / slide on the last step |
+| A#3 | Add a tie (holds the note before through one more step) |
+| C#4 | Add a rest |
+| D#4 | Delete the last step |
 
-Click a knob to set it back to its default (CHOMPI + click: its second function). CHOMPI + LOOP is tap tempo.
+Press PLAY with record still on to carry on recording in real time.
+
+## Knobs
+
+Click knobs 1-4 to flip each between two pages; its light changes colour.
+
+| Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
+|---|---|---|---|---|
+| Knob 1 | Saw / square (amber / cyan) | Pulse width | Pattern length | Tuning (+/- 1 semitone) |
+| Knob 2 | Env mod | Decay | Accent | Slide time |
+| Knob 3 | Tempo, 1 BPM a click (60-200) | Swing | Quantize on/off | Quantize grid: 1/16, 1/8, 1/4 |
+| Knob 4 | Delay amount | Delay time: 1/16, 1/8, 3/16, 1/4, 3/8, 1/2 | Bit crusher | Doubler, chorus, flanger |
+| Big purple | Cutoff | Resonance | | |
+| Volume | Volume | Drive | | |
+
+Big purple knob click: tap tempo. Volume knob click: stop any stuck live notes.
+
+## The effects
+
+After the voice: bit crusher (bits 16 down to 4 and sample rate down to 1/16, together), then doubler / chorus / flanger on one knob (a third of the turn each, deeper as it turns), then a tempo-synced ping-pong delay (amount raises the mix and the feedback together). Each is off at zero. A soft limiter keeps the output in range however hard they're pushed.
 
 ## The voice
 
@@ -69,7 +88,7 @@ One oscillator (saw, or square) into a resonant 3-pole ladder low-pass (about 18
 | Clock | Followed when it arrives (the pattern then runs on it) | Sent while running on the internal clock |
 | Start / Stop / Continue | Run, stop, resume | Sent with PLAY |
 | Notes | Play the voice live (and record in pitch mode); velocity 112+ = accent | The pattern's and your notes, slides as overlapping notes |
-| CC | 74 cutoff, 71 resonance, 12 env mod, 13 decay, 14 accent, 7 volume, 15 tuning, 16 swing, 17 drive, 5 slide time | The same CCs when knobs move (off by default) |
+| CC | 74 cutoff, 71 resonance, 12 env mod, 13 decay, 14 accent, 5 slide time, 70 wave, 77 pulse width, 15 tuning, 16 swing, 91 delay, 92 delay time, 18 crush, 93 mod, 7 volume, 17 drive | The same CCs when knobs move (off by default) |
 
 Channels and on/off switches are in `/X0X/options.txt`.
 
@@ -77,8 +96,8 @@ Channels and on/off switches are in `/X0X/options.txt`.
 
 | File | Holds |
 |---|---|
-| `patterns.txt` | The 16 patterns, plain text: one `step` line per step (note, octave, on, accent, slide, tie) |
-| `current.txt` | The knobs, the waveform and the selected pattern, restored at power-on |
+| `patterns.txt` | The 16 patterns, plain text: one `step` line per step (note, octave, on, accent, slide, tie, nudge) |
+| `current.txt` | Every knob setting and the selected pattern, restored at power-on |
 | `options.txt` | MIDI channels (1-16) and which MIDI in/out is on; written with the defaults the first time |
 
 Patterns save 2 s after the last edit and settings 3 s after the last change. A fresh card starts with a demo pattern in pattern 1. CHOMPI blinking red three times at power-on means the card didn't mount; it then runs without saving.
@@ -107,7 +126,7 @@ host/tests
 mkdir -p host/out && host/render host/out
 ```
 
-`tests` checks sequencer timing to the sample, slides, ties, swing, the external clock, pattern queueing, every step-mode and pitch-mode panel behaviour, recording, tap tempo and the file formats. `render` writes demo patterns (saw, square, accents building up, slides, swing) and checks they stay finite and in range.
+`tests` checks sequencer timing to the sample, slides, ties, nudged steps, swing, the external clock, pattern queueing, the shared middle C, every step-mode and pitch-mode panel behaviour, real-time recording with each quantize setting, step input, the knob pages, tap tempo and the file formats. `render` writes demo patterns (saw, square, pulse width, accents building up, slides, each effect, swing) and checks they stay finite and in range.
 
 ## Flashing
 
@@ -121,9 +140,10 @@ A CHOMPI that has never had the bootloader needs `bin/install_bootloader.sh` onc
 | Path | What |
 |---|---|
 | `code/src/x0x/voice.h` | The 303-style voice |
+| `code/src/x0x/fx.h` | Bit crusher, doubler / chorus / flanger, delay |
 | `code/src/x0x/sequencer.h` | Step timing, gates, slides, ties, swing, clock |
 | `code/src/x0x/pattern.h` | Patterns and their text format |
-| `code/src/x0x/params.h` | Knob parameters, settings and MIDI options |
+| `code/src/x0x/params.h` | Knob parameters and pages, settings and MIDI options |
 | `code/src/x0x/machine.h` | The instrument: patterns, voice, sequencer, live play, recording, MIDI out queue |
 | `code/src/x0x/ui.h` | What every control does and every LED shows |
 | `code/src/panel.h` | CHOMPI switches and LEDs to `x0x/ui.h` |

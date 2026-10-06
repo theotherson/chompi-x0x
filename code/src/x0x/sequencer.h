@@ -61,13 +61,13 @@ class Sequencer
     int  CurrentStep() const { return running_ ? step_ : -1; }
     int  NextStep() const { return next_step_; }
 
-    /** How far through the current step, 0..1 (for quantising recording). */
+    /** How far through the current step on the grid, 0..1 (for recording). */
     float StepPhase() const
     {
         if(!running_ || step_ < 0)
             return 0.f;
-        const double start = StepStart(step_);
-        const double len   = step_pos_ - start;
+        const double start = GridStart(step_);
+        const double len   = NextGridStart() - start;
         return len > 0.0 ? Clamp(static_cast<float>((pos_ - start) / len), 0.f, 1.f) : 0.f;
     }
 
@@ -176,9 +176,24 @@ class Sequencer
         }
     }
 
-    double StepStart(int step) const
+    /** Where step `step` sits on the grid, swing included. */
+    double GridStart(int step) const
     {
         return step * kTicksPerStep + (step % 2 == 1 ? swing_ticks_ : 0.0);
+    }
+
+    /** When step `step` actually starts: its grid position plus its nudge. */
+    double StepStart(int step) const
+    {
+        const double nudge = pat_ && step >= 0 && step < kSteps ? pat_->steps[step].nudge : 0;
+        return GridStart(step) + nudge;
+    }
+
+    /** Where the step after the current one sits on the grid, counting on
+     *  past the end when it wraps (so a wrap is never swung). */
+    double NextGridStart() const
+    {
+        return (step_ + 1) * kTicksPerStep + (next_step_ % 2 == 1 ? swing_ticks_ : 0.0);
     }
 
     void ScheduleStep() { step_pos_ = StepStart(next_step_); }
@@ -204,9 +219,7 @@ class Sequencer
         pat_length_ticks_ = pat_->length * kTicksPerStep;
         next_step_        = step_ + 1 < pat_->length ? step_ + 1 : 0;
         // The next step's start, in this pattern's ticks (a wrap counts on).
-        const int    nbase = (step_ + 1) * kTicksPerStep;
-        const double nsw   = next_step_ % 2 == 1 ? swing_ticks_ : 0.0;
-        step_pos_          = nbase + nsw;
+        step_pos_ = NextGridStart() + pat_->steps[next_step_].nudge;
 
         {
             Event e{Event::STEP, off};
@@ -254,7 +267,10 @@ class Sequencer
         // this step slides into it.
         const Step& next = pat_->steps[next_step_];
         hold_            = playing_ >= 0 && next.on && (next.tie || s.slide);
-        gate_off_        = hold_ || playing_ < 0 ? -1.0 : StepStart(step_) + kTicksPerStep / 2;
+        // Half a step, but never past the next step's start (a late step
+        // leaves less room).
+        const double off_at = StepStart(step_) + kTicksPerStep / 2;
+        gate_off_ = hold_ || playing_ < 0 ? -1.0 : (off_at < step_pos_ ? off_at : step_pos_);
     }
 
     void ReleaseIfPlaying(uint32_t off, Event* ev, int& count)

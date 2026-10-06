@@ -31,6 +31,10 @@ Panel        panel;
 MidiIo       midi;
 Storage      storage;
 
+// The delay's memory: 2 s of stereo, in SDRAM.
+static constexpr size_t kDelayFrames = 96000;
+x0x::Fx::Frame DSY_SDRAM_BSS delay_mem[kDelayFrames];
+
 SdmmcHandler sdmmc;
 // The SD driver DMAs into FatFS's sector buffer inside this and then
 // invalidates the data cache in whole 32-byte lines; owning its lines keeps
@@ -91,7 +95,7 @@ int main(void)
         System::Delay(10);
     }
 
-    machine.Init(hw.seed.AudioSampleRate());
+    machine.Init(hw.seed.AudioSampleRate(), delay_mem, kDelayFrames);
     ui.Init(&machine);
 
     // SD card, as TEMPO sets it up; patterns, settings and MIDI options.

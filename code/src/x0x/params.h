@@ -20,67 +20,114 @@ enum Param : uint8_t
     ENV_MOD,
     DECAY,
     ACCENT,
-    VOLUME,
-    TUNING,
-    SWING,
-    DRIVE,
     SLIDE_TIME,
+    WAVE,
+    PULSE_WIDTH,
+    TUNING,
     TEMPO,
+    SWING,
+    QUANTIZE,
+    QUANT_GRID,
+    DELAY,
+    DELAY_TIME,
+    CRUSH,
+    MOD,
+    VOLUME,
+    DRIVE,
     NUM_PARAMS
 };
 
 struct ParamInfo
 {
-    const char* name; // key in current.txt, keep stable
+    const char* name;  // key in current.txt, keep stable
     float       def;
-    uint8_t     cc;   // MIDI CC in and out, 0 = none
+    uint8_t     steps; // 0 = continuous, else number of positions
+    uint8_t     cc;    // MIDI CC in and out, 0 = none
 };
 
 // clang-format off
 constexpr ParamInfo kParams[NUM_PARAMS] = {
-    {"cutoff",     .35f,   74},
-    {"resonance",  .6f,    71},
-    {"env_mod",    .55f,   12},
-    {"decay",      .35f,   13},
-    {"accent",     .6f,    14},
-    {"volume",     .7f,    7},
-    {"tuning",     .5f,    15},   // -1..+1 semitone
-    {"swing",      0.f,    16},
-    {"drive",      .15f,   17},
-    {"slide_time", .405f,  5},    // ~60 ms
-    {"tempo",      60/140.f, 0},  // 60..200 BPM, default 120
+    {"cutoff",      .35f,     0, 74},
+    {"resonance",   .6f,      0, 71},
+    {"env_mod",     .55f,     0, 12},
+    {"decay",       .35f,     0, 13},
+    {"accent",      .6f,      0, 14},
+    {"slide_time",  .405f,    0, 5},   // ~60 ms
+    {"wave",        0.f,      2, 70},  // saw, square
+    {"pulse_width", .5f,      0, 77},
+    {"tuning",      .5f,      0, 15},  // -1..+1 semitone
+    {"tempo",       60/140.f, 0, 0},   // 60..200 BPM, default 120
+    {"swing",       0.f,      0, 16},
+    {"quantize",    1.f,      2, 0},   // off, on
+    {"quant_grid",  0.f,      3, 0},   // 1/16, 1/8, 1/4
+    {"delay",       0.f,      0, 91},
+    {"delay_time",  .4f,      6, 92},  // 1/16 1/8 3/16 1/4 3/8 1/2
+    {"crush",       0.f,      0, 18},
+    {"mod",         0.f,      0, 93},  // doubler, chorus, flanger
+    {"volume",      .7f,      0, 7},
+    {"drive",       .15f,     0, 17},
 };
 // clang-format on
 
-/** Knobs left to right: knobs 1-4, the big purple knob, volume; and what
- *  they set with CHOMPI held (NUM_PARAMS = nothing). */
-constexpr Param kKnobParam[6]    = {RESONANCE, ENV_MOD, DECAY, ACCENT, CUTOFF, VOLUME};
-constexpr Param kKnobAltParam[6] = {TUNING, SWING, DRIVE, SLIDE_TIME, NUM_PARAMS, TEMPO};
+/** Index of a stepped parameter's position. */
+inline int StepIndex(float v, int steps)
+{
+    const int i = static_cast<int>(v * (steps - 1) + 0.5f);
+    return ClampInt(i, 0, steps - 1);
+}
+
+inline float StepValue(int idx, int steps)
+{
+    return steps > 1 ? static_cast<float>(ClampInt(idx, 0, steps - 1)) / (steps - 1) : 0.f;
+}
+
+/** What a knob sets: a parameter, the pattern's length, or nothing. */
+constexpr uint8_t kKnobLength = 254;
+constexpr uint8_t kKnobNone   = 255;
+
+/** Knobs left to right: knobs 1-4, the big purple knob, volume.
+ *  [knob][page][CHOMPI held]. Clicking knobs 1-4 flips their page; the big
+ *  knob and volume have one. */
+constexpr uint8_t kKnobMap[6][2][2] = {
+    {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}},
+    {{ENV_MOD, DECAY}, {ACCENT, SLIDE_TIME}},
+    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}},
+    {{DELAY, DELAY_TIME}, {CRUSH, MOD}},
+    {{CUTOFF, RESONANCE}, {CUTOFF, RESONANCE}},
+    {{VOLUME, DRIVE}, {VOLUME, DRIVE}},
+};
 
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
 inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }
 
-/** Knob values to the voice's units. */
-inline void ToVoiceParams(const float* p, bool square, VoiceParams& vp)
+/** Quantize grid in steps: 1/16, 1/8, 1/4. */
+inline int QuantGridSteps(float v)
 {
-    vp.cutoff_hz = KnobToExp(p[CUTOFF], 40.f, 4000.f);
-    vp.resonance = p[RESONANCE];
-    vp.env_oct   = 5.f * p[ENV_MOD];
-    vp.decay_s   = KnobToExp(p[DECAY], 0.2f, 2.5f);
-    vp.accent    = p[ACCENT];
-    vp.tuning_st = (p[TUNING] - 0.5f) * 2.f;
-    vp.drive     = p[DRIVE];
-    vp.slide_s   = KnobToExp(p[SLIDE_TIME], 0.02f, 0.3f);
-    vp.square    = square;
+    static constexpr int kGrid[3] = {1, 2, 4};
+    return kGrid[StepIndex(v, 3)];
+}
+
+/** Knob values to the voice's units. */
+inline void ToVoiceParams(const float* p, VoiceParams& vp)
+{
+    vp.cutoff_hz   = KnobToExp(p[CUTOFF], 40.f, 4000.f);
+    vp.resonance   = p[RESONANCE];
+    vp.env_oct     = 5.f * p[ENV_MOD];
+    vp.decay_s     = KnobToExp(p[DECAY], 0.2f, 2.5f);
+    vp.accent      = p[ACCENT];
+    vp.tuning_st   = (p[TUNING] - 0.5f) * 2.f;
+    vp.drive       = p[DRIVE];
+    vp.slide_s     = KnobToExp(p[SLIDE_TIME], 0.02f, 0.3f);
+    vp.square      = StepIndex(p[WAVE], 2) == 1;
+    vp.pulse_width = 0.1f + 0.8f * p[PULSE_WIDTH];
 }
 
 // ------------------------------------------------------------------ settings
 
-/** What current.txt keeps: the knobs, the waveform, the pattern. */
+/** What current.txt keeps: the knobs and the selected pattern. */
 struct Settings
 {
     float params[NUM_PARAMS];
-    bool  square  = false;
     int   pattern = 0;
 
     Settings()
@@ -103,7 +150,7 @@ inline size_t WriteSettings(const Settings& s, char* buf, size_t size)
             return 0;
         len += w;
     }
-    const int w = snprintf(buf + len, size - len, "square %d\npattern %d\n", s.square ? 1 : 0, s.pattern + 1);
+    const int w = snprintf(buf + len, size - len, "pattern %d\n", s.pattern + 1);
     if(w <= 0 || static_cast<size_t>(w) >= size - len)
         return 0;
     return len + w;
@@ -147,8 +194,8 @@ inline void ReadSettings(char* text, Settings& s)
         if(sp)
         {
             *sp = '\0';
-            if(strcmp(line, "square") == 0)
-                s.square = atoi(sp + 1) != 0;
+            if(strcmp(line, "square") == 0) // written by earlier versions
+                s.params[WAVE] = atoi(sp + 1) ? 1.f : 0.f;
             else if(strcmp(line, "pattern") == 0)
                 s.pattern = ClampInt(atoi(sp + 1), 1, 16) - 1;
             else

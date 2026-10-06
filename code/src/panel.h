@@ -88,13 +88,13 @@ class Panel
         if(Pressed(kSwPlay))
             ui_->Play();
         if(Pressed(kSwLoop))
-            ui_->Loop(now);
+            ui_->Loop();
 
         for(int k = 0; k < 6; k++)
         {
             const bool clicked = k == 4 ? hw_->enc[4].RisingEdge() : Pressed(kKnobClick[k]);
             if(clicked)
-                ui_->KnobClick(k);
+                ui_->KnobClick(k, now);
         }
         for(int e = 0; e < 6; e++)
         {

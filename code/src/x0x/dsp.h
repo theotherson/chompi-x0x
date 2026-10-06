@@ -45,6 +45,18 @@ inline float FastTanh(float x)
     return x * (27.f + x2) / (27.f + 9.f * x2);
 }
 
+/** Clean below 0.75, then bends smoothly towards 1.0: keeps the output in
+ *  range however hard the effects and drive are pushed. */
+inline float SoftLimit(float x)
+{
+    const float a = fabsf(x);
+    if(a <= 0.75f)
+        return x;
+    const float over = (a - 0.75f) * 4.f;
+    const float y    = 0.75f + 0.25f * (over / (1.f + over));
+    return x < 0.f ? -y : y;
+}
+
 inline float MidiToHz(float note)
 {
     return 440.f * FastExp2((note - 69.f) * (1.f / 12.f));

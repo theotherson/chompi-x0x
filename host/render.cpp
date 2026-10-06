@@ -10,6 +10,7 @@ using namespace x0x;
 static constexpr float  kSr    = 48000.f;
 static constexpr size_t kBlock = 48;
 static Machine          g_m;
+static Fx::Frame        g_delay[96000];
 static int              g_fail = 0;
 
 struct Knob
@@ -20,15 +21,14 @@ struct Knob
 
 /** Plays pattern 1 for `seconds` with these knob settings. */
 static void RenderPattern(const std::string& dir, const char* name, const Pattern& pat,
-                          std::initializer_list<Knob> knobs, bool square, float seconds)
+                          std::initializer_list<Knob> knobs, float seconds)
 {
     Machine& m = g_m;
-    m.Init(kSr);
+    m.Init(kSr, g_delay, 96000);
     m.patterns[0] = pat;
     m.settings    = Settings{};
     for(auto& k : knobs)
         m.settings.params[k.p] = k.v;
-    m.settings.square = square;
     m.Loaded();
     m.Play();
     std::vector<float> L, R;
@@ -67,16 +67,17 @@ int main(int argc, char** argv)
     Pattern demo;
     DemoPattern(demo);
 
-    RenderPattern(dir, "demo_saw", demo, {}, false, 8.f);
-    RenderPattern(dir, "demo_square", demo, {}, true, 8.f);
+    RenderPattern(dir, "demo_saw", demo, {}, 8.f);
+    RenderPattern(dir, "demo_square", demo, {{WAVE, 1.f}}, 8.f);
+    RenderPattern(dir, "narrow_pulse", demo, {{WAVE, 1.f}, {PULSE_WIDTH, .1f}}, 4.f);
 
     // Cutoff swept by hand would be the classic move: here, three settings.
-    RenderPattern(dir, "dark_reso", demo, {{CUTOFF, .1f}, {RESONANCE, .9f}, {ENV_MOD, .8f}}, false, 4.f);
-    RenderPattern(dir, "open_short", demo, {{CUTOFF, .6f}, {RESONANCE, .3f}, {DECAY, 0.f}}, false, 4.f);
+    RenderPattern(dir, "dark_reso", demo, {{CUTOFF, .1f}, {RESONANCE, .9f}, {ENV_MOD, .8f}}, 4.f);
+    RenderPattern(dir, "open_short", demo, {{CUTOFF, .6f}, {RESONANCE, .3f}, {DECAY, 0.f}}, 4.f);
     RenderPattern(dir, "max_everything", demo,
                   {{CUTOFF, 1.f}, {RESONANCE, 1.f}, {ENV_MOD, 1.f}, {DECAY, 1.f}, {ACCENT, 1.f},
                    {DRIVE, 1.f}, {VOLUME, 1.f}},
-                  false, 4.f);
+                  4.f);
 
     // Accents in a row: should build up.
     Pattern acc;
@@ -86,7 +87,7 @@ int main(int argc, char** argv)
         acc.steps[i].on     = true;
         acc.steps[i].accent = i >= 4 && i < 12;
     }
-    RenderPattern(dir, "accent_run", acc, {{CUTOFF, .2f}, {RESONANCE, .8f}}, false, 4.f);
+    RenderPattern(dir, "accent_run", acc, {{CUTOFF, .2f}, {RESONANCE, .8f}}, 4.f);
 
     // Slides up and down an octave.
     Pattern sl;
@@ -97,10 +98,18 @@ int main(int argc, char** argv)
         sl.steps[i].note  = i % 2 ? 12 : 0;
         sl.steps[i].slide = i % 4 < 2;
     }
-    RenderPattern(dir, "slides", sl, {}, false, 4.f);
+    RenderPattern(dir, "slides", sl, {}, 4.f);
+
+    // Effects: each on its own, then all at once.
+    RenderPattern(dir, "fx_delay", demo, {{DELAY, .5f}, {DELAY_TIME, StepValue(2, kDelayDivisions)}}, 6.f);
+    RenderPattern(dir, "fx_crush", demo, {{CRUSH, .7f}}, 4.f);
+    RenderPattern(dir, "fx_doubler", demo, {{MOD, .2f}}, 4.f);
+    RenderPattern(dir, "fx_chorus", demo, {{MOD, .5f}}, 4.f);
+    RenderPattern(dir, "fx_flanger", demo, {{MOD, .9f}}, 4.f);
+    RenderPattern(dir, "fx_all_max", demo, {{DELAY, 1.f}, {CRUSH, 1.f}, {MOD, 1.f}, {RESONANCE, 1.f}, {DRIVE, 1.f}, {VOLUME, 1.f}}, 6.f);
 
     // Swing at full.
-    RenderPattern(dir, "swing", demo, {{SWING, 1.f}}, false, 4.f);
+    RenderPattern(dir, "swing", demo, {{SWING, 1.f}}, 4.f);
 
     printf(g_fail ? "%d FAILED\n" : "renders ok\n", g_fail);
     return g_fail ? 1 : 0;

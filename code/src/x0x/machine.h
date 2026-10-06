@@ -9,6 +9,7 @@
  *  and state for the LEDs.
  */
 #pragma once
+#include "fx.h"
 #include "params.h"
 #include "pattern.h"
 #include "sequencer.h"
@@ -29,10 +30,13 @@ class Machine
     volatile uint32_t pattern_changes  = 0;
     volatile uint32_t settings_changes = 0;
 
-    void Init(float sample_rate)
+    /** delay_mem: the delay's memory (2 s = 96000 frames at 48 kHz); on the
+     *  hardware it lives in SDRAM. */
+    void Init(float sample_rate, Fx::Frame* delay_mem, size_t delay_frames)
     {
         sr_ = sample_rate;
         voice_.Init(sample_rate);
+        fx_.Init(sample_rate, delay_mem, delay_frames);
         seq_.Init(sample_rate);
         for(int i = 0; i < kPatterns; i++)
             patterns[i].Clear();
@@ -111,17 +115,20 @@ class Machine
 
     void SetParam(int p, float v)
     {
-        v                  = Clamp(v, 0.f, 1.f);
+        v = Clamp(v, 0.f, 1.f);
+        if(kParams[p].steps)
+            v = StepValue(StepIndex(v, kParams[p].steps), kParams[p].steps);
         settings.params[p] = v;
         settings_changes++;
         if(options.cc_out && kParams[p].cc)
             PushMidi(0xB0 | (options.channel_out - 1), kParams[p].cc, static_cast<uint8_t>(v * 127.f + 0.5f));
     }
 
-    void SetSquare(bool sq)
+    /** The current pattern's length, 1-16. */
+    void SetLength(int n)
     {
-        settings.square = sq;
-        settings_changes++;
+        Current().length = static_cast<uint8_t>(ClampInt(n, 1, kSteps));
+        pattern_changes++;
     }
 
     float TempoBpmNow() const { return ExternalClock() ? ext_bpm_ : TempoBpm(settings.params[TEMPO]); }
@@ -257,7 +264,9 @@ class Machine
         {
             if(kParams[i].cc == cc)
             {
-                settings.params[i] = value / 127.f;
+                const int steps    = kParams[i].steps;
+                const float v      = value / 127.f;
+                settings.params[i] = steps ? StepValue(StepIndex(v, steps), steps) : v;
                 settings_changes++;
                 return;
             }
@@ -296,10 +305,12 @@ class Machine
     /** Renders n samples (n <= 64) to both outputs. */
     void Process(float* left, float* right, size_t n)
     {
-        ToVoiceParams(settings.params, settings.square, vp_);
+        ToVoiceParams(settings.params, vp_);
         seq_.SetSwing(settings.params[SWING]);
         const bool ext = ExternalClock();
         seq_.SetTempo(ext ? ext_bpm_ : TempoBpm(settings.params[TEMPO]));
+        const float* p = settings.params;
+        fx_.Set(p[CRUSH], p[MOD], p[DELAY], StepIndex(p[DELAY_TIME], kDelayDivisions), seq_.Tempo());
         if(!seq_.Queued())
             queued_ = -1;
 
@@ -340,9 +351,13 @@ class Machine
         if(pos < n)
             voice_.Process(vp_, mono + pos, n - pos);
 
+        fx_.Process(mono, left, right, n);
         const float vol = settings.params[VOLUME] * settings.params[VOLUME] * 1.5f;
         for(size_t i = 0; i < n; i++)
-            left[i] = right[i] = mono[i] * vol;
+        {
+            left[i]  = SoftLimit(left[i] * vol);
+            right[i] = SoftLimit(right[i] * vol);
+        }
     }
 
   private:
@@ -391,13 +406,30 @@ class Machine
         }
     }
 
-    /** Writes a live note to the step it is nearest. */
+    /** Writes a live note to the pattern. Quantize on: to the nearest point
+     *  of the grid (every 1, 2 or 4 steps). Off: to the step it falls in,
+     *  late by as many ticks as it was played. */
     void Record(int midi)
     {
-        const int step = seq_.StepPhase() < 0.5f || seq_.CurrentStep() < 0 ? seq_.CurrentStep()
-                                                                           : seq_.NextStep();
-        if(step < 0)
+        const int cur = seq_.CurrentStep();
+        if(cur < 0)
             return;
+        const int   len   = Current().length;
+        const float phase = seq_.StepPhase();
+        int         step, nudge = 0;
+        if(StepIndex(settings.params[QUANTIZE], 2) == 1)
+        {
+            const int g = QuantGridSteps(settings.params[QUANT_GRID]);
+            step        = static_cast<int>((cur + phase) / g + 0.5f) * g;
+            step %= len;
+        }
+        else
+        {
+            step  = cur;
+            nudge = static_cast<int>(phase * Sequencer::kTicksPerStep + 0.5f);
+            if(nudge >= Sequencer::kTicksPerStep)
+                step = seq_.NextStep(), nudge = 0;
+        }
         int rel = midi - kBaseNote, oct = 0;
         while(rel < 0 && oct > -1)
             rel += 12, oct--;
@@ -410,6 +442,7 @@ class Machine
         s.note   = static_cast<uint8_t>(rel);
         s.octave = static_cast<int8_t>(oct);
         s.on     = true;
+        s.nudge  = static_cast<uint8_t>(nudge);
         rec_key_  = midi;
         rec_step_ = step;
         pattern_changes++;
@@ -446,6 +479,7 @@ class Machine
     float       sr_ = 48000.f;
     Voice       voice_;
     VoiceParams vp_;
+    Fx          fx_;
     Sequencer   seq_;
     int         queued_     = -1;
     int         voice_note_ = -1;

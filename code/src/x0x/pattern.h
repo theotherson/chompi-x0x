@@ -6,12 +6,14 @@
  *    accent  louder, and the filter's accent sweep
  *    slide   holds the gate into the next note, which glides there
  *    tie     holds the note before through this step (its own note unused)
+ *    nudge   0-5 MIDI clock ticks late: the timing of a note recorded with
+ *            quantize off
  *
  *  Patterns are stored as plain text, one pattern after another:
  *
  *    pattern 1
  *    length 16
- *    step 1 12 0 1 1 0 0       step, note 0-24, octave, on, accent, slide, tie
+ *    step 1 12 0 1 1 0 0 0     step, note 0-24, octave, on, accent, slide, tie, nudge
  *    ...
  */
 #pragma once
@@ -36,12 +38,13 @@ struct Step
     bool    accent = false;
     bool    slide  = false;
     bool    tie    = false;
+    uint8_t nudge  = 0; // 0-5 ticks after the step's start
 
     int Midi() const { return kBaseNote + note + 12 * octave; }
     bool operator==(const Step& o) const
     {
         return note == o.note && octave == o.octave && on == o.on && accent == o.accent
-               && slide == o.slide && tie == o.tie;
+               && slide == o.slide && tie == o.tie && nudge == o.nudge;
     }
 };
 
@@ -92,8 +95,9 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
         for(int i = 0; i < kSteps; i++)
         {
             const Step& s = pat.steps[i];
-            w = snprintf(buf + len, size - len, "step %d %d %d %d %d %d %d\n", i + 1, s.note,
-                         s.octave, s.on ? 1 : 0, s.accent ? 1 : 0, s.slide ? 1 : 0, s.tie ? 1 : 0);
+            w = snprintf(buf + len, size - len, "step %d %d %d %d %d %d %d %d\n", i + 1, s.note,
+                         s.octave, s.on ? 1 : 0, s.accent ? 1 : 0, s.slide ? 1 : 0, s.tie ? 1 : 0,
+                         s.nudge);
             if(w <= 0 || static_cast<size_t>(w) >= size - len)
                 return 0;
             len += w;
@@ -127,9 +131,9 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
         else if(pat && strncmp(line, "step ", 5) == 0)
         {
             char* p    = line + 5;
-            long  v[7] = {};
+            long  v[8] = {};
             int   got  = 0;
-            for(; got < 7; got++)
+            for(; got < 8; got++)
             {
                 char* end;
                 v[got] = strtol(p, &end, 10);
@@ -137,7 +141,8 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                     break;
                 p = end;
             }
-            if(got == 7 && v[0] >= 1 && v[0] <= kSteps && v[1] >= 0 && v[1] < kKeyNotes
+            // 7 numbers: written before nudge existed.
+            if(got >= 7 && v[0] >= 1 && v[0] <= kSteps && v[1] >= 0 && v[1] < kKeyNotes
                && v[2] >= -1 && v[2] <= 1)
             {
                 Step& s = pat->steps[v[0] - 1];
@@ -147,6 +152,7 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                 s.accent = v[4] != 0;
                 s.slide  = v[5] != 0;
                 s.tie    = v[6] != 0;
+                s.nudge  = static_cast<uint8_t>(ClampInt(static_cast<int>(v[7]), 0, 5));
             }
         }
         line = next;
