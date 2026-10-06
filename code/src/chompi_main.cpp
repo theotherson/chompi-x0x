@@ -1,29 +1,35 @@
 /** @file chompi_main.cpp
  *  @brief CHOMPI x0x: a TB-303 / x0xb0x-style bass line machine.
  *
- *  Milestone 1 (scaffold): boots, mounts the SD card, reads every key and
- *  knob, lights every LED, outputs silence. No voice or sequencer yet.
- *
  *  Built on CHOMPI Club's TEMPO firmware: the hardware layer, LED driver,
- *  libraries and startup sequence are TEMPO's (MIT).
+ *  libraries and startup sequence are TEMPO's (MIT). The instrument itself
+ *  (voice, sequencer, panel logic) is in x0x/, plain C++ that also builds and
+ *  is tested on the desktop (host/).
  *
  *  Two places code runs:
- *   1. AudioCallback(): the audio interrupt. Scans the controls, then
- *      renders audio (silence for now).
- *   2. The main loop: LEDs, the SD card and the battery.
+ *   1. AudioCallback(): the audio interrupt, every block. Scans the controls,
+ *      reads MIDI, runs the sequencer and voice, queues MIDI out. Everything
+ *      that changes notes happens here, so no locking is needed.
+ *   2. The main loop: LEDs, USB MIDI out, the SD card (autosave), battery.
  */
 #include "hardware.h"
 #include "temp_led_stuff.h"
 #include "fatfs.h"
 #include "panel.h"
-#include <cstdio>
-#include <cstdlib>
+#include "midi_io.h"
+#include "storage.h"
+#include "x0x/machine.h"
+#include "x0x/ui.h"
 
 using namespace daisy;
 using namespace chompi;
 
-Hardware  hw;
-PanelTest panel;
+Hardware     hw;
+x0x::Machine machine;
+x0x::Ui      ui;
+Panel        panel;
+MidiIo       midi;
+Storage      storage;
 
 SdmmcHandler sdmmc;
 // The SD driver DMAs into FatFS's sector buffer inside this and then
@@ -36,81 +42,36 @@ struct alignas(32) AlignedFs
 AlignedFs       fs_holder;
 FatFSInterface& fsi = fs_holder.fsi;
 
-// File buffers likewise own their cache lines, and are globals: the stack is
-// in DTCM, which the SD card's DMA cannot reach.
-struct alignas(32) BootFile
-{
-    char buf[32];
-    FIL  fil;
-};
-BootFile boot_file;
-
 volatile bool running = false; // controls are left to main() until startup is done
 
 /** Channels: out[0..1] headphones, out[2..3] main out. */
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
-    for(size_t i = 0; i < size; i++)
-        out[0][i] = out[1][i] = out[2][i] = out[3][i] = 0.f;
-
     if(!running)
+    {
+        for(size_t i = 0; i < size; i++)
+            out[0][i] = out[1][i] = out[2][i] = out[3][i] = 0.f;
         return;
+    }
 
+    const uint32_t now = System::GetNow();
     hw.ProcessAllControls();
-    panel.Poll();
-}
+    panel.Poll(now);
+    midi.Poll(machine);
 
-/** Proves the card reads and writes: /X0X/boots.txt counts power-ons.
- *  @return true if the count was written */
-static bool CardCheck()
-{
-    if(f_chdir("/X0X") != FR_OK)
+    // The machine renders at most 64 samples at a time.
+    for(size_t pos = 0; pos < size; pos += 64)
     {
-        f_mkdir("/X0X");
-        if(f_chdir("/X0X") != FR_OK)
-            return false;
+        const size_t n = size - pos < 64 ? size - pos : 64;
+        machine.Process(out[0] + pos, out[1] + pos, n);
+    }
+    for(size_t i = 0; i < size; i++)
+    {
+        out[2][i] = out[0][i];
+        out[3][i] = out[1][i];
     }
 
-    long boots = 0;
-    UINT n     = 0;
-    if(f_open(&boot_file.fil, "boots.txt", FA_READ) == FR_OK)
-    {
-        f_read(&boot_file.fil, boot_file.buf, sizeof(boot_file.buf) - 1, &n);
-        f_close(&boot_file.fil);
-        boot_file.buf[n] = '\0';
-        boots            = strtol(boot_file.buf, nullptr, 10);
-    }
-
-    const int len = snprintf(boot_file.buf, sizeof(boot_file.buf), "%ld\n", boots + 1);
-    if(f_open(&boot_file.fil, "boots.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
-        return false;
-    f_write(&boot_file.fil, boot_file.buf, len, &n);
-    f_close(&boot_file.fil);
-    return static_cast<int>(n) == len;
-}
-
-/** A sweep across the white keys in the three panel colours, so you know
- *  which firmware you booted. */
-static void BootAnimation()
-{
-    static const Sw kWhite[15] = {Sw::KEY_1,  Sw::KEY_2,  Sw::KEY_3,  Sw::KEY_4,  Sw::KEY_5,
-                                  Sw::KEY_6,  Sw::KEY_7,  Sw::KEY_8,  Sw::KEY_9,  Sw::KEY_10,
-                                  Sw::KEY_11, Sw::KEY_12, Sw::KEY_13, Sw::KEY_14, Sw::KEY_15};
-    for(int step = 0; step < 40; step++)
-    {
-        for(int s = 0; s < 15; s++)
-        {
-            const float d = fabsf(s - step * 0.5f);
-            const float b = d < 3.f ? 1.f - d / 3.f : 0.f;
-            const Rgb&  c = s < 8 ? kPitchColour : kFuncColour;
-            SetSmtLedFloat(kKeyLed[static_cast<int>(kWhite[s])], c.r * b, c.g * b, c.b * b);
-        }
-        fill_led_data();
-        System::Delay(12);
-    }
-    for(int i = 0; i < 25; i++)
-        SetSmtLed(i, 0, 0, 0);
-    fill_led_data();
+    midi.PumpUart(machine);
 }
 
 int main(void)
@@ -130,7 +91,10 @@ int main(void)
         System::Delay(10);
     }
 
-    // SD card, as TEMPO sets it up.
+    machine.Init(hw.seed.AudioSampleRate());
+    ui.Init(&machine);
+
+    // SD card, as TEMPO sets it up; patterns, settings and MIDI options.
     System::Delay(100);
     SdmmcHandler::Config sd_cfg;
     sd_cfg.speed = SdmmcHandler::Speed::VERY_FAST;
@@ -139,12 +103,17 @@ int main(void)
     System::Delay(100);
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     System::Delay(100);
-    const bool card_ok = f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1) == FR_OK && CardCheck();
+    if(storage.Mount(fsi))
+        storage.Load(machine);
+    machine.Loaded();
 
     LedSetup();
-    panel.Init(&hw, card_ok);
+    panel.Init(&hw, &ui);
+    midi.Init();
 
-    BootAnimation();
+    panel.BootAnimation();
+    if(!storage.Ok())
+        panel.CardError();
 
     // Get any junk out of the shift registers (0.5 s), and the stock boot
     // combo: CHOMPI + PLAY + LOOP held at power-on = shipping mode.
@@ -158,6 +127,12 @@ int main(void)
     }
     if(sleep_state > 4000)
         hw.MpWrite(0x08, 0B10111111); // SHIPPING MODE
+    // Clear edges collected during the boot wait, so nothing fires at once.
+    for(int sw = 0; sw < 40; sw++)
+    {
+        hw.button_sr.RisingEdge(sw);
+        hw.button_sr.FallingEdge(sw);
+    }
 
     hw.usb_sw.Write(false);       // give USB control
     System::Delay(1);
@@ -168,14 +143,43 @@ int main(void)
     running = true;
 
     uint32_t last_draw = 0, last_batt = 0;
+    uint32_t saved_patterns = machine.pattern_changes, saved_settings = machine.settings_changes;
+    uint32_t pattern_seen = saved_patterns, settings_seen = saved_settings;
+    uint32_t pattern_at = 0, settings_at = 0;
     while(1)
     {
         const uint32_t now = System::GetNow();
+
         if(now - last_draw >= 16)
         {
             last_draw = now;
-            panel.Draw();
+            panel.Draw(now);
         }
+
+        midi.PumpUsb(machine);
+
+        // Save a few seconds after the last change, not on every turn.
+        if(machine.pattern_changes != pattern_seen)
+        {
+            pattern_seen = machine.pattern_changes;
+            pattern_at   = now;
+        }
+        if(machine.settings_changes != settings_seen)
+        {
+            settings_seen = machine.settings_changes;
+            settings_at   = now;
+        }
+        if(pattern_seen != saved_patterns && now - pattern_at > 2000)
+        {
+            saved_patterns = pattern_seen;
+            storage.SavePatterns(machine);
+        }
+        if(settings_seen != saved_settings && now - settings_at > 3000)
+        {
+            saved_settings = settings_seen;
+            storage.SaveSettings(machine);
+        }
+
         if(now - last_batt > 20)
         {
             last_batt = now;
