@@ -216,6 +216,16 @@ class Machine
             rec_key_ = -1;
     }
 
+    /** The step a note played now would land on (the nearest sixteenth),
+     *  -1 when stopped. */
+    int NearestStep() const
+    {
+        const int cur = seq_.CurrentStep();
+        if(cur < 0)
+            return -1;
+        return seq_.StepPhase() < 0.5f ? cur : seq_.NextStep();
+    }
+
     /** The note the voice is playing, -1 if silent. */
     int SoundingNote() const { return voice_.Gate() ? voice_note_ : -1; }
 

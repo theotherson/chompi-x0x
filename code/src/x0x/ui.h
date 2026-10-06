@@ -7,8 +7,11 @@
  *
  *  Steps: the 15 white keys show the 16 steps. White keys 1-7 are steps 1-7,
  *  white keys 9-15 are steps 10-16, and middle C (white key 8) is step 8 or
- *  step 9: it follows the half you last pressed a key in, and while the
+ *  step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other
+ *  dimmed; the view follows the half you last pressed a key in, and while the
  *  pattern runs it follows the playhead once the second half has notes.
+ *
+ *  Step lights: on = red, accent = bright red, tie = dim red.
  *
  *  Toggle switch: STEP mode (up) or PITCH mode (down).
  *
@@ -21,31 +24,37 @@
  *                                  ACCENT, SLIDE, TIE. On a page the step keys
  *                                  toggle that flag; the page key again goes
  *                                  back to notes
- *    black key 6                   PATTERN page: step keys pick pattern 1-16.
+ *    black key 6 (C#4)             transpose mode on/off: while on, any key
+ *                                  sets the transpose (middle C = none)
+ *    black key 7 (D#4)             view steps 1-8 / 9-16
+ *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16.
  *                                  Running, it waits for the bar; the same key
  *                                  again switches at once
- *    black key 9                   COPY: hold it and press a step key to copy
+ *    black key 9 (G#4)             COPY: hold it and press a step key to copy
  *                                  this pattern to that pattern number
- *    black key 10                  CLEAR: tap clears the selected step, hold
+ *    black key 10 (A#4)            CLEAR: tap clears the selected step, hold
  *                                  1 s clears the pattern
- *    LOOP                          middle C: step 8 / step 9
  *
  *  PITCH mode
  *    keys                          play live; overlapping notes slide
  *    LOOP                          record on/off
  *      running, record on          played notes go into the pattern
- *                                  (quantized or not: knob 3, page 2)
+ *                                  (quantized or not: knob 3, page 2);
+ *                                  CHOMPI + black keys 1-5 = octave down,
+ *                                  octave up, accent, slide, tie on the step
+ *                                  playing now
  *      stopped, record on          step input: each note fills the next step
- *                                  and the pattern grows to it. Hold CHOMPI:
- *                                  black keys 1-4 = octave down, octave up,
- *                                  accent, slide on the last step; black key 5
- *                                  adds a tie, black key 6 a rest, black key 7
+ *                                  and the pattern grows to it. CHOMPI + black
+ *                                  keys 1-4 = octave down, octave up, accent,
+ *                                  slide on the last step; black key 5 adds a
+ *                                  tie, black key 9 a rest, black key 10
  *                                  deletes the last step
- *    CHOMPI + key                  transpose (middle C = none), except in step
- *                                  input
+ *    CHOMPI + C#4                  transpose mode on/off
+ *    CHOMPI + D#4                  view steps 1-8 / 9-16
  *
- *  Knobs: clicking knobs 1-4 flips each between two pages. The big knob's
- *  click is tap tempo. See params.h kKnobMap for what each turns.
+ *  Knobs: clicking knobs 1-4 flips each between two pages; CHOMPI + click
+ *  resets both functions of the knob's page to their defaults. The big
+ *  knob's click is tap tempo. See params.h kKnobMap for what each turns.
  */
 #pragma once
 #include "machine.h"
@@ -94,8 +103,11 @@ class Ui
     static constexpr int kWhite[15] = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
     static constexpr int kBlack[10] = {1, 3, 6, 8, 10, 13, 15, 18, 20, 22};
     static constexpr int kMiddleC   = 12; // white key 8
-    static constexpr int kKeyCopy   = 20; // black key 9
-    static constexpr int kKeyClear  = 22; // black key 10
+    static constexpr int kKeyTranspose = 13; // black key 6
+    static constexpr int kKeyView      = 15; // black key 7
+    static constexpr int kKeyPattern   = 18; // black key 8
+    static constexpr int kKeyCopy      = 20; // black key 9
+    static constexpr int kKeyClear     = 22; // black key 10
 
     static constexpr uint32_t kClearHoldMs = 1000;
 
@@ -107,6 +119,7 @@ class Ui
     int  KnobPage(int knob) const { return knob < 4 ? knob_page_[knob] : 0; }
     bool StepInput() const { return mode_ == Mode::PITCH && m_->Recording() && !m_->Running(); }
     int  Cursor() const { return cursor_; }
+    bool TransposeMode() const { return transpose_mode_; }
 
     /** Whether middle C is step 9 (true) or step 8 right now. */
     bool SecondHalf() const
@@ -124,8 +137,9 @@ class Ui
         if(mode == mode_)
             return;
         ReleaseAll();
-        mode_ = mode;
-        page_ = Page::NOTES;
+        mode_           = mode;
+        page_           = Page::NOTES;
+        transpose_mode_ = false;
         m_->SetRecording(false);
     }
 
@@ -202,6 +216,19 @@ class Ui
 
     void KnobClick(int knob, uint32_t now)
     {
+        if(chompi_)
+        {
+            // Both functions of this knob's page back to their defaults.
+            for(int layer = 0; layer < 2; layer++)
+            {
+                const uint8_t sel = kKnobMap[knob][KnobPage(knob)][layer];
+                if(sel == kKnobLength)
+                    m_->SetLength(kSteps);
+                else if(sel != kKnobNone)
+                    m_->SetParam(sel, kParams[sel].def);
+            }
+            return;
+        }
         if(knob < 4)
             knob_page_[knob] ^= 1;
         else if(knob == 4)
@@ -253,6 +280,8 @@ class Ui
             DrawStepMode(f, now, blink, cur_step, step_lit);
         else
             DrawPitchMode(f, blink, cur_step, step_lit);
+        if(transpose_mode_ && !chompi_)
+            DrawTranspose(f);
 
         if(mode_ == Mode::STEP && now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -266,7 +295,7 @@ class Ui
             f.play        = {b, b * .85f, 0.f};
         }
         if(mode_ == Mode::STEP)
-            f.loop = half_ ? Rgb{0.f, 1.f, .3f} : Rgb{0.f, .12f, .04f};
+            f.loop = SecondHalf() ? Rgb{0.f, 1.f, .3f} : Rgb{0.f, .12f, .04f};
         else if(m_->Recording())
             f.loop = m_->Running() && blink ? Rgb{1.f, 0.f, 0.f} : Rgb{.7f, 0.f, 0.f};
         if(chompi_)
@@ -277,7 +306,8 @@ class Ui
             f.chompi = mode_ == Mode::STEP ? Rgb{.5f, 0.f, 0.f} : Rgb{0.f, .15f, .5f};
     }
 
-    static constexpr Rgb kRed = {1.f, 0.f, 0.f};
+    static constexpr Rgb kRed             = {1.f, 0.f, 0.f};
+    static constexpr Rgb kTransposeColour = {1.f, .85f, 0.f};
     // Knob colours, page 1 and page 2.
     static constexpr Rgb kKnobColour[6][2] = {
         {{1.f, .55f, 0.f}, {1.f, 1.f, 1.f}},  // wave (amber) / length (white)
@@ -350,6 +380,14 @@ class Ui
 
     void StepModeKey(int k, uint32_t now)
     {
+        if(transpose_mode_ && !chompi_)
+        {
+            if(k == kKeyTranspose)
+                transpose_mode_ = false;
+            else
+                m_->SetTranspose(k - kMiddleC);
+            return;
+        }
         if(chompi_)
         {
             // The keybed as a keyboard: set the selected step's note.
@@ -377,9 +415,11 @@ class Ui
             case 2: TogglePage(Page::ACCENT); break;
             case 3: TogglePage(Page::SLIDE); break;
             case 4: TogglePage(Page::TIE); break;
-            case 5: TogglePage(Page::PATTERN); break;
+            case 5: transpose_mode_ = true; break;
+            case 6: half_ = SecondHalf() ? 0 : 1; break;
+            case 7: TogglePage(Page::PATTERN); break;
             case 9: clear_down_ = now, clear_done_ = false; break;
-            default: break; // 6, 7 free; 8 = COPY, used while held
+            default: break; // 8 = COPY, used while held
         }
     }
 
@@ -426,10 +466,20 @@ class Ui
     {
         if(chompi_)
         {
-            if(StepInput())
-                StepInputCommand(BlackIndex(k));
-            else
-                m_->SetTranspose(k - kMiddleC);
+            const int b = BlackIndex(k);
+            if(k == kKeyTranspose)
+                transpose_mode_ = !transpose_mode_;
+            else if(k == kKeyView)
+                half_ = SecondHalf() ? 0 : 1;
+            else if(StepInput())
+                StepInputCommand(b);
+            else if(m_->Recording() && m_->Running() && b >= 0 && b < 5)
+                LiveFlag(b);
+            return;
+        }
+        if(transpose_mode_)
+        {
+            m_->SetTranspose(k - kMiddleC);
             return;
         }
         Sound(k, true);
@@ -478,8 +528,8 @@ class Ui
                 Append(s);
                 return;
             }
-            case 5: Append(Step{}); return; // rest
-            case 6: // delete the last step
+            case 8: Append(Step{}); return; // rest
+            case 9: // delete the last step
                 if(cursor_ > 0)
                 {
                     cursor_--;
@@ -489,6 +539,29 @@ class Ui
                 return;
             default: return;
         }
+    }
+
+    /** Recording while running, CHOMPI + black keys 1-5: octave down, octave
+     *  up, accent, slide or tie on the step playing now. */
+    void LiveFlag(int b)
+    {
+        const int step = m_->NearestStep();
+        if(step < 0)
+            return;
+        Step& s = m_->Current().steps[step];
+        switch(b)
+        {
+            case 0: s.octave = s.octave == -1 ? 0 : -1; break;
+            case 1: s.octave = s.octave == 1 ? 0 : 1; break;
+            case 2: s.accent = !s.accent; break;
+            case 3: s.slide = !s.slide; break;
+            case 4:
+                s.tie = !s.tie;
+                if(s.tie)
+                    s.on = true;
+                break;
+        }
+        m_->PatternEdited();
     }
 
     /** Step input: writes the next step, and the pattern grows to it. */
@@ -522,16 +595,36 @@ class Ui
 
     // ------------------------------------------------------------ drawing
 
-    /** The 16 steps on the 15 white keys, via colour(step). */
+    /** The 16 steps on the 15 white keys, via colour(step). The half not in
+     *  view (steps 1-8 or 9-16) is dimmed. */
     template <typename F>
     void ForEachShownStep(F colour, LedFrame& f) const
     {
+        const bool second = SecondHalf();
         for(int s = 0; s < kSteps; s++)
         {
             const int k = WhiteOfStep(s);
-            if(k >= 0)
-                f.key[k] = colour(s);
+            if(k < 0)
+                continue;
+            const bool in_view = (s >= 8) == second;
+            f.key[k]           = in_view ? colour(s) : Scale(colour(s), 0.2f);
         }
+    }
+
+    /** A step's colour on the notes view: on = red, accent = bright red,
+     *  tie = dim red; dimmer past the pattern's length. */
+    static Rgb NoteColour(const Step& s, bool past_end)
+    {
+        Rgb c;
+        if(s.on)
+            c = Scale(kRed, s.tie ? 0.12f : s.accent ? 1.f : 0.4f);
+        return past_end ? Scale(c, 0.3f) : c;
+    }
+
+    /** Marks a step as the one being worked on: whitened. */
+    static Rgb Whiten(Rgb c, float k)
+    {
+        return {Clamp(c.r + k, 0.f, 1.f), Clamp(c.g + k, 0.f, 1.f), Clamp(c.b + k, 0.f, 1.f)};
     }
 
     void DrawStepMode(LedFrame& f, uint32_t now, bool blink, int cur_step, bool step_lit) const
@@ -541,16 +634,15 @@ class Ui
 
         ForEachShownStep(
             [&](int step) {
-                const Step& s = pat.steps[step];
+                const Step& s        = pat.steps[step];
+                const bool  past_end = step >= pat.length;
                 Rgb         c;
-                const float past_end = step < pat.length ? 1.f : 0.25f;
                 switch(page_)
                 {
                     case Page::NOTES:
-                        if(s.on)
-                            c = Scale(kRed, (step == selected_ ? 1.f : 0.45f) * past_end);
-                        else if(step == selected_)
-                            c = {.15f, .15f, .15f};
+                        c = NoteColour(s, past_end);
+                        if(step == selected_)
+                            c = s.on ? Whiten(c, 0.25f) : Rgb{.15f, .15f, .15f};
                         break;
                     case Page::PATTERN:
                         if(step == m_->CurrentPattern())
@@ -573,7 +665,7 @@ class Ui
                             default: break;
                         }
                         if(flag)
-                            c = Scale(pc, past_end);
+                            c = Scale(pc, past_end ? 0.3f : 1.f);
                         else if(s.on)
                             c = Scale(kRed, 0.12f);
                         break;
@@ -585,10 +677,13 @@ class Ui
             },
             f);
 
-        const Page pages[6] = {Page::DOWN, Page::UP, Page::ACCENT, Page::SLIDE, Page::TIE, Page::PATTERN};
-        for(int i = 0; i < 6; i++)
+        const Page pages[5] = {Page::DOWN, Page::UP, Page::ACCENT, Page::SLIDE, Page::TIE};
+        for(int i = 0; i < 5; i++)
             f.key[kBlack[i]] = Scale(kPageColour[static_cast<int>(pages[i])], page_ == pages[i] ? 1.f : 0.1f);
-        f.key[kKeyCopy] = held_[kKeyCopy] ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
+        f.key[kKeyTranspose] = Scale(kTransposeColour, 0.1f);
+        f.key[kKeyView]      = SecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
+        f.key[kKeyPattern]   = Scale(kPageColour[static_cast<int>(Page::PATTERN)], page_ == Page::PATTERN ? 1.f : 0.1f);
+        f.key[kKeyCopy]      = held_[kKeyCopy] ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
         if(held_[kKeyClear] && !clear_done_)
         {
             const float b = 0.2f + 0.8f * Clamp((now - clear_down_) / static_cast<float>(kClearHoldMs), 0.f, 1.f);
@@ -613,19 +708,19 @@ class Ui
                 f.key[i] = {1.f, 1.f, 1.f};
     }
 
-    /** Pitch mode: the white keys show the pattern's steps (dim red, ties
-     *  green), the playhead flashes white, in step input the next step to
-     *  fill blinks; keys you hold are blue. */
+    /** Pitch mode: the white keys show the pattern's steps, the playhead
+     *  flashes white, in step input the last step entered is whitened and the
+     *  next one blinks; keys you hold are blue. With CHOMPI held the black
+     *  keys show what they do now. */
     void DrawPitchMode(LedFrame& f, bool blink, int cur_step, bool step_lit) const
     {
         const Pattern& pat   = m_->Current();
         const bool     input = StepInput();
         ForEachShownStep(
             [&](int step) {
-                const Step& s = pat.steps[step];
-                Rgb         c;
-                if(step < pat.length && s.on)
-                    c = s.tie ? Rgb{0.f, .3f, .06f} : Scale(kRed, input && step == cursor_ - 1 ? 1.f : 0.3f);
+                Rgb c = NoteColour(pat.steps[step], step >= pat.length);
+                if(input && step == cursor_ - 1 && pat.steps[step].on)
+                    c = Whiten(c, 0.25f);
                 if(input && step == cursor_ && blink)
                     c = {.4f, .4f, .4f};
                 if(step_lit && cur_step == step)
@@ -633,23 +728,33 @@ class Ui
                 return c;
             },
             f);
-        if(input && chompi_)
+        if(chompi_)
         {
-            // The step-input commands on the black keys.
-            const Rgb cmd[7] = {kPageColour[1], kPageColour[2], kPageColour[3], kPageColour[4],
-                                kPageColour[5], {.3f, .3f, .3f}, {.5f, 0.f, 0.f}};
-            for(int i = 0; i < 7; i++)
-                f.key[kBlack[i]] = cmd[i];
-        }
-        else if(chompi_)
-        {
-            const int t = kMiddleC + m_->Transpose();
-            if(t >= 0 && t < kKeyNotes)
-                f.key[t] = {1.f, .85f, 0.f};
+            const bool flags = input || (m_->Recording() && m_->Running());
+            for(int i = 0; i < 5 && flags; i++)
+                f.key[kBlack[i]] = kPageColour[i + 1];
+            if(input)
+            {
+                f.key[kBlack[8]] = {.3f, .3f, .3f}; // rest
+                f.key[kBlack[9]] = {.6f, 0.f, 0.f}; // delete the last step
+            }
+            f.key[kKeyTranspose] = kTransposeColour;
+            f.key[kKeyView]      = {.5f, .5f, .5f};
         }
         for(int i = 0; i < kKeyNotes; i++)
             if(held_[i])
                 f.key[i] = {0.f, .4f, 1.f};
+    }
+
+    /** Transpose mode: C#4 and the key of the transpose amount in yellow,
+     *  middle C (none) dim white. */
+    void DrawTranspose(LedFrame& f) const
+    {
+        f.key[kMiddleC]      = {.15f, .15f, .15f};
+        const int t          = kMiddleC + m_->Transpose();
+        if(t >= 0 && t < kKeyNotes)
+            f.key[t] = kTransposeColour;
+        f.key[kKeyTranspose] = kTransposeColour;
     }
 
     /** Each knob in its page's colour, brightness = the value it turns (the
@@ -679,6 +784,7 @@ class Ui
     int      half_     = 0;
     int      cursor_   = 0;
     bool     chompi_   = false;
+    bool     transpose_mode_ = false;
     int      knob_page_[4] = {};
     bool     held_[kKeyNotes]     = {};
     bool     sounding_[kKeyNotes] = {};
@@ -694,6 +800,7 @@ class Ui
 constexpr int Ui::kWhite[15];
 constexpr int Ui::kBlack[10];
 constexpr Rgb Ui::kRed;
+constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kKnobColour[6][2];
 constexpr Rgb Ui::kPageColour[7];
 

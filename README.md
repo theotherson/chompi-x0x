@@ -15,7 +15,9 @@ PLAY runs and stops the pattern in both.
 
 ## The 16 steps on 15 white keys
 
-White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9: it follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. In step mode LOOP flips it by hand (LOOP lit green = step 9).
+White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other half dimmed. The view follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. D#4 flips it by hand (CHOMPI + D#4 in pitch mode); LOOP is lit green while steps 9-16 are in view.
+
+**Step lights:** on = red, accent = bright red, tie = dim red; steps past the pattern's length dimmer still.
 
 ## Step mode
 
@@ -26,13 +28,15 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | Hold CHOMPI | The keybed becomes a two-octave keyboard (C3-C5): the key you press is the selected step's note, and the step turns on. The selected step flashes |
 | Black C#3 / D#3 (keys 1-2) | Octave DOWN / UP page |
 | Black F#3 / G#3 / A#3 (keys 3-5) | ACCENT / SLIDE / TIE page |
-| Black C#4 (key 6) | PATTERN page: the step keys pick pattern 1-16 |
+| Black C#4 (key 6) | Transpose mode on/off: while on, any key sets the transpose (middle C = none), lit yellow |
+| Black D#4 (key 7) | View steps 1-8 / 9-16 |
+| Black F#4 (key 8) | PATTERN page: the step keys pick pattern 1-16 |
 | Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that pattern number |
 | Black A#4 (key 10) | CLEAR: tap clears the selected step; hold 1 s clears the whole pattern |
 
 **Pages.** On a parameter page the step keys toggle that setting for each step, lit in the page's colour (DOWN purple, UP cyan, ACCENT orange, SLIDE blue, TIE green). The page's key again goes back to the notes page.
 
-**Lights.** Steps that are on are red, the selected one brightest; a selected empty step is dim white; steps past the pattern's length are dimmer. The playing step flashes white.
+**Lights.** The selected step is whitened (a selected empty step is dim white). The playing step flashes white.
 
 **Patterns.** While the pattern runs, a new one waits for the end of the bar (it blinks); press it again to switch at once.
 
@@ -42,9 +46,10 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 |---|---|
 | Keys | Play the voice live (C3-C5). Overlapping notes slide |
 | LOOP | Record on/off (LOOP red) |
-| CHOMPI + key | Transpose the pattern: middle C = none, up to an octave either way |
+| CHOMPI + C#4 | Transpose mode on/off: while on, keys set the transpose instead of playing (middle C = none) |
+| CHOMPI + D#4 | View steps 1-8 / 9-16 |
 
-**Recording while running.** A played note goes into the pattern; a note held across steps ties through them. With quantize on (knob 3, page 2) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat.
+**Recording while running.** A played note goes into the pattern; a note held across steps ties through them. Hold CHOMPI and press C#3 / D#3 / F#3 / G#3 / A#3 to toggle octave down / up, accent, slide or tie on the step playing now. With quantize on (knob 3, page 2) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat.
 
 **Step input (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step, its white key lights up, and the pattern grows to it. Hold CHOMPI and use the black keys:
 
@@ -53,14 +58,14 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | C#3 / D#3 | Octave down / up on the last step |
 | F#3 / G#3 | Accent / slide on the last step |
 | A#3 | Add a tie (holds the note before through one more step) |
-| C#4 | Add a rest |
-| D#4 | Delete the last step |
+| G#4 | Add a rest |
+| A#4 | Delete the last step |
 
 Press PLAY with record still on to carry on recording in real time.
 
 ## Knobs
 
-Click knobs 1-4 to flip each between two pages; its light changes colour.
+Click knobs 1-4 to flip each between two pages; its light changes colour. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|

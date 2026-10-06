@@ -312,7 +312,7 @@ static void TestPagesCopyClear()
     r.White(14); // copy to pattern 16
     r.ui.KeyUp(Ui::kKeyCopy, r.now);
     CHECK(r.m.patterns[15] == r.m.patterns[0]);
-    r.Black(5), r.White(14); // pattern page: pattern 16
+    r.Black(7), r.White(14); // pattern page (F#4): pattern 16
     CHECK(r.m.CurrentPattern() == 15);
     r.White(0);
     r.ui.Play();
@@ -323,7 +323,7 @@ static void TestPagesCopyClear()
     CHECK(r.m.CurrentPattern() == 2);
     r.ui.Play();
     r.White(0), r.White(0);
-    r.Black(5); // back to notes
+    r.Black(7); // back to notes
 
     // CLEAR: a tap clears the selected step, holding clears the pattern.
     r.White(1);
@@ -431,10 +431,26 @@ static void TestRealtimeRecording()
     r.ui.KeyDown(9, r.now), r.ui.KeyUp(9, r.now);
     CHECK(r.S(8).on && r.S(8).nudge == 3);
 
+    // CHOMPI + black keys while recording: flags on the step playing now.
+    r.m.SetParam(QUANTIZE, 1.f);
+    while(r.m.CurrentStep() != 10)
+        r.Run(1);
+    r.Run(20);
     r.ui.Chompi(true);
-    r.ui.KeyDown(19, r.now), r.ui.KeyUp(19, r.now); // running: transpose +7
+    r.Black(2); // accent
+    r.Black(3); // slide
+    r.Black(4); // tie
+    r.Black(1); // octave up
     r.ui.Chompi(false);
-    CHECK(r.m.Transpose() == 7);
+    CHECK(r.S(10).accent && r.S(10).slide && r.S(10).tie && r.S(10).on && r.S(10).octave == 1);
+
+    // Transpose mode: CHOMPI + C#4 latches it; keys then set the transpose.
+    r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    CHECK(r.ui.TransposeMode());
+    r.ui.KeyDown(19, r.now), r.ui.KeyUp(19, r.now); // +7
+    CHECK(r.m.Transpose() == 7 && r.m.SoundingNote() != kBaseNote + 19);
+    r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    CHECK(!r.ui.TransposeMode());
     r.ui.SetMode(Ui::Mode::STEP);
     CHECK(!r.m.Recording());
 }
@@ -456,20 +472,20 @@ static void TestStepInput()
     r.Black(3); // slide
     r.Black(1); // octave up
     r.Black(4); // a tie
-    r.Black(5); // a rest
+    r.Black(8); // a rest (G#4)
     r.ui.Chompi(false);
     CHECK(r.S(2).accent && r.S(2).slide && r.S(2).octave == 1);
     CHECK(r.S(3).on && r.S(3).tie);
     CHECK(!r.S(4).on);
     CHECK(r.m.Current().length == 5);
-    r.ui.Chompi(true), r.Black(6), r.ui.Chompi(false); // delete the last
+    r.ui.Chompi(true), r.Black(9), r.ui.Chompi(false); // delete the last (A#4)
     CHECK(r.m.Current().length == 4 && r.ui.Cursor() == 4);
     r.Key(4);
     CHECK(r.S(4).on && r.S(4).note == 4 && r.m.Current().length == 5);
-    // Not in step input (record off): CHOMPI + key transposes.
-    r.ui.Loop();
-    r.ui.Chompi(true), r.Key(10), r.ui.Chompi(false);
-    CHECK(r.m.Transpose() == -2);
+    // CHOMPI + D#4 switches the view of steps 1-8 / 9-16.
+    const bool second = r.ui.SecondHalf();
+    r.ui.Chompi(true), r.Key(Ui::kKeyView), r.ui.Chompi(false);
+    CHECK(r.ui.SecondHalf() != second);
 }
 
 static void TestNudgeTiming()
@@ -496,6 +512,53 @@ static void TestNudgeTiming()
     CHECK(fabs(ons[2].t - (0.25 + 5 * tick)) < 1e-4);
     // Step 3's gate stops at step 4's start, not 3 ticks after it started.
     CHECK(fabs(offs[2].t - 0.375) < 1e-4);
+}
+
+static void TestStepModeExtras()
+{
+    printf("step mode: transpose mode, view key, knob reset, step lights\n");
+    Rig r;
+    // C#4 turns transpose mode on; keys set the transpose; C#4 again ends it.
+    r.Key(Ui::kKeyTranspose);
+    CHECK(r.ui.TransposeMode());
+    r.Key(7); // G3: -5
+    CHECK(r.m.Transpose() == -5 && r.ui.Selected() == 0);
+    r.Key(Ui::kKeyTranspose);
+    CHECK(!r.ui.TransposeMode());
+    // D#4 flips the view; middle C follows it.
+    r.Key(Ui::kKeyView);
+    CHECK(r.ui.SecondHalf());
+    r.White(7);
+    CHECK(r.ui.Selected() == 8);
+    r.Key(Ui::kKeyView);
+    CHECK(!r.ui.SecondHalf());
+
+    // CHOMPI + click: both functions of the knob's page back to defaults.
+    r.ui.KnobTurn(1, 10, false);
+    r.ui.Chompi(true), r.ui.KnobTurn(1, 10, false);
+    r.ui.KnobClick(1, r.now);
+    r.ui.Chompi(false);
+    CHECK(r.m.settings.params[ENV_MOD] == kParams[ENV_MOD].def);
+    CHECK(r.m.settings.params[DECAY] == kParams[DECAY].def);
+    r.ui.KnobClick(0, r.now); // page 2: length / tuning
+    r.ui.KnobTurn(0, -4, false);
+    r.ui.Chompi(true), r.ui.KnobClick(0, r.now), r.ui.Chompi(false);
+    CHECK(r.m.Current().length == 16);
+    r.ui.Chompi(true), r.ui.KnobClick(4, r.now), r.ui.Chompi(false); // big knob: no tap, reset
+    CHECK(r.m.settings.params[CUTOFF] == kParams[CUTOFF].def);
+
+    // Step lights: on red, accent bright, tie dim; the other half dimmed.
+    r.S(1).on = true;
+    r.S(2).on = r.S(2).accent = true;
+    r.S(3).on = r.S(3).tie = true;
+    r.S(12).on = true; // shown on white key 12 (index 11)
+    r.White(0);        // view: steps 1-8, step 1 selected
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    const Rgb on = f.key[Ui::kWhite[1]], acc = f.key[Ui::kWhite[2]], tie = f.key[Ui::kWhite[3]];
+    CHECK(on.r > 0.f && on.g == 0.f && acc.r > on.r && tie.r > 0.f && tie.r < on.r);
+    const Rgb far = f.key[Ui::kWhite[11]];
+    CHECK(far.r > 0.f && far.r < on.r * 0.5f);
 }
 
 static void TestSettingsOptions()
@@ -557,6 +620,7 @@ int main()
     TestKnobPages();
     TestRealtimeRecording();
     TestStepInput();
+    TestStepModeExtras();
     TestSettingsOptions();
     TestMidiClock();
     printf(g_fail ? "%d FAILED\n" : "all passed\n", g_fail);
