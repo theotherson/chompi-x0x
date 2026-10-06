@@ -1,472 +1,185 @@
+/** @file chompi_main.cpp
+ *  @brief CHOMPI x0x: a TB-303 / x0xb0x-style bass line machine.
+ *
+ *  Milestone 1 (scaffold): boots, mounts the SD card, reads every key and
+ *  knob, lights every LED, outputs silence. No voice or sequencer yet.
+ *
+ *  Built on CHOMPI Club's TEMPO firmware: the hardware layer, LED driver,
+ *  libraries and startup sequence are TEMPO's (MIT).
+ *
+ *  Two places code runs:
+ *   1. AudioCallback(): the audio interrupt. Scans the controls, then
+ *      renders audio (silence for now).
+ *   2. The main loop: LEDs, the SD card and the battery.
+ */
 #include "hardware.h"
 #include "temp_led_stuff.h"
-#include "ui.h"
-#include "daisysp.h"
 #include "fatfs.h"
-#include "diskio.h"
-#include "OptionsManager.h"
-#include "EngineBase.h"
-#include "SampleEngine.h"
-#include "SliceEngine.h"
-#include "SampleManager.h"
-#include "ArpeggiatorSequencer.h"
-#include "clockManager.h"
-#include "MidiManager.h"
-#include "FxEngine.h"
-#include "granularDelay.h"
-#include "StateSaver.h"
-#include "reverb.h"
-
-#define MAX_CYCLES 256
-#define MAX_SAMPLES_PER_CYCLE 2048
-constexpr size_t kBufferSize = 480000; // 10 sec @ 48kHz mono
+#include "panel.h"
+#include <cstdio>
+#include <cstdlib>
 
 using namespace daisy;
 using namespace chompi;
 
-Hardware hw;
-UserInterface ui;
-
-float __attribute__((section(".sdram_bss"))) granularBuffer[kBufferSize * 2]; // *2 for stereo so 10 sec stereo
-float __attribute__((section(".sdram_bss"))) frozenBuffer[kBufferSize * 2]; // *2 for stereo so 10 sec stereo
+Hardware  hw;
+PanelTest panel;
 
 SdmmcHandler sdmmc;
-FatFSInterface fsi;
-PresetManager presets;
-OptionsManager options;
-sampleEngine sEngine;
-sliceEngine slice;
-sampleManager sManager;
-fxEngine fx;
-FileStreamingManager file_manager;
-ArpeggiatorSequencer arpSeq;
-clockManager cManager;
-MidiManager midi;
-granularDelay delay;
-StateSaver stateSaver;
-BaseEngine* engines[2] = { &sEngine, &slice };
-Reverb __attribute__((section(".dtcmram_bss"))) reverb;
-TimerHandle midi_clock_timer;
+// The SD driver DMAs into FatFS's sector buffer inside this and then
+// invalidates the data cache in whole 32-byte lines; owning its lines keeps
+// that from wiping neighbouring variables (found in POLY).
+struct alignas(32) AlignedFs
+{
+    FatFSInterface fsi;
+};
+AlignedFs       fs_holder;
+FatFSInterface& fsi = fs_holder.fsi;
 
-size_t tim_base_freq;
+// File buffers likewise own their cache lines, and are globals: the stack is
+// in DTCM, which the SD card's DMA cannot reach.
+struct alignas(32) BootFile
+{
+    char buf[32];
+    FIL  fil;
+};
+BootFile boot_file;
 
-size_t testThingy;
+volatile bool running = false; // controls are left to main() until startup is done
 
-float chromaBuffer[2][48];
-float sliceBuffer[2][48];
-
-float *chromaPtr[2] = { chromaBuffer[0], chromaBuffer[1] };
-float *slicePtr[2] = { sliceBuffer[0], sliceBuffer[1] };
-
-volatile uint32_t testTimer;
-
-bool testLoad; //To make sure wavetables don't get loaded until later
-bool testSDLoaded;
-
-void *sample_ram_start = (void *)0xC0000000;
-
-daisysp::Oscillator osc;
-
-// CpuLoadMeter meter;
-uint32_t pret, sd_checkt;
-// bool log_batt;
-bool booting = true;
-bool loading_screen = true;
-size_t loading_screen_time = 0;
-bool rainbow_done = false;
-
-/** breakdown:
- *  Inputs:
- *  Channel 1 - Microphone
- *  Channel 2 - X
- *  Channel 3 - Aux L
- *  Channel 3 - Aux R
- *
- *  Outputs:
- *  Channel 1 - Headphone L
- *  Channel 2 - Headphone R
- *  Channel 3 - Master L
- *  Channel 4 - Master R
- */
-bool line_in_state;
-
+/** Channels: out[0..1] headphones, out[2..3] main out. */
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
-    // meter.OnBlockStart();
-    uint32_t point1 = System::GetUs();
-
-    for(size_t i = 0; i < size; i++) {
+    for(size_t i = 0; i < size; i++)
         out[0][i] = out[1][i] = out[2][i] = out[3][i] = 0.f;
-    }
 
-    if((booting || loading_screen) && !ui.InTestMode())
-    {
-        hw.ProcessAllControls();
-        ui.GenerateEvents();
-        ui.DoEvents();
-
+    if(!running)
         return;
-    }
-
-    midi.ProcessMidiIn();
-    cManager.averageMidiClock();
 
     hw.ProcessAllControls();
-    ui.GenerateEvents();
-    if (cManager.checkIntervalExpired(0)) {
-        arpSeq.setClockEdge(0);
-        delay.setClockEdge();
-    }
-    if (cManager.checkIntervalExpired(1)) {
-        arpSeq.setClockEdge(1);
-    }
-    cManager.checkIntervalExpired(2);
-    arpSeq.Prepare();
-    for (size_t i = 0; i < kNumEngines; ++i) {
-        engines[i]->Prepare();
+    panel.Poll();
+}
+
+/** Proves the card reads and writes: /X0X/boots.txt counts power-ons.
+ *  @return true if the count was written */
+static bool CardCheck()
+{
+    if(f_chdir("/X0X") != FR_OK)
+    {
+        f_mkdir("/X0X");
+        if(f_chdir("/X0X") != FR_OK)
+            return false;
     }
 
-    if(hw.jack_detect.Read() != line_in_state)
+    long boots = 0;
+    UINT n     = 0;
+    if(f_open(&boot_file.fil, "boots.txt", FA_READ) == FR_OK)
     {
-        if(hw.jack_detect.Read())
-            fx.SetInputSource(InputSource::LINE_IN);
-        else
-            fx.SetInputSource(InputSource::MIC);
+        f_read(&boot_file.fil, boot_file.buf, sizeof(boot_file.buf) - 1, &n);
+        f_close(&boot_file.fil);
+        boot_file.buf[n] = '\0';
+        boots            = strtol(boot_file.buf, nullptr, 10);
     }
-    line_in_state = hw.jack_detect.Read();
 
-    if(ui.InTestMode() && ui.GetToggleState())
+    const int len = snprintf(boot_file.buf, sizeof(boot_file.buf), "%ld\n", boots + 1);
+    if(f_open(&boot_file.fil, "boots.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+        return false;
+    f_write(&boot_file.fil, boot_file.buf, len, &n);
+    f_close(&boot_file.fil);
+    return static_cast<int>(n) == len;
+}
+
+/** A sweep across the white keys in the three panel colours, so you know
+ *  which firmware you booted. */
+static void BootAnimation()
+{
+    static const Sw kWhite[15] = {Sw::KEY_1,  Sw::KEY_2,  Sw::KEY_3,  Sw::KEY_4,  Sw::KEY_5,
+                                  Sw::KEY_6,  Sw::KEY_7,  Sw::KEY_8,  Sw::KEY_9,  Sw::KEY_10,
+                                  Sw::KEY_11, Sw::KEY_12, Sw::KEY_13, Sw::KEY_14, Sw::KEY_15};
+    for(int step = 0; step < 40; step++)
     {
-        for(size_t i = 0; i < size; i++)
+        for(int s = 0; s < 15; s++)
         {
-            out[0][i] = out[1][i] = out[2][i] = out[3][i] = osc.Process();
+            const float d = fabsf(s - step * 0.5f);
+            const float b = d < 3.f ? 1.f - d / 3.f : 0.f;
+            const Rgb&  c = s < 8 ? kPitchColour : kFuncColour;
+            SetSmtLedFloat(kKeyLed[static_cast<int>(kWhite[s])], c.r * b, c.g * b, c.b * b);
         }
+        fill_led_data();
+        System::Delay(12);
     }
-    else {
-    }
-
-    if (testSDLoaded) {
-
-        engines[0]->Process(in, chromaPtr, size);
-        engines[1]->Process(in, slicePtr, size);
-
-        for (size_t i = 0; i < size; ++i) {
-            out[0][i] = chromaBuffer[0][i] + sliceBuffer[0][i];
-            out[1][i] = chromaBuffer[1][i] + sliceBuffer[1][i];
-        }
-
-        fx.Process(in, out, size, chromaPtr, slicePtr);
-        fx.ApplyOutputFX(in, out, size);
-    }
-    else {
-        for(size_t i = 0; i < size; i++)
-        {
-            out[0][i] = out[1][i] = out[2][i] = out[3][i] = 0.f;
-        }
-    }
-
-    testTimer = System::GetUs() - point1;
-
-    // meter.OnBlockEnd();
-}
-
-void MidiClockCallback(void* ctx)
-{
-    // Called at the timer frequency
-    if (arpSeq.getPlay(0) && options.midi_clock_out && cManager.getClockMode() == FREE) {
-        midi.QueueMidiClock();
-    }
-    cManager.incrementCounters();
-    delay.setClockPulse();
-}
-
-void InitMidiClockTimer()
-{
-    TimerHandle::Config tim_cfg;
-
-    // Pick a timer not used by libDaisy or audio
-    tim_cfg.periph = TimerHandle::Config::Peripheral::TIM_16; // better choice than TIM_2
-    tim_cfg.dir    = TimerHandle::Config::CounterDir::UP;
-    tim_cfg.enable_irq = true;
-
-    float bpm = 160.f;
-    float midi_clock_hz = bpm * 24.f / 60.f; // 24 PPQN
-    uint32_t timer_tick_rate = 1000000;     // 1 MHz
-    uint32_t prescaler = ((tim_base_freq * 2) / timer_tick_rate) - 1;
-    uint32_t arr = static_cast<uint32_t>(timer_tick_rate / midi_clock_hz) - 1;
-
-    midi_clock_timer.Init(tim_cfg);
-    midi_clock_timer.SetPrescaler(239);
-    midi_clock_timer.SetPeriod(15624);
-    midi_clock_timer.SetCallback(MidiClockCallback, nullptr);
-    midi_clock_timer.Start();
-}
-
-void ZeroSDRAM()
-{
-    uint32_t *beg, *end;
-    size_t    size_in_words = (1024 * 1024 * 64) / sizeof(uint32_t);
-    beg                     = (uint32_t*)0xc0000000;
-    end                     = (uint32_t*)(beg + size_in_words);
-    std::fill(beg, end, 0);
-}
-
-bool no_sd_card = false;
-void CheckSDCardMounted()
-{
-    DSTATUS res = disk_status(0);
-    // lost the SD card, must reboot
-    if(res != RES_OK)
-    {
-        no_sd_card = true;
-        ui.NoSDCard();
-
-        const uint32_t start_time = System::GetNow();
-        while(System::GetNow() - start_time < 3000)
-        {
-            ui.NoSDCardAnimation(true);
-            ui.DoEvents();
-            System::Delay(1);
-        }
-
-        ui.NoSDCardAnimation(false);
-    }
-}
-
-void SDCallback(void* data)
-{
-    const uint32_t now = System::GetNow();
-    if (now - sd_checkt > 1000 && !no_sd_card && !booting)
-    {
-        sd_checkt = now;
-        CheckSDCardMounted();
-    }
-    else if(no_sd_card)
-        return;
-
-    file_manager.ProcessRequests();
-
-    if(now - pret > 50)
-    {
-        pret = now;
-        ui.WritePresets();
-    }    
-}
-
-uint32_t uit, now, pre_startt;
-
-#if !NO_BATT
-uint32_t batt;
-#endif
-
-uint8_t preset = 0;
-uint8_t bank = 0; 
-uint8_t mode = 0;
-
-
-void MainLoop(void* data)
-{
-    if(booting)
-    {
-        hw.LowBatteryLockoutCheck();
-        booting = false;
-    }
-    else if(!rainbow_done && !loading_screen)
-    {
-        ui.StopBootAnimation();
-        ui.RainbowWave();
-        rainbow_done = true;
-    }
-
-    midi.ProcessMidiOut(); // We want midi checks to happen every 10uS for more precise timing
-
-    // volatile float avg_load = meter.GetAvgCpuLoad();
-    // volatile float max_load = meter.GetMaxCpuLoad();
-    now = daisy::System::GetNow();
-    testThingy = now;
-
-    if (now - uit > 1)
-    {
-        ui.DoEvents();
-        //ui.ProcessMidi();
-        uit = now;
-    }
-
-    if (now - pre_startt > 1000) {
-        if (!testLoad) {
-            sManager.loadFileData();
-            testLoad = true;
-        }
-    }
-
-    if (!testSDLoaded) {
-        if (sManager.checkLoaded()) {
-            testSDLoaded = true;
-            if (!sManager.isValidSample(15, 0)) {
-                //sManager.fillDefaultSample(hw.seed.AudioSampleRate());
-            }
-            for (size_t i = 0; i < kNumEngines; ++i) {
-                engines[i]->setSample(14);
-            }
-            loading_screen_time = System::GetNow();
-        }
-    }
-    if (loading_screen_time) {
-        if (System::GetNow() - loading_screen_time > 250) {
-            loading_screen = false;
-            loading_screen_time = 0;
-        }
-    }
-
-    if (now - pre_startt > 5000)
-    {
-        ui.TestPresets();
-        pre_startt = now;
-    }
-
-    // update now to actually be now
-    now = daisy::System::GetNow();
-
-    #if !NO_BATT
-
-    if(ui.InRainbows())
-    {
-        batt = now;
-    }
-    else if(now - batt > 20)
-    {
-        hw.LowBatteryLockoutCheck();
-        batt = now;
-    }
-
-    if(ui.InTestMode())
-    {
-        hw.MpReadAll();
-
-        while (!hw.read_ready) {
-            System::Delay(1);
-        }
-        ui.TestPowerCable(hw.mp_buff_[1] >> 5 & 1); //VIN_RDY
-
-        // Normal NTC_MISSING, BATT_MISSING, NTC1_FAULT, and NTC2_FAULT
-        ui.TestBMC(hw.mp_buff_[3] == 0); 
-    }
-
-    #endif
-
-    System::DelayUs(10);
+    for(int i = 0; i < 25; i++)
+        SetSmtLed(i, 0, 0, 0);
+    fill_led_data();
 }
 
 int main(void)
 {
     hw.Init();
-    // System::Delay(100);
-    midi.Init(&cManager, &ui, &hw, &fx, &arpSeq, engines);
 
-    hw.MpWrite(0x0c, 0B01010001); // set BATT_LOW to 3V, turn on 
+    // Start the codecs' clocks straight away, playing silence: a codec set up
+    // but left unclocked while the card is read makes a loud noise (found in
+    // POLY). The callback outputs silence until `running`.
+    hw.StartAudio(AudioCallback);
 
+    hw.MpWrite(0x0c, 0B01010001); // BATT_LOW to 3 V
     hw.MpReadAll();
-
     for(size_t i = 0; i < 10; i++)
     {
         hw.LowBatteryLockoutCheck();
         System::Delay(10);
     }
 
-    /** SDMMC Init */
+    // SD card, as TEMPO sets it up.
     System::Delay(100);
     SdmmcHandler::Config sd_cfg;
     sd_cfg.speed = SdmmcHandler::Speed::VERY_FAST;
     sd_cfg.width = SdmmcHandler::BusWidth::BITS_4;
-    // sd_cfg.clock_powersave = true;
     sdmmc.Init(sd_cfg);
     System::Delay(100);
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     System::Delay(100);
-    f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
+    const bool card_ok = f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1) == FR_OK && CardCheck();
 
-    options.Init();
-    tim_base_freq = System::GetPClk2Freq();
-
-    reverb.Init(hw.seed.AudioSampleRate());
-    fx.Init(&sManager, hw.seed.AudioSampleRate(), &delay, &reverb, options.monitor_position);
-    delay.Init(granularBuffer, frozenBuffer, kBufferSize, &cManager, options.delay_mute);
-    sManager.Init(sample_ram_start, &file_manager, hw.seed.AudioSampleRate());
-    for (size_t i = 0; i < kNumEngines; ++i) {
-        engines[i]->Init(&sManager, hw.seed.AudioSampleRate());
-    }
-
-    // delete the battery log if it exists
-    char filename[32];
-    sprintf(filename, ".batt_log.txt");
-    f_unlink(filename);
-
-    // macos makes a copy
-    sprintf(filename, "._.batt_log.txt");
-    f_unlink(filename);
-
-    InitMidiClockTimer();
-    cManager.Init(&midi_clock_timer, tim_base_freq);
     LedSetup();
-    ui.Init(&fx, &cManager, &arpSeq, &sManager, &hw, &presets, options.pitch_shift_quantization, 
-        engines, &stateSaver, &options);
+    panel.Init(&hw, card_ok);
 
-    arpSeq.Init(engines, &cManager, &hw, &options);
-    hw.setMidiCCOut(options.midi_cc_out);
-    midi.setMidiOptions(options.midi_ch_in, options.midi_cc_in, options.transport_type);
+    BootAnimation();
 
-    stateSaver.Init();
-
-    hw.StartLowPriorityCallback(SDCallback, 1000);
-    hw.StartAudio(AudioCallback);
-
-    ZeroSDRAM();
-
-    testLoad = false;
-    testSDLoaded = false;
-
-    // meter.Init(hw.seed.AudioSampleRate(), hw.seed.AudioBlockSize());
-    
-    osc.Init(hw.seed.AudioSampleRate());
-    osc.SetAmp(.2f);
-
-    now = daisy::System::GetNow();
-    uit = now;
-    pret = now;
-    pre_startt = now;
-
-    #if !NO_BATT
-    batt = now;
-    #endif
-
-    // get any junk out of the SRs, takes .5s
-    uint32_t vol_state = 0;
+    // Get any junk out of the shift registers (0.5 s), and the stock boot
+    // combo: CHOMPI + PLAY + LOOP held at power-on = shipping mode.
     uint32_t sleep_state = 0;
-
     for(int i = 0; i < 5000; i++)
     {
         hw.ProcessAllControls();
-        vol_state += hw.button_sr.State(int(Hardware::SwId::ENC_6_SW));
-        sleep_state += hw.button_sr.State(int(Hardware::SwId::KEY_26))
-                        && hw.button_sr.State(int(Hardware::SwId::KEY_27))
-                        && hw.button_sr.State(int(Hardware::SwId::KEY_28));
-
+        sleep_state += hw.button_sr.State(int(Sw::KEY_26)) && hw.button_sr.State(int(Sw::KEY_27))
+                       && hw.button_sr.State(int(Sw::KEY_28));
         System::DelayUs(100);
     }
-
     if(sleep_state > 4000)
         hw.MpWrite(0x08, 0B10111111); // SHIPPING MODE
-    else if(vol_state > 4000)
-        ui.TestMode();
 
-    hw.usb_sw.Write(false);     // give USB control
-    daisy::System::Delay(1); // Wait a sec
+    hw.usb_sw.Write(false);       // give USB control
+    System::Delay(1);
     hw.MpWrite(0x0a, 0B00100100); // AutoDPDM
-    daisy::System::Delay(1); // Wait a sec
-    hw.usb_sw.Write(true);     // take USB control
+    System::Delay(1);
+    hw.usb_sw.Write(true);        // take USB control
 
-    while (1)
+    running = true;
+
+    uint32_t last_draw = 0, last_batt = 0;
+    while(1)
     {
-        MainLoop(nullptr);
+        const uint32_t now = System::GetNow();
+        if(now - last_draw >= 16)
+        {
+            last_draw = now;
+            panel.Draw();
+        }
+        if(now - last_batt > 20)
+        {
+            last_batt = now;
+            hw.LowBatteryLockoutCheck();
+        }
     }
 }
