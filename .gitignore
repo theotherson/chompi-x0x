@@ -1,0 +1,5 @@
+build/
+host/out/
+host/render
+host/tests
+.DS_Store
