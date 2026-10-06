@@ -102,11 +102,19 @@ int main(int argc, char** argv)
 
     // Effects: each on its own, then all at once.
     RenderPattern(dir, "fx_delay", demo, {{DELAY, .5f}, {DELAY_TIME, StepValue(2, kDelayDivisions)}}, 6.f);
-    RenderPattern(dir, "fx_crush", demo, {{CRUSH, .7f}}, 4.f);
-    RenderPattern(dir, "fx_doubler", demo, {{MOD, .2f}}, 4.f);
-    RenderPattern(dir, "fx_chorus", demo, {{MOD, .5f}}, 4.f);
+    RenderPattern(dir, "fx_tape_long", demo, {{DELAY, .5f}, {DELAY_FB, .8f}, {DELAY_TONE, .2f}}, 8.f);
+    RenderPattern(dir, "fx_tape_selfosc", demo, {{DELAY, .6f}, {DELAY_FB, 1.f}, {DELAY_TONE, .8f}}, 8.f);
+    RenderPattern(dir, "fx_crush_bits", demo, {{CRUSH, .7f}}, 4.f);
+    RenderPattern(dir, "fx_crush_rate", demo, {{CRUSH_RATE, .6f}}, 4.f);
+    RenderPattern(dir, "fx_chorus", demo, {{MOD, .3f}}, 4.f);
+    RenderPattern(dir, "fx_chorus_wide", demo, {{MOD, .3f}, {MOD_WIDTH, 1.f}}, 4.f);
     RenderPattern(dir, "fx_flanger", demo, {{MOD, .9f}}, 4.f);
-    RenderPattern(dir, "fx_all_max", demo, {{DELAY, 1.f}, {CRUSH, 1.f}, {MOD, 1.f}, {RESONANCE, 1.f}, {DRIVE, 1.f}, {VOLUME, 1.f}}, 6.f);
+    RenderPattern(dir, "drive_low", demo, {{DRIVE, .3f}}, 4.f);
+    RenderPattern(dir, "drive_high", demo, {{DRIVE, 1.f}}, 4.f);
+    RenderPattern(dir, "fx_all_max", demo,
+                  {{DELAY, 1.f}, {DELAY_FB, 1.f}, {CRUSH, 1.f}, {CRUSH_RATE, 1.f}, {MOD, 1.f}, {MOD_WIDTH, 1.f},
+                   {RESONANCE, 1.f}, {DRIVE, 1.f}, {VOLUME, 1.f}},
+                  6.f);
 
     // Swing at full.
     RenderPattern(dir, "swing", demo, {{SWING, 1.f}}, 4.f);

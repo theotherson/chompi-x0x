@@ -30,8 +30,12 @@ enum Param : uint8_t
     QUANT_GRID,
     DELAY,
     DELAY_TIME,
-    CRUSH,
+    DELAY_FB,
+    DELAY_TONE,
     MOD,
+    MOD_WIDTH,
+    CRUSH,
+    CRUSH_RATE,
     VOLUME,
     DRIVE,
     ARP_MODE,
@@ -63,12 +67,16 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"swing",       0.f,      0, 16},
     {"quantize",    1.f,      2, 0},   // off, on
     {"quant_grid",  0.f,      3, 0},   // 1/16, 1/8, 1/4
-    {"delay",       0.f,      0, 91},
+    {"delay",       0.f,      0, 91},  // dry/wet
     {"delay_time",  .4f,      6, 92},  // 1/16 1/8 3/16 1/4 3/8 1/2
-    {"crush",       0.f,      0, 18},
-    {"mod",         0.f,      0, 93},  // doubler, chorus, flanger
+    {"delay_fb",    .35f,     0, 94},  // feedback, just past self-oscillation at the top
+    {"delay_tone",  .4f,      0, 95},  // tape EQ: dark .. bright
+    {"mod",         0.f,      0, 93},  // off, chorus .. flanger
+    {"mod_width",   .5f,      0, 0},   // stereo width / depth
+    {"crush",       0.f,      0, 18},  // bit depth
+    {"crush_rate",  0.f,      0, 19},  // sample-rate reduction
     {"volume",      .7f,      0, 7},
-    {"drive",       .15f,     0, 17},
+    {"drive",       0.f,      0, 17},  // hard clip, off by default
     {"arp_mode",    0.f,      5, 0},   // up, down, up-down, random, as played
     {"arp_range",   0.f,      3, 0},   // 1-3 octaves
     {"arp_on",      0.f,      2, 0},   // CHOMPI + F#4 in live mode
@@ -94,14 +102,15 @@ constexpr uint8_t kKnobNone   = 255;
 /** Knobs left to right: knobs 1-4, the big purple knob, volume.
  *  [knob][page][CHOMPI held]. Clicking knobs 1-4 steps through their pages;
  *  the big knob and volume have one. */
-constexpr int     kKnobPages[6]       = {2, 2, 3, 2, 1, 1};
-constexpr uint8_t kKnobMap[6][3][2] = {
-    {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}, {kKnobNone, kKnobNone}},
-    {{ENV_MOD, DECAY}, {ACCENT, SLIDE_TIME}, {kKnobNone, kKnobNone}},
-    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}, {ARP_MODE, ARP_RANGE}},
-    {{DELAY, DELAY_TIME}, {CRUSH, MOD}, {kKnobNone, kKnobNone}},
-    {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+constexpr int     kMaxKnobPages       = 4;
+constexpr int     kKnobPages[6]       = {2, 2, 3, 4, 1, 1};
+constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
+    {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{ENV_MOD, DECAY}, {ACCENT, SLIDE_TIME}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}, {ARP_MODE, ARP_RANGE}, {kKnobNone, kKnobNone}},
+    {{DELAY, DELAY_TIME}, {DELAY_FB, DELAY_TONE}, {MOD, MOD_WIDTH}, {CRUSH, CRUSH_RATE}},
+    {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
@@ -123,7 +132,6 @@ inline void ToVoiceParams(const float* p, VoiceParams& vp)
     vp.decay_s     = KnobToExp(p[DECAY], 0.2f, 2.5f);
     vp.accent      = p[ACCENT];
     vp.tuning_st   = (p[TUNING] - 0.5f) * 2.f;
-    vp.drive       = p[DRIVE];
     vp.slide_s     = KnobToExp(p[SLIDE_TIME], 0.02f, 0.3f);
     vp.square      = StepIndex(p[WAVE], 2) == 1;
     vp.pulse_width = 0.1f + 0.8f * p[PULSE_WIDTH];

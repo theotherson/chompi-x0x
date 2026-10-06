@@ -353,14 +353,14 @@ class Ui
     static constexpr Rgb kTransposeColour = {1.f, .85f, 0.f};
     static constexpr Rgb kArpColour       = {0.f, 1.f, .7f};
     // Knob colours, page 1 and page 2.
-    // Knob colours, pages 1-3.
-    static constexpr Rgb kKnobColour[6][3] = {
-        {{1.f, .55f, 0.f}, {1.f, 1.f, 1.f}, {}},              // wave (amber) / length (white)
-        {{0.f, 1.f, .4f}, {1.f, .3f, 0.f}, {}},               // env mod (green) / accent (orange)
-        {{1.f, .85f, 0.f}, {0.f, .5f, 1.f}, {0.f, .7f, .5f}}, // tempo (yellow) / quantize (blue) / arp (teal)
-        {{0.f, .9f, 1.f}, {1.f, 0.f, .6f}, {}},               // delay (cyan) / crush + mod (pink)
-        {{.7f, .2f, 1.f}, {}, {}},                            // cutoff (purple)
-        {{1.f, 1.f, 1.f}, {}, {}},                            // volume (white)
+    // Knob colours, by page.
+    static constexpr Rgb kKnobColour[6][kMaxKnobPages] = {
+        {{1.f, .55f, 0.f}, {1.f, 1.f, 1.f}, {}, {}},               // wave (amber) / length (white)
+        {{0.f, 1.f, .4f}, {1.f, .3f, 0.f}, {}, {}},                // env mod (green) / accent (orange)
+        {{1.f, .85f, 0.f}, {0.f, .5f, 1.f}, {0.f, .7f, .5f}, {}},  // tempo (yellow) / quantize (blue) / arp (teal)
+        {{0.f, .9f, 1.f}, {1.f, .6f, .1f}, {1.f, 0.f, .6f}, {.3f, 1.f, 0.f}}, // delay (cyan) / tape (amber) / mod (pink) / crush (green)
+        {{.7f, .2f, 1.f}, {}, {}, {}},                             // cutoff (purple)
+        {{1.f, 1.f, 1.f}, {}, {}, {}},                             // volume (white); drive orange to red
     };
     static constexpr Rgb kPageColour[7] = {
         {1.f, 0.f, 0.f},   // notes      red
@@ -825,9 +825,16 @@ class Ui
                 v = m_->Current().length / static_cast<float>(kSteps);
             else if(sel == WAVE)
                 c = StepIndex(m_->settings.params[WAVE], 2) ? Rgb{0.f, .8f, 1.f} : Rgb{1.f, .55f, 0.f}, v = 1.f;
+            else if(sel == DRIVE)
+            {
+                // Orange at the bottom, red at the top.
+                v = m_->settings.params[DRIVE];
+                c = {1.f, .45f * (1.f - v), 0.f};
+            }
             else if(sel != kKnobNone)
                 v = m_->settings.params[sel];
-            f.knob[k] = Scale(c, 0.06f + 0.94f * v);
+            // Never below a fifth, so the page's colour always shows.
+            f.knob[k] = Scale(c, 0.2f + 0.8f * v);
         }
     }
 
@@ -862,7 +869,7 @@ constexpr int Ui::kBlack[10];
 constexpr Rgb Ui::kRed;
 constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kArpColour;
-constexpr Rgb Ui::kKnobColour[6][3];
+constexpr Rgb Ui::kKnobColour[6][kMaxKnobPages];
 constexpr Rgb Ui::kPageColour[7];
 
 } // namespace x0x

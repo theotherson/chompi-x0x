@@ -1,7 +1,7 @@
 /** @file voice.h
  *  @brief The 303-style voice: one oscillator (saw, or square), a 3-pole
  *  resonant ladder low-pass, a decay-only filter envelope, a gated amp
- *  envelope, the accent circuit, slide, and a soft drive.
+ *  envelope, the accent circuit and slide. (Drive is in fx.h.)
  *
  *  Not a circuit model, but built around the TB-303's behaviour:
  *   - Filter: three one-pole stages with tanh feedback, about 18 dB/octave,
@@ -31,7 +31,6 @@ struct VoiceParams
     float decay_s    = 0.6f;  // filter envelope decay, unaccented
     float accent     = 0.5f;  // 0..1
     float tuning_st  = 0.f;   // semitones
-    float drive      = 0.f;   // 0..1
     float slide_s    = 0.06f; // slide time
     bool  square     = false;
     float pulse_width = 0.5f; // square only: 0.05..0.95
@@ -96,8 +95,6 @@ class Voice
         const float acc_drain  = TauToCoef(0.08f + 0.35f * p.resonance, sr_);
         const float k          = 7.2f * p.resonance;       // loop gain; 8 would self-oscillate
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
-        const float drive      = 1.f + 5.f * p.drive * p.drive;
-        const float drive_norm = 1.f / FastTanh(drive * 0.5f);
         const float sr2        = 2.f * sr_;
 
         for(size_t i = 0; i < n; i++)
@@ -150,9 +147,7 @@ class Voice
             }
             y *= 0.5f * (1.f + 0.35f * k); // make up the level resonance takes
 
-            float v = y * aenv_ * amp_acc;
-            v       = FastTanh(v * drive * 0.5f) * drive_norm;
-            out[i] += v * 0.5f;
+            out[i] += y * aenv_ * amp_acc * 0.5f;
         }
     }
 

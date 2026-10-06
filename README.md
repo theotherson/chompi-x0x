@@ -66,7 +66,7 @@ The step lights only show while the pattern plays or you're recording; otherwise
 
 ## Knobs
 
-Click knobs 1-4 to step through their pages (knob 3 has three); its light changes colour. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
+Click knobs 1-4 to step through their pages (knob 3 has three, knob 4 four); each page has its own colour, and a knob never goes darker than a fifth, so you can always see which page it's on. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
@@ -74,19 +74,24 @@ Click knobs 1-4 to step through their pages (knob 3 has three); its light change
 | Knob 2 | Env mod | Decay | Accent | Slide time |
 | Knob 3 | Tempo, 1 BPM a click (60-200) | Swing | Quantize on/off | Quantize grid: 1/16, 1/8, 1/4 |
 | Knob 3, page 3 | Arpeggiator mode: up, down, up-down, random, as played | Arpeggiator range: 1-3 octaves | | |
-| Knob 4 | Delay amount | Delay time: 1/16, 1/8, 3/16, 1/4, 3/8, 1/2 | Bit crusher | Doubler, chorus, flanger |
+| Knob 4 | Delay dry/wet (cyan) | Delay time: 1/16, 1/8, 3/16, 1/4, 3/8, 1/2 | Tape feedback (amber) | Tape tone: dark to bright |
+| Knob 4, page 3 | Chorus into flanger (pink) | Stereo width / depth | | |
+| Knob 4, page 4 | Bit depth (green) | Sample-rate reduction | | |
 | Big purple | Cutoff | Resonance | | |
-| Volume | Volume | Drive | | |
+| Volume | Volume | Drive (light orange to red) | | |
 
 Big purple knob click: tap tempo. Volume knob click: stop any stuck live notes.
 
 ## The effects
 
-After the voice: bit crusher (bits 16 down to 4 and sample rate down to 1/16, together), then doubler / chorus / flanger on one knob (a third of the turn each, deeper as it turns), then a tempo-synced ping-pong delay (amount raises the mix and the feedback together). Each is off at zero. A soft limiter keeps the output in range however hard they're pushed.
+In this order after the voice, each off at zero:
 
-## The voice
+- **Drive** (CHOMPI + volume): a pedal-style hard clipper in the spirit of a DS-1: a high-pass tightens the low end, up to ~60x gain hits a nearly hard, slightly asymmetric clip, and a tone low-pass takes the fizz off. The level is evened out as it turns up.
+- **Bit crusher** (knob 4, page 4): bit depth 16 down to 4, and sample rate down to 1/32, separately.
+- **Chorus / flanger** (knob 4, page 3): the first half of the turn is chorus, the second half flanger with rising feedback; width spreads the sides apart and deepens it.
+- **Tape delay** (knob 4, pages 1-2): tempo-synced ping-pong. Dry/wet: the middle is 50/50, the top all echoes. Every repeat goes through tape EQ (a low-pass set by tone, a high-pass) and saturation, so repeats darken as they fade, with a little wow and flutter. Feedback goes just past self-oscillation at the top, where the saturation holds it.
 
-One oscillator (saw, or square) into a resonant 3-pole ladder low-pass (about 18 dB/octave, run at twice the sample rate), a decay-only filter envelope, a gated amp envelope and a soft drive. Accent makes a step louder, gives the filter envelope its shortest decay, and charges an accent "capacitor" that drains slowly, so accents in a row build up. Slide holds the gate into the next step and glides there. Gates are half a step; ties and slides hold them.
+A soft limiter keeps the output in range however hard they're pushed.
 
 ## MIDI (DIN and USB)
 
@@ -95,7 +100,7 @@ One oscillator (saw, or square) into a resonant 3-pole ladder low-pass (about 18
 | Clock | Followed when it arrives (the pattern then runs on it) | Sent while running on the internal clock |
 | Start / Stop / Continue | Run, stop, resume | Sent with PLAY |
 | Notes | Play the voice live (and record in pitch mode); velocity 112+ = accent | The pattern's and your notes, slides as overlapping notes |
-| CC | 74 cutoff, 71 resonance, 12 env mod, 13 decay, 14 accent, 5 slide time, 70 wave, 77 pulse width, 15 tuning, 16 swing, 91 delay, 92 delay time, 18 crush, 93 mod, 7 volume, 17 drive | The same CCs when knobs move (off by default) |
+| CC | 74 cutoff, 71 resonance, 12 env mod, 13 decay, 14 accent, 5 slide time, 70 wave, 77 pulse width, 15 tuning, 16 swing, 91 delay mix, 92 delay time, 94 delay feedback, 95 delay tone, 93 chorus/flanger, 18 bit crush, 19 sample-rate crush, 7 volume, 17 drive | The same CCs when knobs move (off by default) |
 
 Channels and on/off switches are in `/X0X/options.txt`.
 

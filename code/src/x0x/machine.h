@@ -364,7 +364,18 @@ class Machine
         const bool ext = ExternalClock();
         seq_.SetTempo(ext ? ext_bpm_ : TempoBpm(settings.params[TEMPO]));
         const float* p = settings.params;
-        fx_.Set(p[CRUSH], p[MOD], p[DELAY], StepIndex(p[DELAY_TIME], kDelayDivisions), seq_.Tempo());
+        Fx::Settings fs;
+        fs.drive      = p[DRIVE];
+        fs.crush_bits = p[CRUSH];
+        fs.crush_rate = p[CRUSH_RATE];
+        fs.mod        = p[MOD];
+        fs.mod_width  = p[MOD_WIDTH];
+        fs.dly_mix    = p[DELAY];
+        fs.dly_div    = StepIndex(p[DELAY_TIME], kDelayDivisions);
+        fs.dly_fb     = p[DELAY_FB];
+        fs.dly_tone   = p[DELAY_TONE];
+        fs.bpm        = seq_.Tempo();
+        fx_.Set(fs);
         if(!seq_.Queued())
             queued_ = -1;
 

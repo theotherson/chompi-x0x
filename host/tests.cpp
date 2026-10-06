@@ -380,10 +380,29 @@ static void TestKnobPages()
 
     r.ui.KnobTurn(3, 20, false); // delay
     CHECK(p[DELAY] > 0.f);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 2, false), r.ui.Chompi(false); // delay time
+    CHECK(StepIndex(p[DELAY_TIME], kDelayDivisions) == 3); // one turn event = one position
+    r.ui.KnobClick(3, r.now); // page 2: tape feedback / tone
+    r.ui.KnobTurn(3, 10, false);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, -10, false), r.ui.Chompi(false);
+    CHECK(p[DELAY_FB] > kParams[DELAY_FB].def && p[DELAY_TONE] < kParams[DELAY_TONE].def);
+    r.ui.KnobClick(3, r.now); // page 3: chorus/flanger / width
+    r.ui.KnobTurn(3, 10, false);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 10, false), r.ui.Chompi(false);
+    CHECK(p[MOD] > 0.f && p[MOD_WIDTH] > kParams[MOD_WIDTH].def);
+    r.ui.KnobClick(3, r.now); // page 4: crush bits / rate
+    r.ui.KnobTurn(3, 10, false);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 10, false), r.ui.Chompi(false);
+    CHECK(p[CRUSH] > 0.f && p[CRUSH_RATE] > 0.f);
     r.ui.KnobClick(3, r.now);
-    r.ui.KnobTurn(3, 10, false); // crush
-    r.ui.Chompi(true), r.ui.KnobTurn(3, 10, false), r.ui.Chompi(false); // mod
-    CHECK(p[CRUSH] > 0.f && p[MOD] > 0.f);
+    CHECK(r.ui.KnobPage(3) == 0); // four pages, then round again
+    {
+        // Every knob page lights at least a fifth, even at zero.
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        for(int k = 0; k < 6; k++)
+            CHECK(f.knob[k].r + f.knob[k].g + f.knob[k].b > 0.15f);
+    }
 
     r.ui.Chompi(true), r.ui.KnobTurn(4, 5, false), r.ui.Chompi(false); // resonance
     CHECK(p[RESONANCE] > kParams[RESONANCE].def);
