@@ -120,6 +120,7 @@ class Ui
     static constexpr int kKeyClear     = 22; // black key 10
 
     static constexpr uint32_t kClearHoldMs  = 1000;
+    static constexpr uint32_t kTransposeExitMs = 2000;
     static constexpr uint32_t kShowLengthMs = 1200;
     static constexpr uint32_t kLoopClearMs = 2000;
 
@@ -180,6 +181,8 @@ class Ui
         if(k < 0 || k >= kKeyNotes)
             return;
         held_[k] = false;
+        if(k == kKeyTranspose)
+            c4_held_ = false;
         if(sounding_[k])
             Sound(k, false);
         if(mode_ == Mode::STEP && !chompi_ && k == kKeyClear && !clear_done_)
@@ -297,6 +300,12 @@ class Ui
     void Tick(uint32_t now)
     {
         last_tick_ = now;
+        if(mode_ == Mode::STEP && transpose_mode_ && c4_held_ && now - c4_down_at_ >= kTransposeExitMs)
+        {
+            transpose_mode_ = false;
+            c4_held_        = false;
+            m_->SetTranspose(transpose_before_hold_);
+        }
         if(mode_ == Mode::PITCH && loop_down_ && !loop_cleared_ && now - loop_down_at_ >= kLoopClearMs)
         {
             m_->ClearPattern();
@@ -351,6 +360,8 @@ class Ui
 
         if(mode_ == Mode::STEP && chompi_)
             DrawKeyboard(f, blink);
+        else if(mode_ == Mode::STEP && transpose_mode_)
+            DrawPlayhead(f, cur_step); // the transpose on top, as in live mode
         else if(mode_ == Mode::STEP)
             DrawStepMode(f, now, blink, cur_step, step_lit);
         else
@@ -370,7 +381,7 @@ class Ui
                 f.key[k] = {1.f, 0.f, 0.f};
 
         DrawKnobs(f);
-        DrawBeat(f, now);
+        DrawBeat(f, now, cur_step);
 
         // PLAY: green, pulsing each step, brighter on the beat.
         if(m_->Running())
@@ -408,7 +419,7 @@ class Ui
 
     static constexpr Rgb kRed             = {1.f, 0.f, 0.f};
     static constexpr Rgb kTransposeColour    = {1.f, .85f, 0.f};  // the amount: yellow
-    static constexpr Rgb kTransposeKeyColour = {1.f, .35f, .3f};  // C#4, the mode key: peach
+    static constexpr Rgb kTransposeKeyColour = {1.f, .85f, 0.f};  // C#4, the mode key: yellow, dim
     static constexpr Rgb kArpOnColour        = {0.f, .85f, 1.f};  // cyan
     static constexpr Rgb kLatchColour        = {1.f, .45f, 0.f};  // orange
     static constexpr uint32_t kShowValueMs   = 1200;
@@ -490,15 +501,15 @@ class Ui
     {
         if(transpose_mode_ && !chompi_)
         {
-            // The first key picks the transpose, C#4 included; once one is
-            // picked, C#4 ends transpose mode.
-            if(k == kKeyTranspose && transpose_chosen_)
-                transpose_mode_ = false;
-            else
+            // Every key sets the transpose, C#4 included (+1). Holding C#4
+            // for 2 s ends transpose mode (see Tick), undoing that +1.
+            if(k == kKeyTranspose)
             {
-                m_->SetTranspose(k - kMiddleC);
-                transpose_chosen_ = true;
+                transpose_before_hold_ = m_->Transpose();
+                c4_down_at_            = now;
+                c4_held_               = true;
             }
+            m_->SetTranspose(k - kMiddleC);
             return;
         }
         if(chompi_)
@@ -528,7 +539,7 @@ class Ui
             case 2: TogglePage(Page::ACCENT); break;
             case 3: TogglePage(Page::SLIDE); break;
             case 4: TogglePage(Page::TIE); break;
-            case 5: transpose_mode_ = true, transpose_chosen_ = false; break;
+            case 5: transpose_mode_ = true; break;
             case 6: half_ = SecondHalf() ? 0 : 1; break;
             case 7: TogglePage(Page::PATTERN); break;
             case 9: clear_down_ = now, clear_done_ = false; break;
@@ -842,6 +853,16 @@ class Ui
                 f.key[i] = {1.f, 1.f, 1.f};
     }
 
+    /** One red light on the step playing (dim for a tie, dark for a rest). */
+    void DrawPlayhead(LedFrame& f, int cur_step) const
+    {
+        if(!m_->Running() || cur_step < 0)
+            return;
+        const int k = WhiteOfStep(cur_step);
+        if(k >= 0)
+            f.key[k] = NoteColour(m_->Current().steps[cur_step], false);
+    }
+
     /** Pitch mode. Running: one red light moves across the white keys in
      *  tempo, on the step playing (dim for a tie, dark for a rest). Step
      *  input: the steps entered so far, the last one whitened and the next
@@ -852,11 +873,7 @@ class Ui
         const Pattern& pat   = m_->Current();
         const bool     input = NoteEntry();
         if(m_->Running() && cur_step >= 0)
-        {
-            const int k = WhiteOfStep(cur_step);
-            if(k >= 0)
-                f.key[k] = NoteColour(pat.steps[cur_step], false);
-        }
+            DrawPlayhead(f, cur_step);
         else if(input)
             ForEachShownStep(
                 [&](int step) {
@@ -994,29 +1011,24 @@ class Ui
 
     /** Each knob in its page's colour, brightness = the value it turns (the
      *  CHOMPI layer while CHOMPI is held). */
-    /** The big knob's two LEDs: they alternate on the beat in yellow (locked
-     *  to the pattern while it runs, at the tempo while stopped); the side
-     *  on the beat flashes red when a note is recorded. For a moment after
-     *  the knob turns they show cutoff / resonance instead. */
-    void DrawBeat(LedFrame& f, uint32_t now) const
+    /** The big knob's two LEDs show cutoff (resonance with CHOMPI held).
+     *  While the pattern plays they flash instead, alternating sides, on
+     *  steps 1, 5, 9 and 13 (the beats); the side of the current beat
+     *  flashes red when a note is recorded. For a moment after the knob
+     *  turns they show its value again. */
+    void DrawBeat(LedFrame& f, uint32_t now, int cur_step) const
     {
-        if(now - big_turned_at_ < kShowValueMs)
-        {
-            f.big_right = f.knob[4];
+        f.big_right = f.knob[4];
+        if(!m_->Running() || cur_step < 0 || now - big_turned_at_ < kShowValueMs)
             return;
-        }
-        int beat;
-        if(m_->Running())
-            beat = m_->StepCount() > 0 ? static_cast<int>((m_->StepCount() - 1) / 4) : 0;
-        else
-        {
-            const uint32_t beat_ms = static_cast<uint32_t>(60000.f / m_->TempoBpmNow());
-            beat                   = static_cast<int>(now / (beat_ms > 0 ? beat_ms : 1));
-        }
-        const Rgb on   = now - rec_flash_at_ < 150 ? Rgb{1.f, 0.f, 0.f} : Rgb{1.f, .8f, 0.f};
-        const Rgb off  = {};
-        f.knob[4]      = beat % 2 == 0 ? on : off;
-        f.big_right    = beat % 2 == 0 ? off : on;
+        const bool right = (cur_step / 4) % 2 == 1;
+        Rgb        c;
+        if(now - rec_flash_at_ < 150)
+            c = {.6f, 0.f, 0.f};
+        else if(cur_step % 4 == 0 && now - step_seen_at_ < 100)
+            c = {.6f, .48f, 0.f};
+        f.knob[4]   = right ? Rgb{} : c;
+        f.big_right = right ? c : Rgb{};
     }
 
     void DrawKnobs(LedFrame& f) const
@@ -1052,7 +1064,9 @@ class Ui
     int      cursor_   = 0;
     bool     chompi_   = false;
     bool     transpose_mode_   = false;
-    bool     transpose_chosen_ = false; // step mode: a key was picked this time round
+    bool     c4_held_               = false; // step mode, transpose mode: C#4 down
+    uint32_t c4_down_at_            = 0;
+    int      transpose_before_hold_ = 0;
     int      knob_page_[4] = {};
     int      kbd_octave_   = 0; // pitch mode's live keyboard: -1, 0, +1
     int      sounding_note_[kKeyNotes] = {};

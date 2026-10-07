@@ -695,13 +695,16 @@ static void TestStepModeExtras()
 {
     printf("step mode: transpose mode, view key, knob reset, step lights\n");
     Rig r;
-    // C#4 turns transpose mode on; keys set the transpose; C#4 again ends it.
+    // C#4 turns transpose mode on; keys set the transpose; holding C#4 2 s
+    // ends it, keeping the amount.
     r.Key(Ui::kKeyTranspose);
     CHECK(r.ui.TransposeMode());
     r.Key(7); // G3: -5
     CHECK(r.m.Transpose() == -5 && r.ui.Selected() == 0);
-    r.Key(Ui::kKeyTranspose);
-    CHECK(!r.ui.TransposeMode());
+    r.ui.KeyDown(Ui::kKeyTranspose, r.now);
+    r.Run(2100);
+    r.ui.KeyUp(Ui::kKeyTranspose, r.now);
+    CHECK(!r.ui.TransposeMode() && r.m.Transpose() == -5);
     // D#4 flips the view; middle C follows it.
     r.Key(Ui::kKeyView);
     CHECK(r.ui.SecondHalf());
@@ -743,23 +746,40 @@ static void TestTransposeC()
 {
     printf("transpose mode: C#4 as the amount, exits, brightness\n");
     Rig r;
-    // Step mode: enter, pick C#4 (+1): still in the mode, C#4 bright.
+    // Step mode: enter; C#4 is a note like any other (+1), as often as you
+    // like; only holding it 2 s exits, and the hold doesn't change the amount.
     r.Key(Ui::kKeyTranspose);
     r.Key(Ui::kKeyTranspose);
     CHECK(r.ui.TransposeMode() && r.m.Transpose() == 1);
     LedFrame f;
     r.ui.Draw(f, r.now);
     CHECK(f.key[Ui::kKeyTranspose].r > 0.9f);
-    r.Key(Ui::kKeyTranspose); // again: out
-    CHECK(!r.ui.TransposeMode() && r.m.Transpose() == 1);
-    // Another note picked: C#4 once exits, keeping the amount.
-    r.Key(Ui::kKeyTranspose);
     r.Key(16);
-    CHECK(r.m.Transpose() == 4 && r.ui.TransposeMode());
+    r.Key(Ui::kKeyTranspose), r.Key(Ui::kKeyTranspose);
+    CHECK(r.ui.TransposeMode() && r.m.Transpose() == 1);
+    r.Key(16);
+    CHECK(r.m.Transpose() == 4);
     r.ui.Draw(f, r.now);
     CHECK(f.key[Ui::kKeyTranspose].r < 0.3f && f.key[16].r > 0.9f);
-    r.Key(Ui::kKeyTranspose);
+    r.ui.KeyDown(Ui::kKeyTranspose, r.now);
+    r.Run(1500);
+    CHECK(r.ui.TransposeMode()); // not yet
+    r.Run(600);
+    r.ui.KeyUp(Ui::kKeyTranspose, r.now);
     CHECK(!r.ui.TransposeMode() && r.m.Transpose() == 4);
+
+    // In transpose mode the white keys show only the playhead.
+    DemoPattern(r.m.patterns[0]);
+    r.Key(Ui::kKeyTranspose);
+    r.ui.Play();
+    r.Run(40);
+    r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    int red = 0;
+    for(int w = 0; w < 15; w++)
+        red += f.key[Ui::kWhite[w]].r > 0.f && f.key[Ui::kWhite[w]].g == 0.f;
+    CHECK(red == 1);
+    r.ui.Play();
+    r.ui.KeyDown(Ui::kKeyTranspose, r.now), r.Run(2100), r.ui.KeyUp(Ui::kKeyTranspose, r.now);
 
     // Pitch mode: CHOMPI + C#4 enters; C#4 picked is as bright as any key.
     r.ui.SetMode(Ui::Mode::PITCH);
@@ -865,24 +885,40 @@ static void TestShortcutsAndLights()
     CHECK(!r.m.ArpOn() && !r.m.ArpLatch());
     r.ui.Chompi(false);
 
-    // Running: PLAY green; the big knob's LEDs alternate yellow by beat.
+    // Stopped: the big knob's LEDs just show cutoff (purple), both.
+    r.ui.Draw(f, r.now);
+    CHECK(f.knob[4].b > 0.f && f.knob[4].r == f.big_right.r && f.knob[4].b == f.big_right.b);
+
+    // Running: PLAY green; the big knob's LEDs flash on steps 1 and 9 left,
+    // 5 and 13 right, yellow, a little dimmer than full.
     DemoPattern(r.m.patterns[0]);
     r.ui.Play();
-    r.Run(100);
-    r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    auto at_step = [&](int st) {
+        while(r.m.CurrentStep() != st)
+            r.Run(1);
+        r.Run(20);
+        r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    };
+    at_step(0);
     CHECK(f.play.g > 0.f && f.play.r == 0.f);
-    const bool left_first = f.knob[4].r > 0.9f && f.knob[4].g > 0.5f;
-    CHECK(left_first && f.big_right.r == 0.f);
-    r.Run(500); // the next beat
-    r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
-    CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.9f);
+    CHECK(f.knob[4].r > 0.5f && f.knob[4].r < 0.9f && f.knob[4].b == 0.f && f.big_right.r == 0.f);
+    at_step(1);
+    r.Run(80); // between beats: both dark
+    r.ui.Draw(f, r.now);
+    CHECK(f.knob[4].r == 0.f && f.big_right.r == 0.f);
+    at_step(4);
+    CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.5f);
+    at_step(8);
+    CHECK(f.knob[4].r > 0.5f && f.big_right.r == 0.f);
+    at_step(12);
+    CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.5f);
 
     // A recorded note flashes the beat side red.
     r.ui.Loop(r.now); // record on
+    at_step(13);
     r.ui.KeyDown(5, r.now), r.ui.KeyUp(5, r.now);
     r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
-    const Rgb beat_led = f.knob[4].r > 0.f ? f.knob[4] : f.big_right;
-    CHECK(beat_led.r > 0.9f && beat_led.g == 0.f);
+    CHECK(f.big_right.r > 0.5f && f.big_right.g == 0.f); // steps 13-16: the right side
 
     // Turning cutoff shows cutoff on both, for a moment.
     r.ui.KnobTurn(4, 1, false);
@@ -892,11 +928,11 @@ static void TestShortcutsAndLights()
     r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
     CHECK(f.knob[4].b == 0.f && f.big_right.b == 0.f);
 
-    // Transpose mode key: peach, not yellow.
+    // Transpose mode key: dim yellow.
     r.ui.SetMode(Ui::Mode::STEP);
     r.ui.Draw(f, r.now);
     const Rgb t = f.key[Ui::kKeyTranspose];
-    CHECK(t.r > 0.f && t.b > 0.f && t.g < t.r * 0.5f);
+    CHECK(t.r > 0.f && t.r < 0.3f && t.g > 0.5f * t.r && t.b == 0.f);
 }
 
 static void TestLivePlayhead()
