@@ -52,9 +52,10 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | CHOMPI + F#3 / G#3 / A#3 | Accent / slide / tie (see below) |
 | CHOMPI + C#4 | Transpose mode on/off: while on, keys set the transpose instead of playing (middle C = none). C#4 dims and the amount's key lights yellow |
 | CHOMPI + D#4 | View steps 1-8 / 9-16 |
-| CHOMPI + PLAY (or CHOMPI + F#4) | Arpeggiator on/off. While CHOMPI is held, PLAY shows it: cyan on, dim cyan off (and CHOMPI is lit teal while it's on) |
-| CHOMPI + LOOP (or CHOMPI + G#4) | Arpeggiator latch (LOOP orange while CHOMPI is held and it's latched): keeps going after you let go; a fresh chord replaces it |
-| CHOMPI + A#4 | Step input: add a rest |
+| CHOMPI + PLAY | Arpeggiator on/off. While CHOMPI is held, PLAY shows it: cyan on, dim cyan off (and CHOMPI is lit teal while it's on) |
+| CHOMPI + LOOP | Arpeggiator latch (LOOP orange while CHOMPI is held and it's latched): keeps going after you let go; a fresh chord replaces it |
+| CHOMPI + F#4 / A#4 | Arpeggiator octaves below / above the chord, 0-2 each, cycling. White keys 1-5 show them for a moment (octaves -2 to +2, the chord's own bright). In step input, CHOMPI + A#4 adds a rest instead |
+| CHOMPI + G#4 | Arpeggiator pattern: up, down, up-down, random, as played, cycling (white keys 1-5 show which) |
 
 The step lights only show while the pattern plays or you're recording; otherwise the keybed is just a keyboard.
 
@@ -62,20 +63,19 @@ The step lights only show while the pattern plays or you're recording; otherwise
 
 **Step input (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step (in the keyboard's octave), its white key lights up, and the pattern grows to it. CHOMPI + F#3 / G#3 put an accent / slide on the last step, CHOMPI + A#3 adds a tie step, CHOMPI + A#4 a rest. Press PLAY with record still on to carry on recording in real time.
 
-**Arpeggiator.** With it on, the keys you hold are played one at a time in sixteenths at the tempo: up, down, up-down, random or as played, over 1-3 octaves (knob 3, page 3). While the pattern runs it locks to the pattern's steps (and swing), and the pattern is silent while it plays; with record on, the arpeggio is written into the steps. In step input the keys go into the steps as usual.
+**Arpeggiator.** With it on, the keys you hold are played one at a time in sixteenths at the tempo: up, down, up-down, random or as played, from up to two octaves below the chord to two above (CHOMPI + F#4 / A#4), in the pattern set with CHOMPI + G#4. While the pattern runs it locks to the pattern's steps (and swing), and the pattern is silent while it plays; with record on, the arpeggio is written into the steps. In step input the keys go into the steps as usual.
 
 ## Knobs
 
 Turning the pattern length (knob 1, page 2), in either mode, shows it on the white keys for a moment: every step within the length dim white, the last one bright.
 
-Click knobs 1-4 to step through their pages (knob 3 has three, knob 4 four); each page has its own colour, and a knob never goes darker than a fifth, so you can always see which page it's on. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
+Click knobs 1-4 to step through their pages (knob 4 has four); each page has its own colour, and a knob never goes darker than a fifth, so you can always see which page it's on. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
 | Knob 1 | Saw / square (amber / cyan) | Pulse width | Pattern length | Tuning (+/- 1 semitone) |
 | Knob 2 | Env mod | Decay | Accent | Slide time |
 | Knob 3 | Tempo, 1 BPM a click (60-200) | Swing | Quantize on/off | Quantize grid: 1/16, 1/8, 1/4 |
-| Knob 3, page 3 | Arpeggiator mode: up, down, up-down, random, as played | Arpeggiator range: 1-3 octaves | | |
 | Knob 4 | Delay dry/wet (cyan) | Delay time: 1/16, 1/8, 3/16, 1/4, 3/8, 1/2 | Tape feedback (amber) | Tape tone: dark to bright |
 | Knob 4, page 3 | Chorus into flanger (pink) | Stereo width / depth | | |
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction | | |

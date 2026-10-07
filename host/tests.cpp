@@ -520,7 +520,7 @@ static void TestArp()
     printf("pitch mode: arpeggiator\n");
     Rig r;
     r.ui.SetMode(Ui::Mode::PITCH);
-    r.ui.Chompi(true), r.Key(Ui::kBlack[7]), r.ui.Chompi(false); // F#4: arp on
+    r.ui.Chompi(true), r.ui.Play(), r.ui.Chompi(false); // CHOMPI + PLAY: arp on
     CHECK(r.m.ArpOn());
     // Stopped: it runs on its own clock, sixteenths at 120 BPM, up.
     r.ui.KeyDown(0, r.now), r.ui.KeyDown(4, r.now), r.ui.KeyDown(7, r.now);
@@ -542,7 +542,7 @@ static void TestArp()
     CHECK(r.m.SoundingNote() == -1); // stops when let go
 
     // Latch: keeps going after the keys are let go.
-    r.ui.Chompi(true), r.Key(Ui::kBlack[8]), r.ui.Chompi(false);
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.ui.Chompi(false); // CHOMPI + LOOP: latch
     CHECK(r.m.ArpLatch());
     r.ui.KeyDown(2, r.now), r.ui.KeyUp(2, r.now);
     r.Run(300);
@@ -575,7 +575,7 @@ static void TestArp()
     }
 
     // Running and recording: the arpeggio lands in the steps.
-    r.ui.Chompi(true), r.Key(Ui::kBlack[8]), r.ui.Chompi(false); // unlatch
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.ui.Chompi(false); // unlatch
     r.Run(300);
     r.ui.Play();
     r.ui.Loop(r.now); // record
@@ -585,15 +585,45 @@ static void TestArp()
     CHECK(r.S(1).on && r.S(2).on && r.S(3).on);
     CHECK(r.S(1).note != r.S(2).note);
 
-    // Knob 3 page 3: arp mode and range.
-    r.ui.KnobClick(2, r.now), r.ui.KnobClick(2, r.now);
-    CHECK(r.ui.KnobPage(2) == 2);
-    r.ui.KnobTurn(2, 1, false);
+    // CHOMPI + G#4: pattern; F#4 / A#4: octaves down / up, cycling 0-2.
+    r.ui.Play(); // stop
+    r.ui.Loop(r.now); // record off (step input is where A#4 adds rests)
+    r.ui.Chompi(true);
+    r.Key(Ui::kBlack[8]);
     CHECK(StepIndex(r.m.settings.params[ARP_MODE], 5) == 1);
-    r.ui.Chompi(true), r.ui.KnobTurn(2, 1, false), r.ui.Chompi(false);
-    CHECK(StepIndex(r.m.settings.params[ARP_RANGE], 3) == 1);
-    r.ui.KnobClick(2, r.now);
-    CHECK(r.ui.KnobPage(2) == 0); // three pages, then round again
+    r.Key(Ui::kBlack[7]), r.Key(Ui::kBlack[9]), r.Key(Ui::kBlack[9]);
+    CHECK(StepIndex(r.m.settings.params[ARP_OCT_DOWN], 3) == 1);
+    CHECK(StepIndex(r.m.settings.params[ARP_OCT_UP], 3) == 2);
+    r.Key(Ui::kBlack[9]);
+    CHECK(StepIndex(r.m.settings.params[ARP_OCT_UP], 3) == 0); // round again
+    r.ui.Chompi(false);
+    {
+        // White keys 1-5 show the octaves: -1 and 0 here.
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kWhite[2]].r > 0.9f);                            // the chord's own
+        CHECK(f.key[Ui::kWhite[1]].g > 0.4f && f.key[Ui::kWhite[0]].g < 0.1f); // -1 lit, -2 not
+        CHECK(f.key[Ui::kWhite[3]].g < 0.1f);                            // +1 not
+    }
+    // An octave down and up: a single held C3 plays C2, C3 (down 1, up 0), up mode.
+    r.m.SetParam(ARP_MODE, 0.f);
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.ui.Chompi(false); // unlatch
+    r.ui.KeyDown(0, r.now);
+    std::vector<int> notes;
+    int prev = -2;
+    for(int i = 0; i < 400; i++)
+    {
+        r.Run(1);
+        const int n = r.m.SoundingNote();
+        if(n != prev && n >= 0)
+            notes.push_back(n);
+        prev = n;
+    }
+    r.ui.KeyUp(0, r.now);
+    CHECK(notes.size() >= 2 && notes[0] == kBaseNote - 12 && notes[1] == kBaseNote);
+    CHECK(r.ui.KnobPage(2) == 0);
+    r.ui.KnobClick(2, r.now), r.ui.KnobClick(2, r.now);
+    CHECK(r.ui.KnobPage(2) == 0); // knob 3 has two pages again
 }
 
 static void TestLiveLights()
@@ -738,7 +768,7 @@ static void TestArpTranspose()
     printf("pitch mode: transpose moves the latched arpeggio, not the pattern\n");
     Rig r;
     r.ui.SetMode(Ui::Mode::PITCH);
-    r.ui.Chompi(true), r.Key(Ui::kBlack[7]), r.Key(Ui::kBlack[8]), r.ui.Chompi(false); // arp on, latch
+    r.ui.Chompi(true), r.ui.Play(), r.ui.Loop(r.now), r.ui.Chompi(false); // arp on, latch
     r.Key(0), r.Key(4); // C3, E3 latched
     r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false); // transpose mode
     r.Key(19); // +7
@@ -775,7 +805,7 @@ static void TestArpTranspose()
     CHECK(r.m.ArpTranspose() == 7);
 
     // Arpeggiator off: transpose goes back to the pattern.
-    r.ui.Chompi(true), r.Key(Ui::kBlack[7]), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    r.ui.Chompi(true), r.ui.Play(), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
     r.Key(10); // -2
     CHECK(r.m.Transpose() == -2 && r.m.ArpTranspose() == 7);
 }

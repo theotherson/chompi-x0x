@@ -39,7 +39,8 @@ enum Param : uint8_t
     VOLUME,
     DRIVE,
     ARP_MODE,
-    ARP_RANGE,
+    ARP_OCT_DOWN,
+    ARP_OCT_UP,
     ARP_ON,
     NUM_PARAMS
 };
@@ -77,8 +78,9 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"crush_rate",  0.f,      0, 19},  // sample-rate reduction
     {"volume",      .7f,      0, 7},
     {"drive",       0.f,      0, 17},  // hard clip, off by default
-    {"arp_mode",    0.f,      5, 0},   // up, down, up-down, random, as played
-    {"arp_range",   0.f,      3, 0},   // 1-3 octaves
+    {"arp_mode",    0.f,      5, 0},   // up, down, up-down, random, as played (CHOMPI + G#4)
+    {"arp_oct_down", 0.f,     3, 0},   // octaves below the chord, 0-2 (CHOMPI + F#4)
+    {"arp_oct_up",  0.f,      3, 0},   // octaves above, 0-2 (CHOMPI + A#4)
     {"arp_on",      0.f,      2, 0},   // CHOMPI + F#4 in live mode
 };
 // clang-format on
@@ -103,11 +105,11 @@ constexpr uint8_t kKnobNone   = 255;
  *  [knob][page][CHOMPI held]. Clicking knobs 1-4 steps through their pages;
  *  the big knob and volume have one. */
 constexpr int     kMaxKnobPages       = 4;
-constexpr int     kKnobPages[6]       = {2, 2, 3, 4, 1, 1};
+constexpr int     kKnobPages[6]       = {2, 2, 2, 4, 1, 1};
 constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{ENV_MOD, DECAY}, {ACCENT, SLIDE_TIME}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}, {ARP_MODE, ARP_RANGE}, {kKnobNone, kKnobNone}},
+    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{DELAY, DELAY_TIME}, {DELAY_FB, DELAY_TONE}, {MOD, MOD_WIDTH}, {CRUSH, CRUSH_RATE}},
     {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},

@@ -52,11 +52,14 @@
  *                                  arpeggio while the arpeggiator is on, the
  *                                  pattern otherwise
  *    CHOMPI + D#4                  view steps 1-8 / 9-16
- *    CHOMPI + F#4                  arpeggiator on/off (knob 3, page 3: mode
- *                                  and range)
- *    CHOMPI + G#4                  arpeggiator latch: latched, each key adds
+ *    CHOMPI + PLAY                 arpeggiator on/off
+ *    CHOMPI + LOOP                 arpeggiator latch: latched, each key adds
  *                                  its note to the chord or takes it out
- *    CHOMPI + A#4                  step input: a rest
+ *    CHOMPI + F#4 / A#4            arpeggiator octaves below / above the
+ *                                  chord, 0-2 each (white keys 1-5 show it)
+ *    CHOMPI + G#4                  arpeggiator pattern: up, down, up-down,
+ *                                  random, as played
+ *    CHOMPI + A#4, step input      a rest
  *
  *  Knobs: clicking knobs 1-4 flips each between two pages; CHOMPI + click
  *  resets both functions of the knob's page to their defaults. The big
@@ -359,6 +362,8 @@ class Ui
 
         if(now - length_shown_at_ < kShowLengthMs)
             DrawLength(f);
+        if(now - arp_shown_at_ < kShowValueMs)
+            DrawArpSetting(f);
 
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -407,6 +412,8 @@ class Ui
     static constexpr Rgb kArpOnColour        = {0.f, .85f, 1.f};  // cyan
     static constexpr Rgb kLatchColour        = {1.f, .45f, 0.f};  // orange
     static constexpr uint32_t kShowValueMs   = 1200;
+    static constexpr int      kShowOctaves   = 0;
+    static constexpr int      kShowPattern   = 1;
     static constexpr Rgb kArpColour       = {0.f, 1.f, .7f};
     // Knob colours, page 1 and page 2.
     // Knob colours, by page.
@@ -586,11 +593,13 @@ class Ui
                     break;
                 case 5: transpose_mode_ = !transpose_mode_; break;
                 case 6: half_ = SecondHalf() ? 0 : 1; break;
-                case 7: m_->SetArpOn(!m_->ArpOn()); break;
-                case 8: m_->SetArpLatch(!m_->ArpLatch()); break;
+                case 7: CycleParam(ARP_OCT_DOWN, 3), arp_shown_ = kShowOctaves; break;
+                case 8: CycleParam(ARP_MODE, 5), arp_shown_ = kShowPattern; break;
                 case 9:
                     if(StepInput())
-                        Append(Step{}); // a rest
+                        Append(Step{}); // a rest (the arpeggiator doesn't run in step input)
+                    else
+                        CycleParam(ARP_OCT_UP, 3), arp_shown_ = kShowOctaves;
                     break;
                 default: break; // white keys: nothing
             }
@@ -650,6 +659,13 @@ class Ui
             }
             default: return;
         }
+    }
+
+    /** Steps a stepped parameter on, wrapping round; shows it for a moment. */
+    void CycleParam(Param p, int steps)
+    {
+        m_->SetParam(p, StepValue((StepIndex(m_->settings.params[p], steps) + 1) % steps, steps));
+        arp_shown_at_ = last_tick_;
     }
 
     /** Recording while running, CHOMPI + F#3 / G#3 / A#3: accent, slide or
@@ -862,14 +878,48 @@ class Ui
                 f.key[kBlack[i]] = kPageColour[i + 1];
             f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 0.15f : 0.6f);
             f.key[kKeyView]      = {.5f, .5f, .5f};
-            f.key[kBlack[7]]     = Scale(kArpColour, m_->ArpOn() ? 1.f : 0.1f);
-            f.key[kBlack[8]]     = Scale(kArpColour, m_->ArpLatch() ? 1.f : 0.1f);
+            // Arpeggiator: octaves down (F#4) and up (A#4), brighter for
+            // more; its pattern (G#4).
+            const float* p   = m_->settings.params;
+            f.key[kBlack[7]] = Scale(kArpColour, 0.15f + 0.425f * StepIndex(p[ARP_OCT_DOWN], 3));
+            f.key[kBlack[8]] = kArpColour;
             if(input)
                 f.key[kBlack[9]] = {.3f, .3f, .3f}; // rest
+            else
+                f.key[kBlack[9]] = Scale(kArpColour, 0.15f + 0.425f * StepIndex(p[ARP_OCT_UP], 3));
         }
         for(int i = 0; i < kKeyNotes; i++)
             if(held_[i])
                 f.key[i] = {0.f, .4f, 1.f};
+    }
+
+    /** After CHOMPI + F#4 / A#4 / G#4: white keys 1-5 show the arpeggiator's
+     *  octaves (-2 to +2, the chord's own octave bright, the others in use
+     *  lit) or its pattern (up, down, up-down, random, as played). */
+    void DrawArpSetting(LedFrame& f) const
+    {
+        const float* p = m_->settings.params;
+        for(int i = 0; i < 5; i++)
+            f.key[kWhite[i]] = {};
+        if(arp_shown_ == kShowPattern)
+        {
+            const int mode = StepIndex(p[ARP_MODE], 5);
+            for(int i = 0; i < 5; i++)
+                f.key[kWhite[i]] = Scale(kArpColour, i == mode ? 1.f : 0.08f);
+            return;
+        }
+        const int down = StepIndex(p[ARP_OCT_DOWN], 3), up = StepIndex(p[ARP_OCT_UP], 3);
+        for(int o = -2; o <= 2; o++)
+        {
+            Rgb c;
+            if(o == 0)
+                c = {1.f, 1.f, 1.f};
+            else if(o >= -down && o <= up)
+                c = Scale(kArpColour, 0.6f);
+            else
+                c = Scale(kArpColour, 0.05f);
+            f.key[kWhite[o + 2]] = c;
+        }
     }
 
     /** Turning the length knob, in either mode: every step within the
@@ -1012,6 +1062,8 @@ class Ui
     uint32_t cleared_at_      = 0x80000000u;
     uint32_t last_tick_       = 0;
     uint32_t big_turned_at_   = 0x80000000u;
+    uint32_t arp_shown_at_    = 0x80000000u;
+    int      arp_shown_       = 0;
     uint32_t rec_flash_at_    = 0x80000000u;
     uint32_t last_record_count_ = 0;
     uint32_t input_count_     = 0;

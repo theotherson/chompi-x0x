@@ -1,7 +1,7 @@
 /** @file arp.h
  *  @brief The arpeggiator: the keys held in live mode, played one at a time
- *  in sixteenths, up, down, up-down, at random or as played, over 1-3
- *  octaves. Latch keeps the chord going after the keys are let go; while
+ *  in sixteenths, up, down, up-down, at random or as played, from up to
+ *  two octaves below the chord to two above. Latch keeps the chord going after the keys are let go; while
  *  latched, each key pressed adds its note to the chord, or takes it out if
  *  it is already there.
  *
@@ -30,7 +30,12 @@ class Arp
     static constexpr int kMaxNotes = 16;
 
     void SetMode(ArpMode m) { mode_ = m; }
-    void SetOctaves(int o) { octaves_ = ClampInt(o, 1, 3); }
+    /** Octaves below and above the chord's own, 0-2 each. */
+    void SetOctaves(int down, int up)
+    {
+        down_    = ClampInt(down, 0, 2);
+        octaves_ = down_ + 1 + ClampInt(up, 0, 2);
+    }
 
     void SetLatch(bool on)
     {
@@ -137,7 +142,7 @@ class Arp
                 break;
         }
         last_source_ = order[idx % count_];
-        return last_source_ + 12 * (idx / count_);
+        return last_source_ + 12 * (idx / count_ - down_);
     }
 
   private:
@@ -153,7 +158,8 @@ class Arp
     int      pressed_ = 0;
     int      pos_     = -1;
     int      dir_     = 1;
-    int      octaves_ = 1;
+    int      octaves_ = 1; // octaves spanned in all
+    int      down_    = 0; // of which below the chord
     int      last_source_ = -1;
     bool     latch_   = false;
     ArpMode  mode_    = ArpMode::UP;

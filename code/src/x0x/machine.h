@@ -417,7 +417,7 @@ class Machine
         // the pattern runs its steps come with the pattern's, otherwise from
         // its own clock at the tempo.
         arp_.SetMode(static_cast<ArpMode>(StepIndex(p[ARP_MODE], static_cast<int>(ArpMode::COUNT))));
-        arp_.SetOctaves(StepIndex(p[ARP_RANGE], 3) + 1);
+        arp_.SetOctaves(StepIndex(p[ARP_OCT_DOWN], 3), StepIndex(p[ARP_OCT_UP], 3));
         arp_step_samples_ = sr_ * 60.f / (seq_.Tempo() * 4.f);
         if(arp_gate_left_ >= 0.0 && arp_gate_left_ < n)
             ev[count++] = ArpEvent(Sequencer::Event::NOTE_OFF, arp_gate_left_);
