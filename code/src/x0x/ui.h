@@ -115,7 +115,8 @@ class Ui
     static constexpr int kKeyCopy      = 20; // black key 9
     static constexpr int kKeyClear     = 22; // black key 10
 
-    static constexpr uint32_t kClearHoldMs = 1000;
+    static constexpr uint32_t kClearHoldMs  = 1000;
+    static constexpr uint32_t kShowLengthMs = 1200;
     static constexpr uint32_t kLoopClearMs = 2000;
 
     void Init(Machine* m) { m_ = m; }
@@ -231,6 +232,7 @@ class Ui
         if(sel == kKnobLength)
         {
             m_->SetLength(m_->Current().length + dir);
+            length_shown_at_ = last_tick_; // show it on the keys for a moment
             return;
         }
         const Param p     = static_cast<Param>(sel);
@@ -253,7 +255,10 @@ class Ui
             {
                 const uint8_t sel = kKnobMap[knob][KnobPage(knob)][layer];
                 if(sel == kKnobLength)
+                {
                     m_->SetLength(kSteps);
+                    length_shown_at_ = last_tick_;
+                }
                 else if(sel != kKnobNone)
                     m_->SetParam(sel, kParams[sel].def);
             }
@@ -273,6 +278,7 @@ class Ui
     /** Once per block: timed actions (holding CLEAR, holding LOOP). */
     void Tick(uint32_t now)
     {
+        last_tick_ = now;
         if(mode_ == Mode::PITCH && loop_down_ && !loop_cleared_ && now - loop_down_at_ >= kLoopClearMs)
         {
             m_->ClearPattern();
@@ -329,6 +335,9 @@ class Ui
             DrawTranspose(f);
         if(mode_ == Mode::PITCH && m_->ArpEngaged())
             DrawArp(f, now);
+
+        if(now - length_shown_at_ < kShowLengthMs)
+            DrawLength(f);
 
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -827,6 +836,28 @@ class Ui
                 f.key[i] = {0.f, .4f, 1.f};
     }
 
+    /** Turning the length knob, in either mode: every step within the
+     *  length dim white, the last one bright, the rest dark. Middle C shows
+     *  step 8 or 9, whichever keeps the last step in view. */
+    void DrawLength(LedFrame& f) const
+    {
+        const int len    = m_->Current().length;
+        const bool second = len - 1 >= 8;
+        for(int st = 0; st < kSteps; st++)
+        {
+            int k;
+            if(st < 7)
+                k = kWhite[st];
+            else if(st > 8)
+                k = kWhite[st - 1];
+            else if((st == 8) == second)
+                k = kMiddleC;
+            else
+                continue;
+            f.key[k] = st == len - 1 ? Rgb{1.f, 1.f, 1.f} : st < len ? Rgb{.12f, .12f, .12f} : Rgb{};
+        }
+    }
+
     /** The keybed key that plays MIDI note `note` in pitch mode now, -1 if
      *  it's off the keybed (the keyboard octave counts). */
     int KeyOfNote(int note) const
@@ -918,6 +949,8 @@ class Ui
     uint32_t clear_down_      = 0;
     bool     clear_done_      = true;
     uint32_t cleared_at_      = 0x80000000u;
+    uint32_t last_tick_       = 0;
+    uint32_t length_shown_at_ = 0x80000000u;
     uint32_t last_step_count_ = 0;
     uint32_t step_seen_at_    = 0;
     uint32_t last_arp_count_  = 0;

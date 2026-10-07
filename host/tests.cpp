@@ -687,6 +687,7 @@ static void TestStepModeExtras()
     r.ui.Chompi(true), r.ui.KnobClick(4, r.now), r.ui.Chompi(false); // big knob: no tap, reset
     CHECK(r.m.settings.params[CUTOFF] == kParams[CUTOFF].def);
 
+    r.Run(1300); // let the length display (from the knob above) clear
     // Step lights: on red, accent bright, tie dim; the other half dimmed.
     r.S(1).on = true;
     r.S(2).on = r.S(2).accent = true;
@@ -777,6 +778,36 @@ static void TestArpTranspose()
     r.ui.Chompi(true), r.Key(Ui::kBlack[7]), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
     r.Key(10); // -2
     CHECK(r.m.Transpose() == -2 && r.m.ArpTranspose() == 7);
+}
+
+static void TestLengthShown()
+{
+    printf("length knob shows the length on the keys, both modes\n");
+    for(Ui::Mode mode : {Ui::Mode::STEP, Ui::Mode::PITCH})
+    {
+        Rig r;
+        r.ui.SetMode(mode);
+        r.Run(5);
+        r.ui.KnobClick(0, r.now); // knob 1 page 2: length
+        for(int i = 0; i < 4; i++)
+            r.ui.KnobTurn(0, -1, false); // 16 -> 12
+        CHECK(r.m.Current().length == 12);
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        // Step 12 is on white key 11 (index 10): bright; steps 1-11 dim; 13-16 dark.
+        CHECK(f.key[Ui::kWhite[10]].r > 0.9f && f.key[Ui::kWhite[10]].g > 0.9f);
+        CHECK(f.key[Ui::kWhite[0]].r > 0.05f && f.key[Ui::kWhite[0]].r < 0.3f);
+        CHECK(f.key[Ui::kWhite[7]].r > 0.05f); // middle C = step 9, within
+        CHECK(f.key[Ui::kWhite[11]].r == 0.f && f.key[Ui::kWhite[14]].r == 0.f);
+        r.Run(1300);
+        r.ui.Draw(f, r.now);
+        CHECK(!(f.key[Ui::kWhite[10]].r > 0.9f && f.key[Ui::kWhite[10]].g > 0.9f)); // gone again
+        // Length 8: middle C is the last step.
+        for(int i = 0; i < 4; i++)
+            r.ui.KnobTurn(0, -1, false);
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kMiddleC].g > 0.9f);
+    }
 }
 
 static void TestLivePlayhead()
@@ -915,6 +946,7 @@ int main()
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
+    TestLengthShown();
     TestArpTranspose();
     TestLiveLights();
     TestSettingsOptions();
