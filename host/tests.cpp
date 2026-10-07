@@ -1001,9 +1001,13 @@ static void TestDiodeLadder()
         for(double f = 0.8 * wc; f < 1.3 * wc; f += 0.02 * wc)
             peak = std::max(peak, LadderGainDb(wc, Voice::kMaxLoopGain, f));
         const double rel = peak - LadderGainDb(wc, Voice::kMaxLoopGain, 0.05 * wc);
-        if(rel > 18.0)
-            printf("    wc %.0f: peak +%.1f dB\n", wc, rel);
-        CHECK(rel < 18.0);
+        // No more than 3 dB over the transfer function's own peak.
+        double want = -100.0;
+        for(double w = 0.8; w < 1.3; w += 0.002)
+            want = std::max(want, theory(w * wc, wc, Voice::kMaxLoopGain) - theory(0.05 * wc, wc, Voice::kMaxLoopGain));
+        if(rel > want + 3.0)
+            printf("    wc %.0f: peak +%.1f dB, transfer function +%.1f\n", wc, rel, want);
+        CHECK(rel < want + 3.0);
     }
 }
 

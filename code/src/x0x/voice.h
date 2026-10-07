@@ -40,8 +40,8 @@ struct VoiceParams
     float slide_s    = 0.06f; // slide time
     bool  square     = false;
     float pulse_width = 0.5f; // square only: 0.05..0.95
-    float max_loop_gain = 12.2f; // resonance at full (17 would self-oscillate)
-    float stage_drive   = 0.f;   // saturation inside the ladder's stages
+    float max_loop_gain = 15.3f; // resonance at full: 90 % of self-oscillation (17)
+    float stage_drive   = 0.75f; // gentle saturation inside the ladder's stages
 };
 
 /** The TB-303's diode ladder (see the file comment): four one-pole
@@ -142,9 +142,9 @@ class DiodeLadder
 class Voice
 {
   public:
-    /** Resonance at full: this much loop gain (17 would self-oscillate).
-     *  To be fitted to a real 303. */
-    static constexpr float kMaxLoopGain = 12.2f;
+    /** Resonance at full: this much loop gain (17 would self-oscillate);
+     *  chosen by ear against a real 303 (12.2 was too tame). */
+    static constexpr float kMaxLoopGain = 15.3f;
     /** The cutoff knob's frequency to the ladder's cutoff: the resonant
      *  peak lands where the earlier filter's did. */
     static constexpr float kCutoffScale = 1.6f;
