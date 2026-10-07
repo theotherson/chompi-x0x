@@ -138,7 +138,10 @@ inline void ToVoiceParams(const float* p, VoiceParams& vp)
     vp.tuning_st   = (p[TUNING] - 0.5f) * 2.f;
     vp.slide_s     = KnobToExp(p[SLIDE_TIME], 0.02f, 0.3f);
     vp.square      = StepIndex(p[WAVE], 2) == 1;
-    vp.pulse_width = 0.1f + 0.8f * p[PULSE_WIDTH];
+    // The knob's centre is a 47 % pulse, not 50: the 303 makes its square by
+    // shaping the saw, and it comes out lopsided enough to keep even
+    // harmonics 8-20 dB under the odd ones (fitted to recordings of one).
+    vp.pulse_width = 0.07f + 0.8f * p[PULSE_WIDTH];
 }
 
 // ------------------------------------------------------------------ settings
