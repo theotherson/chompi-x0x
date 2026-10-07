@@ -207,7 +207,11 @@ class Voice
         const float acc_drain  = TauToCoef(0.08f + 0.35f * p.resonance, sr_);
         const float k          = p.max_loop_gain * p.resonance;
         ladder_.SetStageDrive(p.stage_drive);
+        // Accent's level boost glides (~2 ms) rather than jumps: a slide
+        // between an accented and a plain note changes it mid-note, and a
+        // jump there is a click.
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
+        const float acc_glide  = TauToCoef(0.002f, sr_);
 
         for(size_t i = 0; i < n; i++)
         {
@@ -259,7 +263,8 @@ class Voice
             // the 303's own.
             y *= 0.4f * (1.f + 0.5f * k); // (0.4: headroom for the resonant peaks)
 
-            out[i] += y * aenv_ * amp_acc * 0.5f;
+            acc_amp_ += (amp_acc - acc_amp_) * acc_glide;
+            out[i] += y * aenv_ * acc_amp_ * 0.5f;
         }
     }
 
@@ -307,6 +312,7 @@ class Voice
     float fenv_    = 0.f;
     float aenv_    = 0.f;
     float acc_cap_ = 0.f;
+    float acc_amp_ = 1.f;
     bool  gate_    = false;
     bool  amp_on_  = false;
     bool  accent_  = false;
