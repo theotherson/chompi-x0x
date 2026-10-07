@@ -131,7 +131,9 @@ inline void ToVoiceParams(const float* p, VoiceParams& vp)
     vp.cutoff_hz   = KnobToExp(p[CUTOFF], 40.f, 4000.f);
     vp.resonance   = p[RESONANCE];
     vp.env_oct     = 5.f * p[ENV_MOD];
-    vp.decay_s     = KnobToExp(p[DECAY], 0.2f, 2.5f);
+    // Fitted to a TB-303: the filter sweep is 90 % done in ~175 ms at the
+    // shortest decay and ~2 s at the longest (decay_s is the time to 1 %).
+    vp.decay_s     = KnobToExp(p[DECAY], 0.35f, 4.0f);
     vp.accent      = p[ACCENT];
     vp.tuning_st   = (p[TUNING] - 0.5f) * 2.f;
     vp.slide_s     = KnobToExp(p[SLIDE_TIME], 0.02f, 0.3f);

@@ -200,7 +200,9 @@ class Voice
         const float decay = accent_ ? 0.2f : p.decay_s;
         const float fdec  = TauToCoef(decay / 4.6f, sr_);   // ~1 % after `decay`
         const float att   = TauToCoef(0.0015f, sr_);
-        const float hold  = TauToCoef(2.5f, sr_);           // slow sag while the gate is held
+        // While the gate is held the level falls ~6.5 dB a second, as
+        // measured on a TB-303 (-5 dB at 1 s, -13 dB at 2 s, every note).
+        const float hold  = TauToCoef(1.34f, sr_);
         const float rel   = TauToCoef(0.004f, sr_);
         // Resonance slows the accent capacitor's drain, as on the 303.
         const float acc_charge = TauToCoef(0.012f, sr_);
@@ -232,7 +234,7 @@ class Voice
                     }
                 }
                 else
-                    aenv_ -= aenv_ * hold * 0.5f;
+                    aenv_ -= aenv_ * hold;
             }
             else
                 aenv_ -= aenv_ * rel;
