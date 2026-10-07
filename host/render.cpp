@@ -73,6 +73,7 @@ int main(int argc, char** argv)
 
     // Cutoff swept by hand would be the classic move: here, three settings.
     RenderPattern(dir, "dark_reso", demo, {{CUTOFF, .1f}, {RESONANCE, .9f}, {ENV_MOD, .8f}}, 4.f);
+    RenderPattern(dir, "low_cut_max_reso", demo, {{CUTOFF, 0.f}, {RESONANCE, 1.f}}, 4.f);
     RenderPattern(dir, "open_short", demo, {{CUTOFF, .6f}, {RESONANCE, .3f}, {DECAY, 0.f}}, 4.f);
     RenderPattern(dir, "max_everything", demo,
                   {{CUTOFF, 1.f}, {RESONANCE, 1.f}, {ENV_MOD, 1.f}, {DECAY, 1.f}, {ACCENT, 1.f},

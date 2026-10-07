@@ -701,6 +701,59 @@ static void TestStepModeExtras()
     CHECK(far.r > 0.f && far.r < on.r * 0.5f);
 }
 
+static void TestTransposeC()
+{
+    printf("transpose mode: C#4 as the amount, exits, brightness\n");
+    Rig r;
+    // Step mode: enter, pick C#4 (+1): still in the mode, C#4 bright.
+    r.Key(Ui::kKeyTranspose);
+    r.Key(Ui::kKeyTranspose);
+    CHECK(r.ui.TransposeMode() && r.m.Transpose() == 1);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyTranspose].r > 0.9f);
+    r.Key(Ui::kKeyTranspose); // again: out
+    CHECK(!r.ui.TransposeMode() && r.m.Transpose() == 1);
+    // Another note picked: C#4 once exits, keeping the amount.
+    r.Key(Ui::kKeyTranspose);
+    r.Key(16);
+    CHECK(r.m.Transpose() == 4 && r.ui.TransposeMode());
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyTranspose].r < 0.3f && f.key[16].r > 0.9f);
+    r.Key(Ui::kKeyTranspose);
+    CHECK(!r.ui.TransposeMode() && r.m.Transpose() == 4);
+
+    // Pitch mode: CHOMPI + C#4 enters; C#4 picked is as bright as any key.
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    r.Key(Ui::kKeyTranspose);
+    CHECK(r.m.Transpose() == 1);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyTranspose].r > 0.9f);
+}
+
+static void TestLivePlayhead()
+{
+    printf("pitch mode: one red light moving in tempo, dark on rests\n");
+    Rig r;
+    DemoPattern(r.m.patterns[0]); // step 10 (index 9) is a rest
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.Play();
+    LedFrame f;
+    for(int step = 0; step < 12; step++)
+    {
+        while(r.m.CurrentStep() != step)
+            r.Run(1);
+        r.Run(40); // well inside the step
+        r.ui.NoteStep(r.now);
+        r.ui.Draw(f, r.now);
+        int lit = 0;
+        for(int w = 0; w < 15; w++)
+            lit += f.key[Ui::kWhite[w]].r > 0.f;
+        CHECK(lit == (r.S(step).on ? 1 : 0));
+    }
+}
+
 static void TestSettingsOptions()
 {
     printf("settings and options text\n");
@@ -762,6 +815,8 @@ int main()
     TestStepInput();
     TestStepModeExtras();
     TestArp();
+    TestTransposeC();
+    TestLivePlayhead();
     TestLiveLights();
     TestSettingsOptions();
     TestMidiClock();

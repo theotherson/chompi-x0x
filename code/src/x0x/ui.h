@@ -322,7 +322,7 @@ class Ui
         else if(mode_ == Mode::STEP)
             DrawStepMode(f, now, blink, cur_step, step_lit);
         else
-            DrawPitchMode(f, blink, cur_step, step_lit);
+            DrawPitchMode(f, blink, cur_step);
         if(transpose_mode_ && !chompi_)
             DrawTranspose(f);
         if(mode_ == Mode::PITCH && m_->ArpEngaged())
@@ -437,10 +437,15 @@ class Ui
     {
         if(transpose_mode_ && !chompi_)
         {
-            if(k == kKeyTranspose)
+            // The first key picks the transpose, C#4 included; once one is
+            // picked, C#4 ends transpose mode.
+            if(k == kKeyTranspose && transpose_chosen_)
                 transpose_mode_ = false;
             else
+            {
                 m_->SetTranspose(k - kMiddleC);
+                transpose_chosen_ = true;
+            }
             return;
         }
         if(chompi_)
@@ -470,7 +475,7 @@ class Ui
             case 2: TogglePage(Page::ACCENT); break;
             case 3: TogglePage(Page::SLIDE); break;
             case 4: TogglePage(Page::TIE); break;
-            case 5: transpose_mode_ = true; break;
+            case 5: transpose_mode_ = true, transpose_chosen_ = false; break;
             case 6: half_ = SecondHalf() ? 0 : 1; break;
             case 7: TogglePage(Page::PATTERN); break;
             case 9: clear_down_ = now, clear_done_ = false; break;
@@ -769,24 +774,29 @@ class Ui
                 f.key[i] = {1.f, 1.f, 1.f};
     }
 
-    /** Pitch mode: while playing or recording the white keys show the
-     *  pattern's steps, the playhead flashes white, and in step input the
-     *  last step entered is whitened and the next one blinks. Keys you hold
+    /** Pitch mode. Running: one red light moves across the white keys in
+     *  tempo, on the step playing (dim for a tie, dark for a rest). Step
+     *  input: the steps entered so far, the last one whitened and the next
+     *  one blinking. Otherwise the keybed is just a keyboard. Keys you hold
      *  are blue. With CHOMPI held the black keys show what they do now. */
-    void DrawPitchMode(LedFrame& f, bool blink, int cur_step, bool step_lit) const
+    void DrawPitchMode(LedFrame& f, bool blink, int cur_step) const
     {
         const Pattern& pat   = m_->Current();
         const bool     input = StepInput();
-        if(m_->Running() || m_->Recording())
+        if(m_->Running() && cur_step >= 0)
+        {
+            const int k = WhiteOfStep(cur_step);
+            if(k >= 0)
+                f.key[k] = NoteColour(pat.steps[cur_step], false);
+        }
+        else if(input)
             ForEachShownStep(
                 [&](int step) {
                     Rgb c = NoteColour(pat.steps[step], step >= pat.length);
-                    if(input && step == cursor_ - 1 && pat.steps[step].on)
+                    if(step == cursor_ - 1 && pat.steps[step].on)
                         c = Whiten(c, 0.25f);
-                    if(input && step == cursor_ && blink)
+                    if(step == cursor_ && blink)
                         c = {.4f, .4f, .4f};
-                    if(step_lit && cur_step == step)
-                        c = {1.f, 1.f, 1.f};
                     return c;
                 },
                 f);
@@ -838,15 +848,16 @@ class Ui
         }
     }
 
-    /** Transpose mode: C#4 and the key of the transpose amount in yellow,
-     *  middle C (none) dim white. */
+    /** Transpose mode: C#4 dim yellow, middle C (none) dim white, and the
+     *  key of the transpose amount bright yellow, drawn last so C#4 is
+     *  bright too when it is the amount. */
     void DrawTranspose(LedFrame& f) const
     {
         f.key[kMiddleC]      = {.15f, .15f, .15f};
+        f.key[kKeyTranspose] = Scale(kTransposeColour, 0.12f);
         const int t          = kMiddleC + m_->Transpose();
         if(t >= 0 && t < kKeyNotes)
             f.key[t] = kTransposeColour;
-        f.key[kKeyTranspose] = Scale(kTransposeColour, 0.12f); // dim: the amount is the bright key
     }
 
     /** Each knob in its page's colour, brightness = the value it turns (the
@@ -883,7 +894,8 @@ class Ui
     int      half_     = 0;
     int      cursor_   = 0;
     bool     chompi_   = false;
-    bool     transpose_mode_ = false;
+    bool     transpose_mode_   = false;
+    bool     transpose_chosen_ = false; // step mode: a key was picked this time round
     int      knob_page_[4] = {};
     int      kbd_octave_   = 0; // pitch mode's live keyboard: -1, 0, +1
     int      sounding_note_[kKeyNotes] = {};

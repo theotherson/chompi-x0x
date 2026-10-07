@@ -48,7 +48,7 @@ class Voice
     void Reset()
     {
         phase_ = 0.f;
-        s1_ = s2_ = s3_ = y3_ = 0.f;
+        s1_ = s2_ = s3_ = y3_ = fb_hp_ = 0.f;
         fenv_ = aenv_ = acc_cap_ = 0.f;
         gate_ = accent_ = sliding_ = false;
     }
@@ -94,8 +94,12 @@ class Voice
         const float acc_charge = TauToCoef(0.012f, sr_);
         const float acc_drain  = TauToCoef(0.08f + 0.35f * p.resonance, sr_);
         const float k          = 7.2f * p.resonance;       // loop gain; 8 would self-oscillate
+        // A high-pass in the resonance loop, as on the 303: the resonance
+        // thins out as the cutoff gets very low, instead of ringing between
+        // the note's harmonics (which sounds like a detuning radio).
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
         const float sr2        = 2.f * sr_;
+        const float fb_hp      = TauToCoef(1.f / (2.f * kPi * 110.f), sr2);
 
         for(size_t i = 0; i < n; i++)
         {
@@ -139,7 +143,8 @@ class Voice
             for(int os = 0; os < 2; os++)
             {
                 // Feedback from the last output (a one-sample delay at 2x).
-                const float in = FastTanh(x - k * y3_);
+                fb_hp_ += (y3_ - fb_hp_) * fb_hp;
+                const float in = FastTanh(x - k * (y3_ - fb_hp_));
                 const float y1 = Stage(in, G, s1_);
                 const float y2 = Stage(y1, G, s2_);
                 y3_            = Stage(y2, G, s3_);
@@ -198,7 +203,7 @@ class Voice
     float phase_   = 0.f;
     float pitch_   = 36.f;
     float target_  = 36.f;
-    float s1_ = 0.f, s2_ = 0.f, s3_ = 0.f, y3_ = 0.f;
+    float s1_ = 0.f, s2_ = 0.f, s3_ = 0.f, y3_ = 0.f, fb_hp_ = 0.f;
     float fenv_    = 0.f;
     float aenv_    = 0.f;
     float acc_cap_ = 0.f;
