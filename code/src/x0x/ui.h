@@ -62,7 +62,8 @@
  *    CHOMPI + A#4, note entry      a rest
  *
  *  Knobs: clicking knobs 1-4 flips each between two pages; CHOMPI + click
- *  resets both functions of the knob's page to their defaults. The big
+ *  resets both functions of the knob's page to their defaults (knob 4: all
+ *  the effects, every page). The big
  *  knob's click is tap tempo. See params.h kKnobMap for what each turns.
  */
 #pragma once
@@ -271,10 +272,14 @@ class Ui
     {
         if(chompi_)
         {
-            // Both functions of this knob's page back to their defaults.
+            // Both functions of this knob's page back to their defaults;
+            // for knob 4 (the effects) every page at once.
+            const int first = knob == 3 ? 0 : KnobPage(knob);
+            const int last  = knob == 3 ? kKnobPages[3] - 1 : KnobPage(knob);
+            for(int page = first; page <= last; page++)
             for(int layer = 0; layer < 2; layer++)
             {
-                const uint8_t sel = kKnobMap[knob][KnobPage(knob)][layer];
+                const uint8_t sel = kKnobMap[knob][page][layer];
                 if(sel == kKnobLength)
                 {
                     m_->SetLength(kSteps);

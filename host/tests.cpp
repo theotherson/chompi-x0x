@@ -724,6 +724,14 @@ static void TestStepModeExtras()
     r.ui.KnobTurn(0, -4, false);
     r.ui.Chompi(true), r.ui.KnobClick(0, r.now), r.ui.Chompi(false);
     CHECK(r.m.Current().length == 16);
+    // Knob 4: CHOMPI + click resets every effect, whatever page it's on.
+    for(Param fx : {DELAY, DELAY_TIME, DELAY_FB, DELAY_TONE, MOD, MOD_WIDTH, CRUSH, CRUSH_RATE})
+        r.m.SetParam(fx, kParams[fx].def < 0.5f ? 0.9f : 0.1f);
+    r.ui.KnobClick(3, r.now), r.ui.KnobClick(3, r.now); // page 3
+    r.ui.Chompi(true), r.ui.KnobClick(3, r.now), r.ui.Chompi(false);
+    for(Param fx : {DELAY, DELAY_TIME, DELAY_FB, DELAY_TONE, MOD, MOD_WIDTH, CRUSH, CRUSH_RATE})
+        CHECK(r.m.settings.params[fx] == kParams[fx].def);
+    CHECK(r.ui.KnobPage(3) == 2); // the page stays where it was
     r.ui.Chompi(true), r.ui.KnobClick(4, r.now), r.ui.Chompi(false); // big knob: no tap, reset
     CHECK(r.m.settings.params[CUTOFF] == kParams[CUTOFF].def);
 

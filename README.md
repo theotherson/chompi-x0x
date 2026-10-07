@@ -69,7 +69,7 @@ The step lights only show while the pattern plays or you're recording; otherwise
 
 Turning the pattern length (knob 1, page 2), in either mode, shows it on the white keys for a moment: every step within the length dim white, the last one bright.
 
-Click knobs 1-4 to step through their pages (knob 4 has four); each page has its own colour, and a knob never goes darker than a fifth, so you can always see which page it's on. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16).
+Click knobs 1-4 to step through their pages (knob 4 has four); each page has its own colour, and a knob never goes darker than a fifth, so you can always see which page it's on. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page.
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
