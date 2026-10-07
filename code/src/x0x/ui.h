@@ -860,8 +860,13 @@ class Ui
         else if(input)
             ForEachShownStep(
                 [&](int step) {
-                    Rgb c = NoteColour(pat.steps[step], step >= pat.length);
-                    if(step == cursor_ - 1 && pat.steps[step].on)
+                    const Step& st = pat.steps[step];
+                    Rgb         c  = NoteColour(st, step >= pat.length);
+                    // Rests entered show dim grey (the one just entered
+                    // brighter), so a rest is seen to go in.
+                    if(!st.on && step < cursor_)
+                        c = step == cursor_ - 1 ? Rgb{.3f, .3f, .3f} : Rgb{.06f, .06f, .06f};
+                    if(step == cursor_ - 1 && st.on)
                         c = Whiten(c, 0.25f);
                     if(step == cursor_ && blink)
                         c = {.4f, .4f, .4f};

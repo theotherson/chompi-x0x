@@ -501,6 +501,13 @@ static void TestStepInput()
     CHECK(!r.S(4).on);
     CHECK(r.m.Current().length == 5);
     CHECK(r.ui.KeyboardOctave() == 0);
+    {
+        // The rest just entered shows grey on its key.
+        LedFrame f;
+        r.ui.Draw(f, 0); // a moment when the next-step blink is off
+        const Rgb c = f.key[Ui::kWhite[4]];
+        CHECK(c.r > 0.2f && c.r == c.g && c.g == c.b);
+    }
     // CHOMPI + D#4 switches the view of steps 1-8 / 9-16.
     const bool second = r.ui.SecondHalf();
     r.ui.Chompi(true), r.Key(Ui::kKeyView), r.ui.Chompi(false);
