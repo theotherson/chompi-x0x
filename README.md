@@ -28,7 +28,7 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | Hold CHOMPI | The keybed becomes a two-octave keyboard (C3-C5): the key you press is the selected step's note, and the step turns on. The selected step flashes |
 | Black C#3 / D#3 (keys 1-2) | Octave DOWN / UP page |
 | Black F#3 / G#3 / A#3 (keys 3-5) | ACCENT / SLIDE / TIE page |
-| Black C#4 (key 6) | Transpose mode on/off: while on, any key sets the transpose (middle C = none), lit yellow |
+| Black C#4 (key 6) | Transpose mode: every key sets the transpose (middle C = none; C#4 itself = +1), its key lit yellow; the white keys show only the playhead. Hold C#4 for 2 s to leave (the hold doesn't change the transpose) |
 | Black D#4 (key 7) | View steps 1-8 / 9-16 |
 | Black F#4 (key 8) | PATTERN page: the step keys pick pattern 1-16 |
 | Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that pattern number |
@@ -82,7 +82,7 @@ Click knobs 1-4 to step through their pages (knob 4 has four); each page has its
 | Big purple | Cutoff | Resonance | | |
 | Volume | Volume | Drive (light orange to red) | | |
 
-The two lights above the big purple knob alternate yellow on each beat (locked to the pattern while it runs, at the tempo while stopped); the side on the beat flashes red when a note is recorded. For a moment after you turn cutoff or resonance they show that value instead. PLAY is green while running; the transpose mode key (C#4) is peach, the transpose amount yellow.
+The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, alternating sides, on steps 1, 5, 9 and 13; the side of the current beat flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is green while running; the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
 
 Big purple knob click: tap tempo. Volume knob click: stop any stuck live notes.
 
