@@ -123,7 +123,8 @@ class Panel
         for(int k = 0; k < 6; k++)
         {
             SetPthLedFloat(kKnobLed[k], f.knob[k].r, f.knob[k].g, f.knob[k].b);
-            SetPthLedFloat(kKnobLed2[k], f.knob[k].r, f.knob[k].g, f.knob[k].b);
+            const x0x::Rgb& c2 = k == 4 ? f.big_right : f.knob[k]; // the big knob has two LEDs
+            SetPthLedFloat(kKnobLed2[k], c2.r, c2.g, c2.b);
         }
         SetPthLedFloat(kLedChompi, f.chompi.r, f.chompi.g, f.chompi.b);
         SetPthLedFloat(kLedPlay, f.play.r, f.play.g, f.play.b);

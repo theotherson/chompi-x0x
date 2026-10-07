@@ -810,6 +810,58 @@ static void TestLengthShown()
     }
 }
 
+static void TestShortcutsAndLights()
+{
+    printf("CHOMPI + PLAY / LOOP for the arp, beat lights, colours\n");
+    Rig r;
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.Chompi(true);
+    r.ui.Play(); // arp on, transport untouched
+    CHECK(r.m.ArpOn() && !r.m.Running());
+    r.ui.LoopDown(r.now), r.ui.LoopUp(r.now); // latch, record untouched
+    CHECK(r.m.ArpLatch() && !r.m.Recording());
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.play.b > 0.9f && f.play.r == 0.f);   // cyan: arp on
+    CHECK(f.loop.r > 0.9f && f.loop.b == 0.f);   // orange: latched
+    r.ui.Play(), r.ui.LoopDown(r.now), r.ui.LoopUp(r.now);
+    CHECK(!r.m.ArpOn() && !r.m.ArpLatch());
+    r.ui.Chompi(false);
+
+    // Running: PLAY green; the big knob's LEDs alternate yellow by beat.
+    DemoPattern(r.m.patterns[0]);
+    r.ui.Play();
+    r.Run(100);
+    r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    CHECK(f.play.g > 0.f && f.play.r == 0.f);
+    const bool left_first = f.knob[4].r > 0.9f && f.knob[4].g > 0.5f;
+    CHECK(left_first && f.big_right.r == 0.f);
+    r.Run(500); // the next beat
+    r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.9f);
+
+    // A recorded note flashes the beat side red.
+    r.ui.Loop(r.now); // record on
+    r.ui.KeyDown(5, r.now), r.ui.KeyUp(5, r.now);
+    r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    const Rgb beat_led = f.knob[4].r > 0.f ? f.knob[4] : f.big_right;
+    CHECK(beat_led.r > 0.9f && beat_led.g == 0.f);
+
+    // Turning cutoff shows cutoff on both, for a moment.
+    r.ui.KnobTurn(4, 1, false);
+    r.ui.Draw(f, r.now);
+    CHECK(f.knob[4].b > 0.f && f.big_right.b > 0.f);
+    r.Run(1300);
+    r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    CHECK(f.knob[4].b == 0.f && f.big_right.b == 0.f);
+
+    // Transpose mode key: peach, not yellow.
+    r.ui.SetMode(Ui::Mode::STEP);
+    r.ui.Draw(f, r.now);
+    const Rgb t = f.key[Ui::kKeyTranspose];
+    CHECK(t.r > 0.f && t.b > 0.f && t.g < t.r * 0.5f);
+}
+
 static void TestLivePlayhead()
 {
     printf("pitch mode: one red light moving in tempo, dark on rests\n");
@@ -946,6 +998,7 @@ int main()
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
+    TestShortcutsAndLights();
     TestLengthShown();
     TestArpTranspose();
     TestLiveLights();

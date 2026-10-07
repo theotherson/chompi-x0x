@@ -84,6 +84,10 @@ class Machine
     /** Counts steps as they play, for the LEDs. */
     uint32_t StepCount() const { return step_count_; }
 
+    /** Counts notes recorded in real time (keys or the arpeggiator), for
+     *  the LEDs. */
+    uint32_t RecordCount() const { return record_count_; }
+
     // ------------------------------------------------------------ patterns
 
     int CurrentPattern() const { return settings.pattern; }
@@ -612,6 +616,7 @@ class Machine
         s.on     = true;
         s.nudge  = static_cast<uint8_t>(nudge);
         pattern_changes++;
+        record_count_++;
     }
 
     void PushMidi(uint8_t a, int b = -1, int c = -1)
@@ -658,6 +663,7 @@ class Machine
     int         queued_     = -1;
     int         voice_note_ = -1;
     uint32_t    step_count_ = 0;
+    uint32_t    record_count_ = 0;
 
     int  live_[kLive];
     int  live_count_ = 0;

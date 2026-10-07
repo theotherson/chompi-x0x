@@ -83,6 +83,7 @@ struct LedFrame
 {
     Rgb key[kKeyNotes];
     Rgb knob[6];
+    Rgb big_right; // the big knob's second LED (knob[4] is its first)
     Rgb play, loop, chompi;
 };
 
@@ -185,12 +186,24 @@ class Ui
         }
     }
 
-    void Play() { m_->TogglePlay(); }
+    /** PLAY: run / stop. CHOMPI + PLAY: arpeggiator on / off. */
+    void Play()
+    {
+        if(chompi_)
+            m_->SetArpOn(!m_->ArpOn());
+        else
+            m_->TogglePlay();
+    }
 
     /** LOOP pressed. Step mode: tap tempo. Pitch mode: record on/off when
      *  let go, unless held 2 s, which clears the pattern instead. */
     void LoopDown(uint32_t now)
     {
+        if(chompi_)
+        {
+            m_->SetArpLatch(!m_->ArpLatch()); // CHOMPI + LOOP: arpeggiator latch
+            return;
+        }
         if(mode_ == Mode::STEP)
         {
             m_->Tap(now);
@@ -235,6 +248,8 @@ class Ui
             length_shown_at_ = last_tick_; // show it on the keys for a moment
             return;
         }
+        if(knob == 4)
+            big_turned_at_ = last_tick_; // its LEDs show cutoff / resonance for a moment
         const Param p     = static_cast<Param>(sel);
         const int   steps = kParams[p].steps;
         const float v     = m_->settings.params[p];
@@ -309,6 +324,12 @@ class Ui
             last_step_count_ = c;
             step_seen_at_    = now;
         }
+        const uint32_t rc = m_->RecordCount() + input_count_;
+        if(rc != last_record_count_)
+        {
+            last_record_count_ = rc;
+            rec_flash_at_      = now;
+        }
         const uint32_t a = m_->ArpNoteCount();
         if(a != last_arp_count_)
         {
@@ -344,11 +365,13 @@ class Ui
                 f.key[k] = {1.f, 0.f, 0.f};
 
         DrawKnobs(f);
+        DrawBeat(f, now);
 
+        // PLAY: green, pulsing each step, brighter on the beat.
         if(m_->Running())
         {
             const float b = step_lit ? (cur_step % 4 == 0 ? 1.f : 0.45f) : 0.08f;
-            f.play        = {b, b * .85f, 0.f};
+            f.play        = {0.f, b, b * .15f};
         }
         if(mode_ == Mode::STEP)
             f.loop = now - tapped_at_ < 100 ? Rgb{1.f, 1.f, 1.f} : Rgb{}; // tap tempo
@@ -360,6 +383,14 @@ class Ui
         }
         else if(m_->Recording())
             f.loop = m_->Running() && blink ? Rgb{1.f, 0.f, 0.f} : Rgb{.7f, 0.f, 0.f};
+        // CHOMPI held: PLAY shows the arpeggiator (cyan), LOOP its latch
+        // (orange).
+        if(chompi_)
+        {
+            f.play = Scale(kArpOnColour, m_->ArpOn() ? 1.f : 0.12f);
+            f.loop = Scale(kLatchColour, m_->ArpLatch() ? 1.f : 0.12f);
+        }
+
         if(chompi_)
             f.chompi = {1.f, 1.f, 1.f};
         else if(StepInput())
@@ -371,7 +402,11 @@ class Ui
     }
 
     static constexpr Rgb kRed             = {1.f, 0.f, 0.f};
-    static constexpr Rgb kTransposeColour = {1.f, .85f, 0.f};
+    static constexpr Rgb kTransposeColour    = {1.f, .85f, 0.f};  // the amount: yellow
+    static constexpr Rgb kTransposeKeyColour = {1.f, .35f, .3f};  // C#4, the mode key: peach
+    static constexpr Rgb kArpOnColour        = {0.f, .85f, 1.f};  // cyan
+    static constexpr Rgb kLatchColour        = {1.f, .45f, 0.f};  // orange
+    static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr Rgb kArpColour       = {0.f, 1.f, .7f};
     // Knob colours, page 1 and page 2.
     // Knob colours, by page.
@@ -645,6 +680,7 @@ class Ui
             return;
         m_->Current().steps[cursor_] = s;
         cursor_++;
+        input_count_++;
         half_ = cursor_ > 8 ? 1 : 0;
         m_->SetLength(cursor_);
     }
@@ -762,7 +798,7 @@ class Ui
         const Page pages[5] = {Page::DOWN, Page::UP, Page::ACCENT, Page::SLIDE, Page::TIE};
         for(int i = 0; i < 5; i++)
             f.key[kBlack[i]] = Scale(kPageColour[static_cast<int>(pages[i])], page_ == pages[i] ? 1.f : 0.1f);
-        f.key[kKeyTranspose] = Scale(kTransposeColour, 0.1f);
+        f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
         f.key[kKeyView]      = SecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         f.key[kKeyPattern]   = Scale(kPageColour[static_cast<int>(Page::PATTERN)], page_ == Page::PATTERN ? 1.f : 0.1f);
         f.key[kKeyCopy]      = held_[kKeyCopy] ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
@@ -824,7 +860,7 @@ class Ui
             const bool flags = input || (m_->Recording() && m_->Running());
             for(int i = 2; i < 5 && flags; i++)
                 f.key[kBlack[i]] = kPageColour[i + 1];
-            f.key[kKeyTranspose] = Scale(kTransposeColour, transpose_mode_ ? 0.12f : 0.5f);
+            f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 0.15f : 0.6f);
             f.key[kKeyView]      = {.5f, .5f, .5f};
             f.key[kBlack[7]]     = Scale(kArpColour, m_->ArpOn() ? 1.f : 0.1f);
             f.key[kBlack[8]]     = Scale(kArpColour, m_->ArpLatch() ? 1.f : 0.1f);
@@ -894,7 +930,7 @@ class Ui
     void DrawTranspose(LedFrame& f) const
     {
         f.key[kMiddleC]      = {.15f, .15f, .15f};
-        f.key[kKeyTranspose] = Scale(kTransposeColour, 0.12f);
+        f.key[kKeyTranspose] = Scale(kTransposeKeyColour, 0.15f);
         const bool arp       = mode_ == Mode::PITCH && m_->ArpOn();
         const int  t         = kMiddleC + (arp ? m_->ArpTranspose() : m_->Transpose());
         if(t >= 0 && t < kKeyNotes)
@@ -903,6 +939,31 @@ class Ui
 
     /** Each knob in its page's colour, brightness = the value it turns (the
      *  CHOMPI layer while CHOMPI is held). */
+    /** The big knob's two LEDs: they alternate on the beat in yellow (locked
+     *  to the pattern while it runs, at the tempo while stopped); the side
+     *  on the beat flashes red when a note is recorded. For a moment after
+     *  the knob turns they show cutoff / resonance instead. */
+    void DrawBeat(LedFrame& f, uint32_t now) const
+    {
+        if(now - big_turned_at_ < kShowValueMs)
+        {
+            f.big_right = f.knob[4];
+            return;
+        }
+        int beat;
+        if(m_->Running())
+            beat = m_->StepCount() > 0 ? static_cast<int>((m_->StepCount() - 1) / 4) : 0;
+        else
+        {
+            const uint32_t beat_ms = static_cast<uint32_t>(60000.f / m_->TempoBpmNow());
+            beat                   = static_cast<int>(now / (beat_ms > 0 ? beat_ms : 1));
+        }
+        const Rgb on   = now - rec_flash_at_ < 150 ? Rgb{1.f, 0.f, 0.f} : Rgb{1.f, .8f, 0.f};
+        const Rgb off  = {};
+        f.knob[4]      = beat % 2 == 0 ? on : off;
+        f.big_right    = beat % 2 == 0 ? off : on;
+    }
+
     void DrawKnobs(LedFrame& f) const
     {
         for(int k = 0; k < 6; k++)
@@ -950,6 +1011,10 @@ class Ui
     bool     clear_done_      = true;
     uint32_t cleared_at_      = 0x80000000u;
     uint32_t last_tick_       = 0;
+    uint32_t big_turned_at_   = 0x80000000u;
+    uint32_t rec_flash_at_    = 0x80000000u;
+    uint32_t last_record_count_ = 0;
+    uint32_t input_count_     = 0;
     uint32_t length_shown_at_ = 0x80000000u;
     uint32_t last_step_count_ = 0;
     uint32_t step_seen_at_    = 0;
@@ -964,6 +1029,9 @@ constexpr int Ui::kWhite[15];
 constexpr int Ui::kBlack[10];
 constexpr Rgb Ui::kRed;
 constexpr Rgb Ui::kTransposeColour;
+constexpr Rgb Ui::kTransposeKeyColour;
+constexpr Rgb Ui::kArpOnColour;
+constexpr Rgb Ui::kLatchColour;
 constexpr Rgb Ui::kArpColour;
 constexpr Rgb Ui::kKnobColour[6][kMaxKnobPages];
 constexpr Rgb Ui::kPageColour[7];

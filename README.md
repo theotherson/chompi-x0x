@@ -52,8 +52,8 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | CHOMPI + F#3 / G#3 / A#3 | Accent / slide / tie (see below) |
 | CHOMPI + C#4 | Transpose mode on/off: while on, keys set the transpose instead of playing (middle C = none). C#4 dims and the amount's key lights yellow |
 | CHOMPI + D#4 | View steps 1-8 / 9-16 |
-| CHOMPI + F#4 | Arpeggiator on/off (CHOMPI lit teal while on) |
-| CHOMPI + G#4 | Arpeggiator latch: keeps going after you let go; a fresh chord replaces it |
+| CHOMPI + PLAY (or CHOMPI + F#4) | Arpeggiator on/off. While CHOMPI is held, PLAY shows it: cyan on, dim cyan off (and CHOMPI is lit teal while it's on) |
+| CHOMPI + LOOP (or CHOMPI + G#4) | Arpeggiator latch (LOOP orange while CHOMPI is held and it's latched): keeps going after you let go; a fresh chord replaces it |
 | CHOMPI + A#4 | Step input: add a rest |
 
 The step lights only show while the pattern plays or you're recording; otherwise the keybed is just a keyboard.
@@ -81,6 +81,8 @@ Click knobs 1-4 to step through their pages (knob 3 has three, knob 4 four); eac
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction | | |
 | Big purple | Cutoff | Resonance | | |
 | Volume | Volume | Drive (light orange to red) | | |
+
+The two lights above the big purple knob alternate yellow on each beat (locked to the pattern while it runs, at the tempo while stopped); the side on the beat flashes red when a note is recorded. For a moment after you turn cutoff or resonance they show that value instead. PLAY is green while running; the transpose mode key (C#4) is peach, the transpose amount yellow.
 
 Big purple knob click: tap tempo. Volume knob click: stop any stuck live notes.
 
