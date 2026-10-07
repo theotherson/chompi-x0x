@@ -82,6 +82,12 @@ Click knobs 1-4 to step through their pages (knob 3 has three, knob 4 four); eac
 
 Big purple knob click: tap tempo. Volume knob click: stop any stuck live notes.
 
+## The voice
+
+One oscillator (saw, or square with pulse width) into the TB-303's 4-pole diode ladder low-pass, after Tim Stinchcombe's analysis of the 303 filter: four one-pole stages at 0.128, 1.04, 2.33 and 3.24 times the cutoff inside one resonance loop. The spread stages give the 303's slope (around 18 dB/octave above the cutoff, 24 only far above) and its broad resonance, which stops well short of self-oscillation; a high-pass in the loop and saturation at its input, run at twice the sample rate. Then a decay-only filter envelope and a gated amp envelope. Accent makes a step louder, gives the filter envelope its shortest decay, and charges an accent "capacitor" that drains slowly, so accents in a row build up. Slide holds the gate into the next step and glides there. Gates are half a step; ties and slides hold them.
+
+The resonance amount, cutoff range and envelope times are first estimates, to be fitted to recordings of a real TB-303.
+
 ## The effects
 
 In this order after the voice, each off at zero:
@@ -151,7 +157,7 @@ A CHOMPI that has never had the bootloader needs `bin/install_bootloader.sh` onc
 
 | Path | What |
 |---|---|
-| `code/src/x0x/voice.h` | The 303-style voice |
+| `code/src/x0x/voice.h` | The 303-style voice and its diode ladder filter |
 | `code/src/x0x/fx.h` | Bit crusher, doubler / chorus / flanger, delay |
 | `code/src/x0x/arp.h` | The arpeggiator |
 | `code/src/x0x/sequencer.h` | Step timing, gates, slides, ties, swing, clock |
