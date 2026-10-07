@@ -31,10 +31,7 @@ class Machine
     float max_loop_gain = VoiceParams{}.max_loop_gain;
     float stage_drive   = VoiceParams{}.stage_drive;
     float bass_makeup   = VoiceParams{}.bass_makeup;
-    float env_range     = kEnvRangeOct;
-    float env_curve     = kEnvCurve;
-    float env_shift     = kEnvShiftOct;
-    float ceiling_hz    = VoiceParams{}.ceiling_hz;
+    FilterFit filter_fit;
     float post_hp_hz    = VoiceParams{}.post_hp_hz;
 
     /** Bumped on every change, so the main loop can save a few seconds
@@ -389,12 +386,7 @@ class Machine
         vp_.stage_drive   = stage_drive;
         vp_.bass_makeup   = bass_makeup;
         vp_.post_hp_hz    = post_hp_hz;
-        {
-            const float e = settings.params[ENV_MOD];
-            vp_.env_oct    = env_range * powf(e, env_curve);
-            vp_.cutoff_hz  = RestingCutoffHz(settings.params[CUTOFF], e, env_shift);
-            vp_.ceiling_hz = ceiling_hz;
-        }
+        FilterToVoice(settings.params[CUTOFF], settings.params[ENV_MOD], filter_fit, vp_);
         seq_.SetSwing(settings.params[SWING]);
         const bool ext = ExternalClock();
         seq_.SetTempo(ext ? ext_bpm_ : TempoBpm(settings.params[TEMPO]));

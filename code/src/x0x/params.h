@@ -115,15 +115,6 @@ constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
-/** Env mod, fitted to a TB-303's sweeps: the envelope's depth follows the
- *  knob's 2.5th power (up to 5 octaves), so the bottom half does little and
- *  the top half a lot, and turning it up lowers the resting cutoff (half an
- *  octave across the knob). With the cutoff's ceiling (VoiceParams::
- *  ceiling_hz) a full sweep starts near the top and falls ~3 octaves. */
-constexpr float kEnvRangeOct = 5.f;
-constexpr float kEnvCurve    = 2.5f;
-constexpr float kEnvShiftOct = 0.5f;
-
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
 inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }
 
@@ -134,30 +125,42 @@ inline int QuantGridSteps(float v)
     return kGrid[StepIndex(v, 3)];
 }
 
-/** The cutoff knob, fitted to a TB-303's sweep: the bottom half moves
- *  under 2 octaves, the top half nearly 2.5, up into the ceiling. The
- *  bottom goes about an octave lower than the 303's. In the voice's units
- *  (it scales by Voice::kCutoffScale): 75 Hz, 275 Hz at 12 o'clock, 1.5 kHz. */
-inline float CutoffHz(float v)
+/** The cutoff and env mod knobs, fitted to a TB-303 (held notes and a
+ *  test line recorded off one, resonance at full):
+ *   - Cutoff sets where the sweep rests, in log2 Hz a + b v + c v^2 (in
+ *     the voice's units, before Voice::kCutoffScale).
+ *   - The filter envelope sweeps env_min + range * env^curve octaves: even
+ *     at env mod's minimum a 303 sweeps most of an octave.
+ *   - Env mod also lowers the resting cutoff, by `shift` of the depth it
+ *     adds: on a 303 the top of the sweep rises as the bottom falls.
+ *  Everything else (the decay's speed, why the resonance dies sooner the
+ *  lower the cutoff) follows from these. */
+struct FilterFit
 {
-    return FastExp2(6.23f + v * (3.19f + 1.14f * v));
-}
+    float cut_a   = 7.17f; // 144 Hz, 290 Hz at 12 o'clock, 1.5 kHz: the
+    float cut_b   = 0.68f; // bottom half moves 1 octave, the top half 2.4
+    float cut_c   = 2.72f;
+    float env_min = 0.46f; // octaves
+    float range   = 4.84f; // so 0.9 octave at 12 o'clock, 5.3 at full
+    float curve   = 3.34f;
+    float shift   = 0.28f;
+};
 
-/** The resting cutoff for the cutoff and env mod knobs. */
-inline float RestingCutoffHz(float cutoff, float env_mod, float shift_oct = kEnvShiftOct)
+inline void FilterToVoice(float cutoff, float env_mod, const FilterFit& f, VoiceParams& vp)
 {
-    return CutoffHz(cutoff) * FastExp2(-shift_oct * (env_mod - 0.5f));
+    const float added = f.range * powf(env_mod, f.curve);
+    vp.env_oct        = f.env_min + added;
+    vp.cutoff_hz      = FastExp2(f.cut_a + cutoff * (f.cut_b + f.cut_c * cutoff) - f.shift * added);
 }
 
 /** Knob values to the voice's units. */
 inline void ToVoiceParams(const float* p, VoiceParams& vp)
 {
-    vp.cutoff_hz   = RestingCutoffHz(p[CUTOFF], p[ENV_MOD]);
+    FilterToVoice(p[CUTOFF], p[ENV_MOD], FilterFit{}, vp);
     vp.resonance   = p[RESONANCE];
-    vp.env_oct     = kEnvRangeOct * powf(p[ENV_MOD], kEnvCurve);
     // Fitted to a TB-303: the filter sweep is 90 % done in ~175 ms at the
-    // shortest decay and ~2 s at the longest (decay_s is the time to 1 %).
-    vp.decay_s     = KnobToExp(p[DECAY], 0.35f, 4.0f);
+    // shortest decay and ~2.3 s at the longest (decay_s is the time to 1 %).
+    vp.decay_s     = KnobToExp(p[DECAY], 0.35f, 4.6f);
     vp.accent      = p[ACCENT];
     vp.tuning_st   = (p[TUNING] - 0.5f) * 2.f;
     vp.slide_s     = KnobToExp(p[SLIDE_TIME], 0.02f, 0.3f);
