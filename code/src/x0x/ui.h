@@ -42,11 +42,11 @@
  *    LOOP held 2 s                 clear the pattern
  *      running, record on          played notes go into the pattern
  *                                  (quantized or not: knob 3, page 2)
- *      stopped, record on          step input: each note fills the next step
+ *      stopped, record on          note entry: each note fills the next step
  *                                  and the pattern grows to it
  *    CHOMPI + C#3 / D#3            live keyboard octave down / up
  *    CHOMPI + F#3 / G#3 / A#3      accent / slide / tie: on the step playing
- *                                  now while recording; in step input accent
+ *                                  now while recording; in note entry accent
  *                                  and slide on the last step, A#3 adds a tie
  *    CHOMPI + C#4                  transpose mode on/off: transposes the
  *                                  arpeggio while the arpeggiator is on, the
@@ -59,7 +59,7 @@
  *                                  chord, 0-2 each (white keys 1-5 show it)
  *    CHOMPI + G#4                  arpeggiator pattern: up, down, up-down,
  *                                  random, as played
- *    CHOMPI + A#4, step input      a rest
+ *    CHOMPI + A#4, note entry      a rest
  *
  *  Knobs: clicking knobs 1-4 flips each between two pages; CHOMPI + click
  *  resets both functions of the knob's page to their defaults. The big
@@ -130,7 +130,7 @@ class Ui
     int  Selected() const { return selected_; }
     int  KnobPage(int knob) const { return knob < 4 ? knob_page_[knob] : 0; }
     int  KeyboardOctave() const { return kbd_octave_; }
-    bool StepInput() const { return mode_ == Mode::PITCH && m_->Recording() && !m_->Running(); }
+    bool NoteEntry() const { return mode_ == Mode::PITCH && m_->Recording() && !m_->Running(); }
     int  Cursor() const { return cursor_; }
     bool TransposeMode() const { return transpose_mode_; }
 
@@ -228,7 +228,7 @@ class Ui
         const bool arm = !m_->Recording();
         m_->SetRecording(arm);
         if(arm && !m_->Running())
-            cursor_ = 0; // step input starts at step 1
+            cursor_ = 0; // note entry starts at step 1
     }
 
     /** A tap of LOOP (press and release). */
@@ -398,7 +398,7 @@ class Ui
 
         if(chompi_)
             f.chompi = {1.f, 1.f, 1.f};
-        else if(StepInput())
+        else if(NoteEntry())
             f.chompi = {.6f, 0.f, .5f};
         else if(mode_ == Mode::STEP)
             f.chompi = {.5f, 0.f, 0.f};
@@ -586,8 +586,8 @@ class Ui
                 case 2:
                 case 3:
                 case 4:
-                    if(StepInput())
-                        StepInputCommand(BlackIndex(k));
+                    if(NoteEntry())
+                        NoteEntryCommand(BlackIndex(k));
                     else if(m_->Recording() && m_->Running())
                         LiveFlag(BlackIndex(k));
                     break;
@@ -596,8 +596,8 @@ class Ui
                 case 7: CycleParam(ARP_OCT_DOWN, 3), arp_shown_ = kShowOctaves; break;
                 case 8: CycleParam(ARP_MODE, 5), arp_shown_ = kShowPattern; break;
                 case 9:
-                    if(StepInput())
-                        Append(Step{}); // a rest (the arpeggiator doesn't run in step input)
+                    if(NoteEntry())
+                        Append(Step{}); // a rest (the arpeggiator doesn't run in note entry)
                     else
                         CycleParam(ARP_OCT_UP, 3), arp_shown_ = kShowOctaves;
                     break;
@@ -616,7 +616,7 @@ class Ui
             return;
         }
         Sound(k, true);
-        if(StepInput())
+        if(NoteEntry())
         {
             Step s;
             s.note   = static_cast<uint8_t>(k);
@@ -626,9 +626,9 @@ class Ui
         }
     }
 
-    /** Step input with CHOMPI held: F#3 accent and G#3 slide on the last
+    /** Note entry with CHOMPI held: F#3 accent and G#3 slide on the last
      *  step, A#3 a tie step. */
-    void StepInputCommand(int b)
+    void NoteEntryCommand(int b)
     {
         Pattern&  pat  = m_->Current();
         const int last = cursor_ - 1;
@@ -689,7 +689,7 @@ class Ui
         m_->PatternEdited();
     }
 
-    /** Step input: writes the next step, and the pattern grows to it. */
+    /** Note entry: writes the next step, and the pattern grows to it. */
     void Append(const Step& s)
     {
         if(cursor_ >= kSteps)
@@ -850,7 +850,7 @@ class Ui
     void DrawPitchMode(LedFrame& f, bool blink, int cur_step) const
     {
         const Pattern& pat   = m_->Current();
-        const bool     input = StepInput();
+        const bool     input = NoteEntry();
         if(m_->Running() && cur_step >= 0)
         {
             const int k = WhiteOfStep(cur_step);

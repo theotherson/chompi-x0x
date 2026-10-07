@@ -425,7 +425,7 @@ static void TestRealtimeRecording()
 
     r.ui.Play(); // running, then record
     r.ui.Loop(r.now);
-    CHECK(r.m.Recording() && !r.ui.StepInput());
+    CHECK(r.m.Recording() && !r.ui.NoteEntry());
     r.Run(10); // early in step 1
     r.ui.KeyDown(3, r.now), r.Run(5), r.ui.KeyUp(3, r.now);
     CHECK(r.S(0).on && r.S(0).note == 3 && r.S(0).nudge == 0);
@@ -473,14 +473,14 @@ static void TestRealtimeRecording()
     CHECK(!r.m.Recording());
 }
 
-static void TestStepInput()
+static void TestNoteEntry()
 {
-    printf("pitch mode: step input, keyboard octave, LOOP hold clears\n");
+    printf("pitch mode: note entry, keyboard octave, LOOP hold clears\n");
     Rig r;
     DemoPattern(r.m.patterns[0]);
     r.ui.SetMode(Ui::Mode::PITCH);
-    r.ui.Loop(r.now); // stopped + record = step input
-    CHECK(r.ui.StepInput() && r.ui.Cursor() == 0);
+    r.ui.Loop(r.now); // stopped + record = note entry
+    CHECK(r.ui.NoteEntry() && r.ui.Cursor() == 0);
     r.Key(0), r.Key(7);
     r.ui.Chompi(true), r.Black(1), r.ui.Chompi(false); // keyboard up an octave
     CHECK(r.ui.KeyboardOctave() == 1);
@@ -594,7 +594,7 @@ static void TestArp()
 
     // CHOMPI + G#4: pattern; F#4 / A#4: octaves down / up, cycling 0-2.
     r.ui.Play(); // stop
-    r.ui.Loop(r.now); // record off (step input is where A#4 adds rests)
+    r.ui.Loop(r.now); // record off (note entry is where A#4 adds rests)
     r.ui.Chompi(true);
     r.Key(Ui::kBlack[8]);
     CHECK(StepIndex(r.m.settings.params[ARP_MODE], 5) == 1);
@@ -1030,7 +1030,7 @@ int main()
     TestPagesCopyClear();
     TestKnobPages();
     TestRealtimeRecording();
-    TestStepInput();
+    TestNoteEntry();
     TestStepModeExtras();
     TestArp();
     TestTransposeC();

@@ -54,16 +54,16 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | CHOMPI + D#4 | View steps 1-8 / 9-16 |
 | CHOMPI + PLAY | Arpeggiator on/off. While CHOMPI is held, PLAY shows it: cyan on, dim cyan off (and CHOMPI is lit teal while it's on) |
 | CHOMPI + LOOP | Arpeggiator latch (LOOP orange while CHOMPI is held and it's latched): keeps going after you let go; a fresh chord replaces it |
-| CHOMPI + F#4 / A#4 | Arpeggiator octaves below / above the chord, 0-2 each, cycling. White keys 1-5 show them for a moment (octaves -2 to +2, the chord's own bright). In step input, CHOMPI + A#4 adds a rest instead |
+| CHOMPI + F#4 / A#4 | Arpeggiator octaves below / above the chord, 0-2 each, cycling. White keys 1-5 show them for a moment (octaves -2 to +2, the chord's own bright). In note entry, CHOMPI + A#4 adds a rest instead |
 | CHOMPI + G#4 | Arpeggiator pattern: up, down, up-down, random, as played, cycling (white keys 1-5 show which) |
 
 The step lights only show while the pattern plays or you're recording; otherwise the keybed is just a keyboard.
 
 **Recording while running.** A played note goes into the pattern; a note held across steps ties through them. With quantize on (knob 3, page 2) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat. CHOMPI + F#3 / G#3 / A#3 toggle accent, slide or tie on the step playing now. For octave jumps, shift the keyboard with CHOMPI + C#3 / D#3 and play.
 
-**Step input (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step (in the keyboard's octave), its white key lights up, and the pattern grows to it. CHOMPI + F#3 / G#3 put an accent / slide on the last step, CHOMPI + A#3 adds a tie step, CHOMPI + A#4 a rest (rests you've entered show dim grey, the one just entered brighter). Press PLAY with record still on to carry on recording in real time.
+**Note entry (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step (in the keyboard's octave), its white key lights up, and the pattern grows to it. CHOMPI + F#3 / G#3 put an accent / slide on the last step, CHOMPI + A#3 adds a tie step, CHOMPI + A#4 a rest (rests you've entered show dim grey, the one just entered brighter). Press PLAY with record still on to carry on recording in real time.
 
-**Arpeggiator.** With it on, the keys you hold are played one at a time in sixteenths at the tempo: up, down, up-down, random or as played, from up to two octaves below the chord to two above (CHOMPI + F#4 / A#4), in the pattern set with CHOMPI + G#4. While the pattern runs it locks to the pattern's steps (and swing), and the pattern is silent while it plays; with record on, the arpeggio is written into the steps. In step input the keys go into the steps as usual.
+**Arpeggiator.** With it on, the keys you hold are played one at a time in sixteenths at the tempo: up, down, up-down, random or as played, from up to two octaves below the chord to two above (CHOMPI + F#4 / A#4), in the pattern set with CHOMPI + G#4. While the pattern runs it locks to the pattern's steps (and swing), and the pattern is silent while it plays; with record on, the arpeggio is written into the steps. In note entry the keys go into the steps as usual.
 
 ## Knobs
 
@@ -148,7 +148,7 @@ host/tests
 mkdir -p host/out && host/render host/out
 ```
 
-`tests` checks sequencer timing to the sample, slides, ties, nudged steps, swing, the external clock, pattern queueing, the shared middle C, every step-mode and pitch-mode panel behaviour, real-time recording with each quantize setting, step input, the knob pages, tap tempo and the file formats. `render` writes demo patterns (saw, square, pulse width, accents building up, slides, each effect, swing) and checks they stay finite and in range.
+`tests` checks sequencer timing to the sample, slides, ties, nudged steps, swing, the external clock, pattern queueing, the shared middle C, every step-mode and pitch-mode panel behaviour, real-time recording with each quantize setting, note entry, the knob pages, tap tempo and the file formats. `render` writes demo patterns (saw, square, pulse width, accents building up, slides, each effect, swing) and checks they stay finite and in range.
 
 ## Flashing
 

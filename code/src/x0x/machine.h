@@ -197,7 +197,7 @@ class Machine
     int        ArpLastSource() const { return arp_last_source_; }
     void SetArpLatch(bool on) { arp_.SetLatch(on); }
 
-    /** Live notes go to the arpeggiator when it's on, except in step input
+    /** Live notes go to the arpeggiator when it's on, except in note entry
      *  (record armed, stopped), where each key is a step. */
     bool ArpEngaged() const { return ArpOn() && !(recording_ && !Running()); }
 
