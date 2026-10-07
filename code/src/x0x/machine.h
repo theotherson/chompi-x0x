@@ -30,6 +30,9 @@ class Machine
      *  desktop can compare versions). */
     float max_loop_gain = VoiceParams{}.max_loop_gain;
     float stage_drive   = VoiceParams{}.stage_drive;
+    float bass_makeup   = VoiceParams{}.bass_makeup;
+    float env_range     = kEnvRangeOct; // octaves the filter envelope opens at full env mod
+    float post_hp_hz    = VoiceParams{}.post_hp_hz;
 
     /** Bumped on every change, so the main loop can save a few seconds
      *  after the last one. */
@@ -381,6 +384,9 @@ class Machine
         ToVoiceParams(settings.params, vp_);
         vp_.max_loop_gain = max_loop_gain;
         vp_.stage_drive   = stage_drive;
+        vp_.bass_makeup   = bass_makeup;
+        vp_.post_hp_hz    = post_hp_hz;
+        vp_.env_oct       = env_range * settings.params[ENV_MOD];
         seq_.SetSwing(settings.params[SWING]);
         const bool ext = ExternalClock();
         seq_.SetTempo(ext ? ext_bpm_ : TempoBpm(settings.params[TEMPO]));

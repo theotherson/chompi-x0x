@@ -115,6 +115,11 @@ constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
+/** Octaves the filter envelope opens the cutoff at full env mod: 3, fitted
+ *  to a TB-303 (at cutoff 12 o'clock its sweep peaks around 3.5 kHz; 5 put
+ *  far too much energy at 4-8 kHz). */
+constexpr float kEnvRangeOct = 3.f;
+
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
 inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }
 
@@ -130,7 +135,7 @@ inline void ToVoiceParams(const float* p, VoiceParams& vp)
 {
     vp.cutoff_hz   = KnobToExp(p[CUTOFF], 40.f, 4000.f);
     vp.resonance   = p[RESONANCE];
-    vp.env_oct     = 5.f * p[ENV_MOD];
+    vp.env_oct     = kEnvRangeOct * p[ENV_MOD];
     // Fitted to a TB-303: the filter sweep is 90 % done in ~175 ms at the
     // shortest decay and ~2 s at the longest (decay_s is the time to 1 %).
     vp.decay_s     = KnobToExp(p[DECAY], 0.35f, 4.0f);

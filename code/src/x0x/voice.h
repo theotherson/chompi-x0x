@@ -42,6 +42,9 @@ struct VoiceParams
     float pulse_width = 0.5f; // square only: 0.05..0.95
     float max_loop_gain = 15.3f; // resonance at full: 90 % of self-oscillation (17)
     float stage_drive   = 0.75f; // gentle saturation inside the ladder's stages
+    float bass_makeup   = 0.5f;  // level given back for the bass resonance takes (x k)
+    float post_hp_hz    = 120.f; // high-pass after the filter: the 303's coupling caps lose bass
+                                 // (fitted: a TB-303's C1 sits 5-9 dB under its C3), 0 = off
 };
 
 /** The TB-303's diode ladder (see the file comment): four one-pole
@@ -214,6 +217,7 @@ class Voice
         // jump there is a click.
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
         const float acc_glide  = TauToCoef(0.002f, sr_);
+        const float post_hp    = p.post_hp_hz > 0.f ? TauToCoef(1.f / (2.f * kPi * p.post_hp_hz), sr_) : 0.f;
 
         for(size_t i = 0; i < n; i++)
         {
@@ -263,9 +267,14 @@ class Voice
             // Make up some of the level resonance takes (a ladder's gain at
             // low frequencies is 1 / (1 + k)); the rest of the bass loss is
             // the 303's own.
-            y *= 0.4f * (1.f + 0.5f * k); // (0.4: headroom for the resonant peaks)
+            y *= 0.4f * (1.f + p.bass_makeup * k); // (0.4: headroom for the resonant peaks)
 
             acc_amp_ += (amp_acc - acc_amp_) * acc_glide;
+            if(post_hp > 0.f) // +2 dB back for the bass it takes
+            {
+                post_lp_ += (y - post_lp_) * post_hp;
+                y = 1.25f * (y - post_lp_);
+            }
             out[i] += y * aenv_ * acc_amp_ * 0.5f;
         }
     }
@@ -315,6 +324,7 @@ class Voice
     float aenv_    = 0.f;
     float acc_cap_ = 0.f;
     float acc_amp_ = 1.f;
+    float post_lp_ = 0.f;
     bool  gate_    = false;
     bool  amp_on_  = false;
     bool  accent_  = false;
