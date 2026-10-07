@@ -43,6 +43,8 @@ struct VoiceParams
     float max_loop_gain = 15.3f; // resonance at full: 90 % of self-oscillation (17)
     float stage_drive   = 0.75f; // gentle saturation inside the ladder's stages
     float bass_makeup   = 0.5f;  // level given back for the bass resonance takes (x k)
+    float ceiling_hz    = 5500.f; // the cutoff's soft ceiling (after kCutoffScale), 0 = none:
+                                  // a TB-303's tops out with its resonance near 4.5 kHz
     float post_hp_hz    = 120.f; // high-pass after the filter: the 303's coupling caps lose bass
                                  // (fitted: a TB-303's C1 sits 5-9 dB under its C3), 0 = off
 };
@@ -150,6 +152,14 @@ class Voice
     static constexpr float kMaxLoopGain = 15.3f;
     /** The cutoff knob's frequency to the ladder's cutoff: the resonant
      *  peak lands where the earlier filter's did. */
+    /** Octaves x pressed softly against a ceiling c: untouched up to an
+     *  octave below it, then bending over to approach it. */
+    static float SoftCeiling(float x, float c)
+    {
+        const float d = x - (c - 1.f);
+        return d <= 0.f ? x : c - 1.f + d / (1.f + d);
+    }
+
     static constexpr float kCutoffScale = 1.6f;
 
     void Init(float sample_rate)
@@ -218,6 +228,8 @@ class Voice
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
         const float acc_glide  = TauToCoef(0.002f, sr_);
         const float post_hp    = p.post_hp_hz > 0.f ? TauToCoef(1.f / (2.f * kPi * p.post_hp_hz), sr_) : 0.f;
+        const float base_oct   = log2f(p.cutoff_hz * kCutoffScale);
+        const float ceil_oct   = p.ceiling_hz > 0.f ? log2f(p.ceiling_hz) : 100.f;
 
         for(size_t i = 0; i < n; i++)
         {
@@ -251,8 +263,8 @@ class Voice
             if(coef_count_-- <= 0)
             {
                 coef_count_     = 3;
-                const float oct = p.env_oct * fenv_ + 3.f * p.accent * acc_cap_;
-                ladder_.SetCutoff(p.cutoff_hz * kCutoffScale * FastExp2(oct));
+                const float oct = base_oct + p.env_oct * fenv_ + 3.f * p.accent * acc_cap_;
+                ladder_.SetCutoff(FastExp2(SoftCeiling(oct, ceil_oct)));
             }
 
             const float x = Osc(inc, p.square, p.pulse_width);

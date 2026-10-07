@@ -115,10 +115,14 @@ constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
-/** Octaves the filter envelope opens the cutoff at full env mod: 3, fitted
- *  to a TB-303 (at cutoff 12 o'clock its sweep peaks around 3.5 kHz; 5 put
- *  far too much energy at 4-8 kHz). */
-constexpr float kEnvRangeOct = 3.f;
+/** Env mod, fitted to a TB-303's sweeps: the envelope's depth follows the
+ *  knob's 2.5th power (up to 5 octaves), so the bottom half does little and
+ *  the top half a lot, and turning it up lowers the resting cutoff (half an
+ *  octave across the knob). With the cutoff's ceiling (VoiceParams::
+ *  ceiling_hz) a full sweep starts near the top and falls ~3 octaves. */
+constexpr float kEnvRangeOct = 5.f;
+constexpr float kEnvCurve    = 2.5f;
+constexpr float kEnvShiftOct = 0.5f;
 
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
 inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }
@@ -130,12 +134,27 @@ inline int QuantGridSteps(float v)
     return kGrid[StepIndex(v, 3)];
 }
 
+/** The cutoff knob, fitted to a TB-303's sweep: the bottom half moves
+ *  under 2 octaves, the top half nearly 2.5, up into the ceiling. The
+ *  bottom goes about an octave lower than the 303's. In the voice's units
+ *  (it scales by Voice::kCutoffScale): 75 Hz, 275 Hz at 12 o'clock, 1.5 kHz. */
+inline float CutoffHz(float v)
+{
+    return FastExp2(6.23f + v * (3.19f + 1.14f * v));
+}
+
+/** The resting cutoff for the cutoff and env mod knobs. */
+inline float RestingCutoffHz(float cutoff, float env_mod, float shift_oct = kEnvShiftOct)
+{
+    return CutoffHz(cutoff) * FastExp2(-shift_oct * (env_mod - 0.5f));
+}
+
 /** Knob values to the voice's units. */
 inline void ToVoiceParams(const float* p, VoiceParams& vp)
 {
-    vp.cutoff_hz   = KnobToExp(p[CUTOFF], 40.f, 4000.f);
+    vp.cutoff_hz   = RestingCutoffHz(p[CUTOFF], p[ENV_MOD]);
     vp.resonance   = p[RESONANCE];
-    vp.env_oct     = kEnvRangeOct * p[ENV_MOD];
+    vp.env_oct     = kEnvRangeOct * powf(p[ENV_MOD], kEnvCurve);
     // Fitted to a TB-303: the filter sweep is 90 % done in ~175 ms at the
     // shortest decay and ~2 s at the longest (decay_s is the time to 1 %).
     vp.decay_s     = KnobToExp(p[DECAY], 0.35f, 4.0f);
