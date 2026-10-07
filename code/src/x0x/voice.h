@@ -69,6 +69,9 @@ class DiodeLadder
 
     void SetCutoff(float wc_hz)
     {
+        // Kept below 16 kHz, so the resonant peak (~1.1 x) stays clear of
+        // the top of the audio band.
+        wc_hz = Clamp(wc_hz, 5.f, 16000.f);
         for(int i = 0; i < 4; i++)
         {
             const float f = Clamp(wc_hz * kStagePoles[i], 10.f, 0.45f * rate_);
@@ -82,17 +85,26 @@ class DiodeLadder
     /** k: loop gain (17 self-oscillates). */
     float Process(float x, float k)
     {
-        // Feedback from the last output (a one-step delay).
-        hp_ += (y_ - hp_) * hp_coef_;
-        const float in = FastTanh(x - k * (y_ - hp_));
-        const float a  = Stage(in, G_[0], s_[0]);
-        const float b  = Stage(a, G_[1], s_[1]);
-        const float c  = Stage(b, G_[2], s_[2]);
-        y_             = Stage(c, G_[3], s_[3]);
+        // Zero-delay feedback: each stage is y = G x + (1 - G) z, so the
+        // chain's output is Gamma u + Sigma, and the loop u = x - k (y - hp)
+        // solves for this step's output directly. (Feeding back the last
+        // step's output instead made the resonance run away above ~6 kHz.)
+        // The input saturation is then applied to the solved input.
+        const float g01 = G_[0] * G_[1], g23 = G_[2] * G_[3];
+        const float gamma = g01 * g23;
+        const float sigma = G_[1] * g23 * (1.f - G_[0]) * s_[0] + g23 * (1.f - G_[1]) * s_[1]
+                            + G_[3] * (1.f - G_[2]) * s_[2] + (1.f - G_[3]) * s_[3];
+        const float y_est = (gamma * (x + k * hp_) + sigma) / (1.f + k * gamma);
+        const float in    = FastTanh(x - k * (y_est - hp_));
+        const float a     = Stage(in, G_[0], s_[0]);
+        const float b     = Stage(a, G_[1], s_[1]);
+        const float c     = Stage(b, G_[2], s_[2]);
+        y_                = Stage(c, G_[3], s_[3]);
+        hp_ += (y_ - hp_) * hp_coef_; // the loop high-pass: y minus its slow average
         return y_;
     }
 
-    static constexpr float kLoopHighPassHz = 20.f;
+    static constexpr float kLoopHighPassHz = 12.f;
 
   private:
     /** One trapezoidal (TPT) one-pole low-pass stage. */

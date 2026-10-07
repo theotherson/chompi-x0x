@@ -837,6 +837,18 @@ static void TestDiodeLadder()
                 printf("    k %.1f f %.0f: got %.1f want %.1f\n", k, f, got, want);
             CHECK(fabs(got - want) <= 1.5);
         }
+    // At high cutoffs (where env mod pushes it) the resonance must not run
+    // away: it once reached +60 dB above 6 kHz with a one-step loop delay.
+    for(float wc : {6000.f, 12000.f, 16000.f})
+    {
+        double peak = -100.0;
+        for(double f = 0.8 * wc; f < 1.3 * wc; f += 0.02 * wc)
+            peak = std::max(peak, LadderGainDb(wc, Voice::kMaxLoopGain, f));
+        const double rel = peak - LadderGainDb(wc, Voice::kMaxLoopGain, 0.05 * wc);
+        if(rel > 18.0)
+            printf("    wc %.0f: peak +%.1f dB\n", wc, rel);
+        CHECK(rel < 18.0);
+    }
 }
 
 static void TestSettingsOptions()
