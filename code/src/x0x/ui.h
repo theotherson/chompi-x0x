@@ -48,7 +48,9 @@
  *    CHOMPI + F#3 / G#3 / A#3      accent / slide / tie: on the step playing
  *                                  now while recording; in step input accent
  *                                  and slide on the last step, A#3 adds a tie
- *    CHOMPI + C#4                  transpose mode on/off
+ *    CHOMPI + C#4                  transpose mode on/off: transposes the
+ *                                  arpeggio while the arpeggiator is on, the
+ *                                  pattern otherwise
  *    CHOMPI + D#4                  view steps 1-8 / 9-16
  *    CHOMPI + F#4                  arpeggiator on/off (knob 3, page 3: mode
  *                                  and range)
@@ -552,7 +554,12 @@ class Ui
         }
         if(transpose_mode_)
         {
-            m_->SetTranspose(k - kMiddleC);
+            // With the arpeggiator on, transpose moves the arpeggio, not
+            // the pattern.
+            if(m_->ArpOn())
+                m_->SetArpTranspose(k - kMiddleC);
+            else
+                m_->SetTranspose(k - kMiddleC);
             return;
         }
         Sound(k, true);
@@ -833,7 +840,9 @@ class Ui
     void DrawArp(LedFrame& f, uint32_t now) const
     {
         const Arp& arp = m_->GetArp();
-        if(arp.Latch() && !chompi_)
+        // In transpose mode the keys show the transpose instead; the notes
+        // still flash.
+        if(arp.Latch() && !chompi_ && !transpose_mode_)
             for(int i = 0; i < arp.Count(); i++)
             {
                 const int k = KeyOfNote(arp.NoteAt(i));
@@ -855,7 +864,8 @@ class Ui
     {
         f.key[kMiddleC]      = {.15f, .15f, .15f};
         f.key[kKeyTranspose] = Scale(kTransposeColour, 0.12f);
-        const int t          = kMiddleC + m_->Transpose();
+        const bool arp       = mode_ == Mode::PITCH && m_->ArpOn();
+        const int  t         = kMiddleC + (arp ? m_->ArpTranspose() : m_->Transpose());
         if(t >= 0 && t < kKeyNotes)
             f.key[t] = kTransposeColour;
     }

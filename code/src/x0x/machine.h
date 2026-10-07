@@ -182,6 +182,10 @@ class Machine
 
     bool ArpLatch() const { return arp_.Latch(); }
 
+    /** The arpeggio's own transpose, separate from the pattern's. */
+    void SetArpTranspose(int st) { arp_transpose_ = ClampInt(st, -24, 24); }
+    int  ArpTranspose() const { return arp_transpose_; }
+
     /** For the LEDs: the chord, and a count of the notes played, with the
      *  held note the last one came from. */
     const Arp& GetArp() const { return arp_; }
@@ -482,7 +486,7 @@ class Machine
         ArpGateOff();
         if(!ArpEngaged() || !arp_.Active())
             return;
-        const int note = ClampInt(arp_.Next(), 0, 127);
+        const int note = ClampInt(arp_.Next() + arp_transpose_, 0, 127);
         arp_last_source_ = arp_.LastSource();
         arp_count_++;
         voice_.NoteOn(note, false, false);
@@ -648,6 +652,7 @@ class Machine
     double      arp_clock_        = 0.0;  // samples until its next step (own clock)
     float       arp_step_samples_ = 6000.f;
     uint32_t    arp_count_        = 0;
+    int         arp_transpose_    = 0;
     int         arp_last_source_  = -1;
     Sequencer   seq_;
     int         queued_     = -1;

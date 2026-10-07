@@ -732,6 +732,53 @@ static void TestTransposeC()
     CHECK(f.key[Ui::kKeyTranspose].r > 0.9f);
 }
 
+static void TestArpTranspose()
+{
+    printf("pitch mode: transpose moves the latched arpeggio, not the pattern\n");
+    Rig r;
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.Chompi(true), r.Key(Ui::kBlack[7]), r.Key(Ui::kBlack[8]), r.ui.Chompi(false); // arp on, latch
+    r.Key(0), r.Key(4); // C3, E3 latched
+    r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false); // transpose mode
+    r.Key(19); // +7
+    CHECK(r.m.ArpTranspose() == 7 && r.m.Transpose() == 0);
+    CHECK(r.m.GetArp().Count() == 2); // the key didn't join the chord
+
+    std::vector<int> heard;
+    bool flashed = false, teal = false;
+    LedFrame f;
+    int last = -2;
+    for(int i = 0; i < 600; i++)
+    {
+        r.Run(1);
+        const int n = r.m.SoundingNote();
+        if(n != last && n >= 0)
+            heard.push_back(n);
+        last = n;
+        r.ui.NoteStep(r.now);
+        r.ui.Draw(f, r.now);
+        for(int k : {0, 4})
+        {
+            flashed |= f.key[k].r > 0.9f && f.key[k].b > 0.9f;
+            teal |= f.key[k].r == 0.f && f.key[k].g > 0.3f;
+        }
+        CHECK(f.key[19].r > 0.9f && f.key[19].b == 0.f); // the amount, yellow
+    }
+    CHECK(heard.size() >= 3 && (heard[0] == kBaseNote + 7 || heard[0] == kBaseNote + 11));
+    CHECK(flashed && !teal); // flashes on, the steady chord hidden
+
+    // Out of transpose mode: the chord is back; the arpeggio stays up 7.
+    r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[0].g > 0.3f || f.key[4].g > 0.3f);
+    CHECK(r.m.ArpTranspose() == 7);
+
+    // Arpeggiator off: transpose goes back to the pattern.
+    r.ui.Chompi(true), r.Key(Ui::kBlack[7]), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    r.Key(10); // -2
+    CHECK(r.m.Transpose() == -2 && r.m.ArpTranspose() == 7);
+}
+
 static void TestLivePlayhead()
 {
     printf("pitch mode: one red light moving in tempo, dark on rests\n");
@@ -856,6 +903,7 @@ int main()
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
+    TestArpTranspose();
     TestLiveLights();
     TestSettingsOptions();
     TestMidiClock();
