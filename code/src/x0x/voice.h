@@ -29,6 +29,8 @@ namespace x0x
 {
 
 /** Everything the voice needs from the panel, in real units. */
+constexpr float kFullResonanceGain = 16.5f;
+
 struct VoiceParams
 {
     float cutoff_hz  = 500.f;
@@ -40,9 +42,12 @@ struct VoiceParams
     float slide_s    = 0.06f; // slide time
     bool  square     = false;
     float pulse_width = 0.5f; // square only: 0.05..0.95
-    float max_loop_gain = 15.3f; // resonance at full: 90 % of self-oscillation (17)
+    float max_loop_gain = kFullResonanceGain; // resonance at full
     float stage_drive   = 0.75f; // gentle saturation inside the ladder's stages
     float bass_makeup   = 0.5f;  // level given back for the bass resonance takes (x k)
+    float ladder_in     = 0.4f;  // level into the ladder: its input saturation squashes the
+                                 // resonant peak, and at full level it held a TB-303's
+                                 // 17-25 dB peak to 10-13
     float post_hp_hz    = 120.f; // high-pass after the filter: the 303's coupling caps lose bass
                                  // (fitted: a TB-303's C1 sits 5-9 dB under its C3), 0 = off
 };
@@ -145,9 +150,11 @@ class DiodeLadder
 class Voice
 {
   public:
-    /** Resonance at full: this much loop gain (17 would self-oscillate);
-     *  chosen by ear against a real 303 (12.2 was too tame). */
-    static constexpr float kMaxLoopGain = 15.3f;
+    /** Resonance at full: this much loop gain (17 would self-oscillate,
+     *  but the saturation holds it just short). With the ladder's input
+     *  level, fitted to the height of a TB-303's resonant peak, within
+     *  ~3 dB across held-note sweeps from 400 Hz to 12 kHz. */
+    static constexpr float kMaxLoopGain = kFullResonanceGain;
     /** The cutoff knob's frequency to the ladder's cutoff: the resonant
      *  peak lands where the earlier filter's did. */
     static constexpr float kCutoffScale = 1.6f;
@@ -263,8 +270,9 @@ class Voice
             float y = 0.f;
             for(int os = 0; os < 2; os++)
             {
-                y += ladder_.Process(x, k);
+                y += ladder_.Process(x * p.ladder_in, k);
             }
+            y /= p.ladder_in;
             // Make up some of the level resonance takes (a ladder's gain at
             // low frequencies is 1 / (1 + k)); the rest of the bass loss is
             // the 303's own.
