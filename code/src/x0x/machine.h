@@ -26,6 +26,11 @@ class Machine
     Settings settings;
     Options  options;
 
+    /** The filter's character, fixed in the firmware (set here so the
+     *  desktop can compare versions). */
+    float max_loop_gain = VoiceParams{}.max_loop_gain;
+    float stage_drive   = VoiceParams{}.stage_drive;
+
     /** Bumped on every change, so the main loop can save a few seconds
      *  after the last one. */
     volatile uint32_t pattern_changes  = 0;
@@ -374,6 +379,8 @@ class Machine
     void Process(float* left, float* right, size_t n)
     {
         ToVoiceParams(settings.params, vp_);
+        vp_.max_loop_gain = max_loop_gain;
+        vp_.stage_drive   = stage_drive;
         seq_.SetSwing(settings.params[SWING]);
         const bool ext = ExternalClock();
         seq_.SetTempo(ext ? ext_bpm_ : TempoBpm(settings.params[TEMPO]));

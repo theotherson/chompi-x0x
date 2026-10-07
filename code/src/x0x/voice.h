@@ -40,6 +40,8 @@ struct VoiceParams
     float slide_s    = 0.06f; // slide time
     bool  square     = false;
     float pulse_width = 0.5f; // square only: 0.05..0.95
+    float max_loop_gain = 12.2f; // resonance at full (17 would self-oscillate)
+    float stage_drive   = 0.f;   // saturation inside the ladder's stages
 };
 
 /** The TB-303's diode ladder (see the file comment): four one-pole
@@ -82,6 +84,12 @@ class DiodeLadder
 
     void SetLoopHighPass(float hz) { hp_coef_ = TauToCoef(1.f / (2.f * kPi * hz), rate_); }
 
+    /** Saturation inside each stage: 0 = linear stages (only the input
+     *  saturates), higher = the stages compress loud signals, so the
+     *  resonance squashes on loud notes and rings out on quiet tails, as
+     *  the diodes do. */
+    void SetStageDrive(float d) { stage_drive_ = d; }
+
     /** k: loop gain (17 self-oscillates). */
     float Process(float x, float k)
     {
@@ -96,10 +104,10 @@ class DiodeLadder
                             + G_[3] * (1.f - G_[2]) * s_[2] + (1.f - G_[3]) * s_[3];
         const float y_est = (gamma * (x + k * hp_) + sigma) / (1.f + k * gamma);
         const float in    = FastTanh(x - k * (y_est - hp_));
-        const float a     = Stage(in, G_[0], s_[0]);
-        const float b     = Stage(a, G_[1], s_[1]);
-        const float c     = Stage(b, G_[2], s_[2]);
-        y_                = Stage(c, G_[3], s_[3]);
+        const float a     = Stage(Sat(in), G_[0], s_[0]);
+        const float b     = Stage(Sat(a), G_[1], s_[1]);
+        const float c     = Stage(Sat(b), G_[2], s_[2]);
+        y_                = Stage(Sat(c), G_[3], s_[3]);
         hp_ += (y_ - hp_) * hp_coef_; // the loop high-pass: y minus its slow average
         return y_;
     }
@@ -107,6 +115,12 @@ class DiodeLadder
     static constexpr float kLoopHighPassHz = 12.f;
 
   private:
+    /** A stage's input saturation: tanh(d x) / d, linear when d is 0. */
+    float Sat(float x) const
+    {
+        return stage_drive_ > 0.f ? FastTanh(stage_drive_ * x) / stage_drive_ : x;
+    }
+
     /** One trapezoidal (TPT) one-pole low-pass stage. */
     static float Stage(float x, float G, float& z)
     {
@@ -121,7 +135,8 @@ class DiodeLadder
     float G_[4]    = {0.5f, 0.5f, 0.5f, 0.5f};
     float y_       = 0.f;
     float hp_      = 0.f;
-    float hp_coef_ = 0.f;
+    float hp_coef_     = 0.f;
+    float stage_drive_ = 0.f;
 };
 
 class Voice
@@ -190,7 +205,8 @@ class Voice
         // Resonance slows the accent capacitor's drain, as on the 303.
         const float acc_charge = TauToCoef(0.012f, sr_);
         const float acc_drain  = TauToCoef(0.08f + 0.35f * p.resonance, sr_);
-        const float k          = kMaxLoopGain * p.resonance;
+        const float k          = p.max_loop_gain * p.resonance;
+        ladder_.SetStageDrive(p.stage_drive);
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
 
         for(size_t i = 0; i < n; i++)
