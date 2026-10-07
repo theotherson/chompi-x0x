@@ -96,7 +96,7 @@ The resonance amount, cutoff range and envelope times are first estimates, to be
 
 In this order after the voice, each off at zero:
 
-- **Drive** (CHOMPI + volume): a pedal-style hard clipper in the spirit of a DS-1: a high-pass tightens the low end, up to ~60x gain hits a nearly hard, slightly asymmetric clip, and a tone low-pass takes the fizz off. The level is evened out as it turns up.
+- **Drive** (CHOMPI + volume): a pedal-style hard clipper in the spirit of a DS-1: a high-pass tightens the low end and a treble lift puts the highs in front, up to ~60x gain hits a nearly hard, slightly asymmetric clip, and a tone low-pass (8 to 6 kHz) takes only the harshest fizz off. The level is evened out as it turns up.
 - **Bit crusher** (knob 4, page 4): bit depth 16 down to 4, and sample rate down to 1/32, separately.
 - **Chorus / flanger** (knob 4, page 3): the first half of the turn is chorus, the second half flanger with rising feedback; width spreads the sides apart and deepens it.
 - **Tape delay** (knob 4, pages 1-2): tempo-synced ping-pong. Dry/wet: the middle is 50/50, the top all echoes. Every repeat goes through tape EQ (a low-pass set by tone, a high-pass) and saturation, so repeats darken as they fade, with a little wow and flutter. Feedback goes just past self-oscillation at the top, where the saturation holds it.

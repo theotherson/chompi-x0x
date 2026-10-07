@@ -5,8 +5,9 @@
  *
  *  Each is off at zero. All take the voice's mono signal to stereo.
  *   - Drive: a pedal-style hard clipper (after the DS-1 and friends): a
- *     high-pass tightens the low end, up to ~60x gain hits a nearly hard,
- *     slightly asymmetric clip, then a low-pass tone takes the fizz off.
+ *     high-pass tightens the low end and a treble lift puts the highs in
+ *     front, up to ~60x gain hits a nearly hard, slightly asymmetric clip,
+ *     then a low-pass tone (8 to 6 kHz) takes only the harshest fizz off.
  *     The level is evened out as it turns up.
  *   - Bit crusher: bit depth (16 down to 4) and sample-rate reduction (down
  *     to 1/32), separately.
@@ -79,7 +80,11 @@ class Fx
         const float bias    = 0.08f * s_.drive; // a touch of asymmetry
         const float makeup  = 1.f / (1.f + 2.5f * s_.drive);
         const float hp_in   = TauToCoef(1.f / (2.f * kPi * 120.f), sr_);
-        const float tone_lp = TauToCoef(1.f / (2.f * kPi * (5000.f - 2500.f * s_.drive)), sr_);
+        // Treble lift before the clip (+6 dB above ~1 kHz) so the highs
+        // distort hardest, and a brighter tone filter after it (8 kHz down
+        // to 6 kHz at full drive): a trebly, DS-1-like edge.
+        const float pre_lp  = TauToCoef(1.f / (2.f * kPi * 1000.f), sr_);
+        const float tone_lp = TauToCoef(1.f / (2.f * kPi * (8000.f - 2000.f * s_.drive)), sr_);
 
         // Bit crusher
         const bool  crush_bits = s_.crush_bits > 0.005f;
@@ -120,7 +125,10 @@ class Fx
             if(driving)
             {
                 hp_state_ += (x - hp_state_) * hp_in;
-                float d = (x - hp_state_) * gain + bias;
+                const float tight = x - hp_state_;
+                pre_state_ += (tight - pre_state_) * pre_lp;
+                const float bright = tight + (tight - pre_state_); // highs doubled
+                float d = bright * gain + bias;
                 d       = HardClip(d);
                 dc_ += (d - dc_) * 0.0005f;
                 d -= dc_;
@@ -246,7 +254,7 @@ class Fx
     float    sr_ = 48000.f;
     Settings s_;
 
-    float hp_state_ = 0.f, dc_ = 0.f, tone1_ = 0.f, tone2_ = 0.f;
+    float hp_state_ = 0.f, pre_state_ = 0.f, dc_ = 0.f, tone1_ = 0.f, tone2_ = 0.f;
     float held_     = 0.f;
     int   hold_count_ = 0;
     float lfo_      = 0.f;
