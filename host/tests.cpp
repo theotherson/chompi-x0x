@@ -754,6 +754,44 @@ static void TestLivePlayhead()
     }
 }
 
+/** The ladder's gain at f (Hz) for a quiet sine, run at 96 kHz. */
+static double LadderGainDb(float wc, float k, double f)
+{
+    DiodeLadder d;
+    d.Init(96000.f);
+    d.SetCutoff(wc);
+    double peak = 0.0;
+    for(int i = 0; i < 96000; i++)
+    {
+        const float y = d.Process(0.01f * sinf(2.f * kPi * static_cast<float>(f * i / 96000.0)), k);
+        if(i > 48000)
+            peak = std::max(peak, static_cast<double>(fabsf(y)));
+    }
+    return 20.0 * log10(peak / 0.01);
+}
+
+static void TestDiodeLadder()
+{
+    printf("diode ladder matches Stinchcombe's transfer function\n");
+    const double c[5] = {1.0, pow(2.0, 2.75), 10.0 * sqrt(2.0), pow(2.0, 3.25), 1.0};
+    auto theory = [&](double f, double wc, double k) {
+        const double w  = f / wc;
+        const double re = c[0] * pow(w, 4) - c[2] * w * w + c[4] + k; // D(jw) + k
+        const double im = -c[1] * pow(w, 3) + c[3] * w;
+        return -10.0 * log10(re * re + im * im);
+    };
+    for(float k : {0.f, 8.5f, Voice::kMaxLoopGain})
+        for(double f : {100.0, 300.0, 480.0, 600.0, 1000.0})
+        {
+            // Relative to 50 Hz, so the loop high-pass's tiny effect there cancels.
+            const double got  = LadderGainDb(480.f, k, f) - LadderGainDb(480.f, k, 50.0);
+            const double want = theory(f, 480.0, k) - theory(50.0, 480.0, k);
+            if(fabs(got - want) > 1.5)
+                printf("    k %.1f f %.0f: got %.1f want %.1f\n", k, f, got, want);
+            CHECK(fabs(got - want) <= 1.5);
+        }
+}
+
 static void TestSettingsOptions()
 {
     printf("settings and options text\n");
@@ -807,6 +845,7 @@ int main()
     TestQueueAndLength();
     TestTextRoundTrip();
     TestNudgeTiming();
+    TestDiodeLadder();
     TestStepKeys();
     TestFollowPlayhead();
     TestPagesCopyClear();

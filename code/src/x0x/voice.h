@@ -4,9 +4,15 @@
  *  envelope, the accent circuit and slide. (Drive is in fx.h.)
  *
  *  Not a circuit model, but built around the TB-303's behaviour:
- *   - Filter: three one-pole stages with tanh feedback, about 18 dB/octave,
- *     run at 2x the sample rate. A 3-pole loop self-oscillates at a loop gain
- *     of 8; resonance stops short of that.
+ *   - Filter: the TB-303's 4-pole diode ladder, after Tim Stinchcombe's
+ *     analysis. Its core transfer function,
+ *       1 / (s^4 + 2^(11/4) s^3 + 10 sqrt(2) s^2 + 2^(13/4) s + 1 + k),
+ *     factors into four one-pole low-passes at 0.128, 1.04, 2.33 and 3.24 x
+ *     the cutoff, inside one feedback loop. The spread poles give the
+ *     303's slope: about 18 dB/octave above the cutoff, 24 only far above,
+ *     and a broader resonance than equal stages. It self-oscillates at
+ *     k = 17 (at 1.19 x the cutoff); resonance stops well short. A high-pass
+ *     in the loop and tanh at its input, as on the 303. Run at 2x.
  *   - Filter envelope: instant attack, exponential decay set by DECAY, no
  *     sustain. ENV MOD sets how many octaves it opens the cutoff.
  *   - Accent: louder, the filter envelope at its shortest decay, and an
@@ -36,19 +42,98 @@ struct VoiceParams
     float pulse_width = 0.5f; // square only: 0.05..0.95
 };
 
+/** The TB-303's diode ladder (see the file comment): four one-pole
+ *  low-passes at kStagePoles x the cutoff, feedback k around them through a
+ *  high-pass, tanh at the input. Steps at the rate given to Init (the voice
+ *  runs it at twice the sample rate). */
+class DiodeLadder
+{
+  public:
+    /** The poles, as multiples of the cutoff (the roots of Stinchcombe's
+     *  denominator; their product is 1). */
+    static constexpr float kStagePoles[4] = {0.128f, 1.0382f, 2.3254f, 3.2356f};
+
+    void Init(float rate)
+    {
+        rate_ = rate;
+        Reset();
+        SetLoopHighPass(kLoopHighPassHz);
+    }
+
+    void Reset()
+    {
+        for(int i = 0; i < 4; i++)
+            s_[i] = 0.f;
+        y_ = hp_ = 0.f;
+    }
+
+    void SetCutoff(float wc_hz)
+    {
+        for(int i = 0; i < 4; i++)
+        {
+            const float f = Clamp(wc_hz * kStagePoles[i], 10.f, 0.45f * rate_);
+            const float g = tanf(kPi * f / rate_);
+            G_[i]         = g / (1.f + g);
+        }
+    }
+
+    void SetLoopHighPass(float hz) { hp_coef_ = TauToCoef(1.f / (2.f * kPi * hz), rate_); }
+
+    /** k: loop gain (17 self-oscillates). */
+    float Process(float x, float k)
+    {
+        // Feedback from the last output (a one-step delay).
+        hp_ += (y_ - hp_) * hp_coef_;
+        const float in = FastTanh(x - k * (y_ - hp_));
+        const float a  = Stage(in, G_[0], s_[0]);
+        const float b  = Stage(a, G_[1], s_[1]);
+        const float c  = Stage(b, G_[2], s_[2]);
+        y_             = Stage(c, G_[3], s_[3]);
+        return y_;
+    }
+
+    static constexpr float kLoopHighPassHz = 20.f;
+
+  private:
+    /** One trapezoidal (TPT) one-pole low-pass stage. */
+    static float Stage(float x, float G, float& z)
+    {
+        const float v = G * (x - z);
+        const float y = v + z;
+        z             = y + v;
+        return y;
+    }
+
+    float rate_    = 96000.f;
+    float s_[4]    = {};
+    float G_[4]    = {0.5f, 0.5f, 0.5f, 0.5f};
+    float y_       = 0.f;
+    float hp_      = 0.f;
+    float hp_coef_ = 0.f;
+};
+
 class Voice
 {
   public:
+    /** Resonance at full: this much loop gain (17 would self-oscillate).
+     *  To be fitted to a real 303. */
+    static constexpr float kMaxLoopGain = 12.2f;
+    /** The cutoff knob's frequency to the ladder's cutoff: the resonant
+     *  peak lands where the earlier filter's did. */
+    static constexpr float kCutoffScale = 1.6f;
+
     void Init(float sample_rate)
     {
         sr_ = sample_rate;
+        ladder_.Init(2.f * sample_rate);
         Reset();
     }
 
     void Reset()
     {
         phase_ = 0.f;
-        s1_ = s2_ = s3_ = y3_ = fb_hp_ = 0.f;
+        ladder_.Reset();
+        coef_count_ = 0;
         fenv_ = aenv_ = acc_cap_ = 0.f;
         gate_ = accent_ = sliding_ = false;
     }
@@ -93,13 +178,8 @@ class Voice
         // Resonance slows the accent capacitor's drain, as on the 303.
         const float acc_charge = TauToCoef(0.012f, sr_);
         const float acc_drain  = TauToCoef(0.08f + 0.35f * p.resonance, sr_);
-        const float k          = 7.2f * p.resonance;       // loop gain; 8 would self-oscillate
-        // A high-pass in the resonance loop, as on the 303: the resonance
-        // thins out as the cutoff gets very low, instead of ringing between
-        // the note's harmonics (which sounds like a detuning radio).
+        const float k          = kMaxLoopGain * p.resonance;
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
-        const float sr2        = 2.f * sr_;
-        const float fb_hp      = TauToCoef(1.f / (2.f * kPi * 110.f), sr2);
 
         for(size_t i = 0; i < n; i++)
         {
@@ -128,12 +208,14 @@ class Voice
             const float acc_in = accent_ ? fenv_ : 0.f;
             acc_cap_ += (acc_in - acc_cap_) * (acc_in > acc_cap_ ? acc_charge : acc_drain);
 
-            // Cutoff, at 2x the sample rate.
-            const float oct = p.env_oct * fenv_ + 3.f * p.accent * acc_cap_;
-            float       fc  = p.cutoff_hz * FastExp2(oct);
-            fc              = Clamp(fc, 20.f, 0.45f * sr2 * 0.5f);
-            const float g   = tanf(kPi * fc / sr2);
-            const float G   = g / (1.f + g);
+            // Cutoff, at 2x the sample rate; the four stages' coefficients
+            // are worked out every fourth sample (the envelope moves slowly).
+            if(coef_count_-- <= 0)
+            {
+                coef_count_     = 3;
+                const float oct = p.env_oct * fenv_ + 3.f * p.accent * acc_cap_;
+                ladder_.SetCutoff(p.cutoff_hz * kCutoffScale * FastExp2(oct));
+            }
 
             const float x = Osc(inc, p.square, p.pulse_width);
 
@@ -142,15 +224,12 @@ class Voice
             float y = 0.f;
             for(int os = 0; os < 2; os++)
             {
-                // Feedback from the last output (a one-sample delay at 2x).
-                fb_hp_ += (y3_ - fb_hp_) * fb_hp;
-                const float in = FastTanh(x - k * (y3_ - fb_hp_));
-                const float y1 = Stage(in, G, s1_);
-                const float y2 = Stage(y1, G, s2_);
-                y3_            = Stage(y2, G, s3_);
-                y += y3_;
+                y += ladder_.Process(x, k);
             }
-            y *= 0.5f * (1.f + 0.35f * k); // make up the level resonance takes
+            // Make up some of the level resonance takes (a ladder's gain at
+            // low frequencies is 1 / (1 + k)); the rest of the bass loss is
+            // the 303's own.
+            y *= 0.4f * (1.f + 0.5f * k); // (0.4: headroom for the resonant peaks)
 
             out[i] += y * aenv_ * amp_acc * 0.5f;
         }
@@ -175,14 +254,6 @@ class Voice
         return 0.7f * (saw - saw2);
     }
 
-    /** One trapezoidal (TPT) one-pole low-pass stage. */
-    static float Stage(float x, float G, float& z)
-    {
-        const float v = G * (x - z);
-        const float y = v + z;
-        z             = y + v;
-        return y;
-    }
 
     static float Blep(float t, float dt)
     {
@@ -203,7 +274,8 @@ class Voice
     float phase_   = 0.f;
     float pitch_   = 36.f;
     float target_  = 36.f;
-    float s1_ = 0.f, s2_ = 0.f, s3_ = 0.f, y3_ = 0.f, fb_hp_ = 0.f;
+    DiodeLadder ladder_;
+    int         coef_count_ = 0;
     float fenv_    = 0.f;
     float aenv_    = 0.f;
     float acc_cap_ = 0.f;
@@ -212,5 +284,7 @@ class Voice
     bool  accent_  = false;
     bool  sliding_ = false;
 };
+
+constexpr float DiodeLadder::kStagePoles[4];
 
 } // namespace x0x
