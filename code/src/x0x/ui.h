@@ -33,7 +33,8 @@
  *                                  (when let go). Running, it waits for the
  *                                  bar; the same key again switches at once.
  *                                  Each number has an A and a B side, shown
- *                                  in its own colour (A pink, B peach; red /
+ *                                  in its own colour (A light blue, B yellow;
+ *                                  magenta /
  *                                  orange when protected): the current
  *                                  number's key again flips it, 1A to 1B. On
  *                                  the page, a pattern key held 2 s exports
@@ -41,9 +42,10 @@
  *                                  (keys flash white; red if it failed).
  *                                  COPY + F#4: copy this pattern to its other
  *                                  side. Held 2 s: write
- *                                  protect on/off (all LEDs flash red / pink;
+ *                                  protect on/off (all LEDs flash magenta /
+ *                                  light blue;
  *                                  the pattern key and page are red while
- *                                  protected, pink otherwise)
+ *                                  protected, light blue otherwise)
  *    black key 9 (G#4)             COPY: hold it and press a step key to copy
  *                                  this pattern to that pattern number (on the
  *                                  side shown on the pattern page, else this
@@ -591,7 +593,7 @@ class Ui
             for(int k = 0; k < kKeyNotes; k++)
                 f.key[k] = on ? (export_flash_ok_ ? Rgb{1.f, 1.f, 1.f} : kRed) : Rgb{};
         }
-        // Write protect switched: every light flashes red (on) or pink (off).
+        // Write protect switched: every light flashes magenta (on) or light blue (off).
         if(now - protect_flash_at_ < 600)
         {
             const Rgb c = m_->Protected() ? kProtectColour : kUnprotectColour;
@@ -653,10 +655,10 @@ class Ui
     static constexpr Rgb kQuantizeColour     = {0.f, .5f, 1.f};   // blue
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
-    static constexpr Rgb kProtectColour      = {1.f, 0.f, 0.f};   // write protect on
-    static constexpr Rgb kUnprotectColour    = {1.f, .15f, .55f}; // write protect off: pink
-    static constexpr Rgb kClearColour        = {1.f, .4f, 0.f};   // CLEAR (A#4): orange
-    static constexpr Rgb kSideBColour        = {1.f, .5f, .28f};  // pattern side B: peach
+    static constexpr Rgb kProtectColour      = {1.f, 0.f, 1.f};   // write protect on, side A: magenta
+    static constexpr Rgb kUnprotectColour    = {.25f, .65f, 1.f}; // write protect off, side A: light blue
+    static constexpr Rgb kClearColour        = {1.f, 0.f, 0.f};   // CLEAR (A#4): red
+    static constexpr Rgb kSideBColour        = {1.f, .8f, 0.f};   // pattern side B: yellow
     static constexpr Rgb kProtectBColour     = {1.f, .3f, 0.f};   // side B, write-protected: orange
     static constexpr Rgb kImportColour       = {0.f, 1.f, .3f};   // MIDI files imported: green
     static constexpr uint32_t kShowValueMs   = 1200;
@@ -690,7 +692,7 @@ class Ui
         {1.f, .35f, 0.f},  // ACCENT     orange
         {0.f, .3f, 1.f},   // SLIDE      blue
         {0.f, 1.f, .2f},   // TIE        green
-        {1.f, .15f, .55f}, // PATTERN    pink (red while write-protected: PatternColour)
+        {.25f, .65f, 1.f}, // PATTERN    light blue (see PatternColour)
     };
 
   private:
@@ -814,8 +816,8 @@ class Ui
 
     void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
 
-    /** A side's colour on the pattern key and page: A pink, B peach; red
-     *  and orange while write-protected. */
+    /** A side's colour on the pattern key and page: A light blue, B yellow;
+     *  magenta and orange while write-protected. */
     Rgb PatternColour(int side) const
     {
         if(side)
@@ -1208,14 +1210,14 @@ class Ui
             f.key[kBlack[i]] = Scale(kPageColour[static_cast<int>(pages[i])], page_ == pages[i] ? 1.f : 0.1f);
         f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
         f.key[kKeyView]      = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
-        // The pattern key: pink, or red while the patterns are write-protected.
+        // The pattern key: its side's colour (PatternColour).
         f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentPattern())),
                                    page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
         if(now - copied_at_ < 300)
             f.key[kKeyPattern] = PatternColour(1 - PatternSide(m_->CurrentPattern())); // copied to the other side
         if(pattern_down_ && now - pattern_down_at_ > 300)
         {
-            // Held: fills towards the switch, red to protect, pink to unprotect.
+            // Held: fills towards the switch, magenta to protect, light blue to unprotect.
             const float b = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
             f.key[kKeyPattern] = Scale(m_->Protected() ? kUnprotectColour : kProtectColour, b);
         }

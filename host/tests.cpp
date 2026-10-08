@@ -1381,20 +1381,20 @@ static void TestWriteProtect()
     Settings back;
     ReadSettings(buf, back);
     CHECK(back.protect);
-    // Hold again: off, flashing pink; the key pink after.
+    // Hold again: off, flashing light blue; the key light blue after.
     r.ui.KeyDown(Ui::kKeyPattern, r.now);
     r.Run(2100);
     CHECK(!r.m.Protected());
     r.ui.Draw(f, r.now);
-    CHECK(f.key[0].r > 0.9f && f.key[0].b > 0.4f && f.key[0].g < 0.3f);
+    CHECK(f.key[0].b > 0.9f && f.key[0].r < 0.4f && f.key[0].g > 0.4f);
     r.ui.KeyUp(Ui::kKeyPattern, r.now);
     r.Run(1000);
     r.ui.Draw(f, r.now);
     const Rgb pk = f.key[Ui::kKeyPattern];
-    CHECK(pk.r > 0.05f && pk.b > 0.3f * pk.r && pk.g < 0.5f * pk.r);
-    // CLEAR (A#4) is orange.
+    CHECK(pk.b > 0.05f && pk.r < 0.4f * pk.b && pk.g > 0.4f * pk.b);
+    // CLEAR (A#4) is red.
     const Rgb cl = f.key[Ui::kKeyClear];
-    CHECK(cl.r > 0.05f && cl.g > 0.25f * cl.r && cl.b == 0.f);
+    CHECK(cl.r > 0.05f && cl.g == 0.f && cl.b == 0.f);
 }
 
 static void TestPatternPageWhileRunning()
@@ -1441,29 +1441,29 @@ static void TestPatternSides()
     DemoPattern(r.m.patterns[0]);
     r.Key(Ui::kKeyPattern); // the page; F#4 again closes it
     LedFrame f;
-    auto pink  = [](Rgb c) { return c.r > 0.9f && c.b > 0.4f && c.g < 0.3f; };
-    auto peach = [](Rgb c) { return c.r > 0.9f && c.g > 0.4f && c.b < 0.4f; };
+    auto blue   = [](Rgb c) { return c.b > 0.9f && c.r < 0.4f && c.g > 0.4f; };  // side A
+    auto yellow = [](Rgb c) { return c.r > 0.9f && c.g > 0.6f && c.b < 0.1f; };  // side B
     // 1 again: 1A to 1B. Only key 1 changes colour.
     r.White(0);
     CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
     r.ui.Draw(f, r.now);
-    CHECK(peach(f.key[Ui::kWhite[0]]) && peach(f.key[Ui::kKeyPattern]));
-    r.m.patterns[PatternIndex(1, 0)].steps[0].on = true; // 2A in use: dim pink
+    CHECK(yellow(f.key[Ui::kWhite[0]]) && yellow(f.key[Ui::kKeyPattern]));
+    r.m.patterns[PatternIndex(1, 0)].steps[0].on = true; // 2A in use: dim light blue
     r.m.patterns[PatternIndex(0, 1)].steps[0].on = true; // 1B too
     r.ui.Draw(f, r.now);
-    CHECK(f.key[Ui::kWhite[1]].r > 0.05f && f.key[Ui::kWhite[1]].b > 0.3f * f.key[Ui::kWhite[1]].r);
+    CHECK(f.key[Ui::kWhite[1]].b > 0.05f && f.key[Ui::kWhite[1]].r < 0.4f * f.key[Ui::kWhite[1]].b);
     // Another number: its own side (A); 1 keeps showing B.
     r.White(1);
     CHECK(r.m.CurrentPattern() == PatternIndex(1, 0));
     r.ui.Draw(f, r.now);
-    const Rgb k1 = f.key[Ui::kWhite[0]]; // dim peach: 1 still shows B
-    CHECK(k1.r > 0.05f && k1.r < 0.5f && k1.g > 0.3f * k1.r && k1.b < 0.4f * k1.r);
+    const Rgb k1 = f.key[Ui::kWhite[0]]; // dim yellow: 1 still shows B
+    CHECK(k1.r > 0.05f && k1.r < 0.5f && k1.g > 0.6f * k1.r && k1.b < 0.1f * k1.r);
     r.White(0); // back to 1, on the side it showed: 1B
     CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
     r.White(0); // and flip back: 1A
     CHECK(r.m.CurrentPattern() == 0);
     r.ui.Draw(f, r.now);
-    CHECK(pink(f.key[Ui::kWhite[0]]));
+    CHECK(blue(f.key[Ui::kWhite[0]]));
     // Running: a flip waits for the bar; the key again switches at once.
     r.ui.Play();
     r.Run(100);
@@ -1481,11 +1481,19 @@ static void TestPatternSides()
     r.Key(Ui::kKeyPattern);
     r.ui.KeyUp(Ui::kKeyCopy, r.now);
     CHECK(r.m.patterns[PatternIndex(0, 1)] == r.m.patterns[0] && r.ui.GetPage() == Ui::Page::NOTES);
-    // Locked: A red.
+    // Locked: A magenta, B orange.
     r.m.SetProtected(true);
     r.Run(1000);
     r.ui.Draw(f, r.now);
-    CHECK(f.key[Ui::kKeyPattern].g < 0.02f && f.key[Ui::kKeyPattern].b < 0.02f);
+    const Rgb lk = f.key[Ui::kKeyPattern];
+    CHECK(lk.r > 0.05f && lk.b > 0.9f * lk.r && lk.g < 0.02f);
+    r.Key(Ui::kKeyPattern);
+    r.White(0); // 1B
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[0]].r > 0.9f && f.key[Ui::kWhite[0]].g > 0.2f && f.key[Ui::kWhite[0]].g < 0.5f
+          && f.key[Ui::kWhite[0]].b < 0.05f);
+    r.White(0); // back to 1A
+    r.Key(Ui::kKeyPattern);
     r.m.SetProtected(false);
 
     // Files: 32 patterns round trip; "pattern 3" from earlier versions is 3A.
