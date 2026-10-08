@@ -359,24 +359,28 @@ static void TestKnobPages()
     CHECK(p[TUNING] > 0.5f);
     r.ui.Chompi(false);
 
+    // Knob 2: env mod / accent; knob 3: decay / slide time; one page each.
     const float env = p[ENV_MOD];
     r.ui.KnobTurn(1, 3, false);
     CHECK(p[ENV_MOD] > env);
-    r.ui.Chompi(true), r.ui.KnobTurn(1, -3, false), r.ui.Chompi(false); // decay
-    CHECK(p[DECAY] < kParams[DECAY].def);
-    r.ui.KnobClick(1, r.now);
-    r.ui.KnobTurn(1, 3, false); // accent
+    r.ui.Chompi(true), r.ui.KnobTurn(1, 3, false), r.ui.Chompi(false); // accent
     CHECK(p[ACCENT] > kParams[ACCENT].def);
+    r.ui.KnobTurn(2, -3, false); // decay
+    CHECK(p[DECAY] < kParams[DECAY].def);
+    r.ui.Chompi(true), r.ui.KnobTurn(2, 3, false), r.ui.Chompi(false); // slide time
+    CHECK(p[SLIDE_TIME] > kParams[SLIDE_TIME].def);
+    r.ui.KnobClick(1, r.now), r.ui.KnobClick(2, r.now);
+    CHECK(r.ui.KnobPage(1) == 0 && r.ui.KnobPage(2) == 0);
 
-    r.ui.KnobTurn(2, 10, false); // tempo +10
+    // Volume, page 2: tempo / swing.
+    r.ui.KnobClick(5, r.now);
+    CHECK(r.ui.KnobPage(5) == 1);
+    r.ui.KnobTurn(5, 10, false); // tempo +10
     CHECK(fabsf(TempoBpm(p[TEMPO]) - 130.f) < 0.01f);
-    r.ui.Chompi(true), r.ui.KnobTurn(2, 4, false), r.ui.Chompi(false); // swing
+    r.ui.Chompi(true), r.ui.KnobTurn(5, 4, false), r.ui.Chompi(false); // swing
     CHECK(p[SWING] > 0.f);
-    r.ui.KnobClick(2, r.now);
-    r.ui.KnobTurn(2, -1, false); // quantize off
-    CHECK(StepIndex(p[QUANTIZE], 2) == 0);
-    r.ui.Chompi(true), r.ui.KnobTurn(2, 1, false), r.ui.Chompi(false); // grid 1/8
-    CHECK(QuantGridSteps(p[QUANT_GRID]) == 2);
+    r.ui.KnobClick(5, r.now);
+    CHECK(r.ui.KnobPage(5) == 0);
 
     r.ui.KnobTurn(3, 20, false); // delay
     CHECK(p[DELAY] > 0.f);
@@ -887,8 +891,9 @@ static void TestLengthShown()
         CHECK(r.m.Current().length == 12);
         LedFrame f;
         r.ui.Draw(f, r.now);
-        // Step 12 is on white key 11 (index 10): bright; steps 1-11 dim; 13-16 dark.
-        CHECK(f.key[Ui::kWhite[10]].r > 0.9f && f.key[Ui::kWhite[10]].g > 0.9f);
+        // Step 12 is on white key 11 (index 10): bright cyan (past step 8);
+        // steps 1-11 dim; 13-16 dark.
+        CHECK(f.key[Ui::kWhite[10]].r < 0.1f && f.key[Ui::kWhite[10]].b > 0.9f);
         CHECK(f.key[Ui::kWhite[0]].r > 0.05f && f.key[Ui::kWhite[0]].r < 0.3f);
         CHECK(f.key[Ui::kWhite[7]].r > 0.05f); // middle C = step 9, within
         CHECK(f.key[Ui::kWhite[11]].r == 0.f && f.key[Ui::kWhite[14]].r == 0.f);
@@ -1120,6 +1125,67 @@ static void TestKnobColours()
     CHECK(r.m.settings.params[ENV_MOD] - e0 > 1.5f * (r.m.settings.params[CUTOFF] - c0));
 }
 
+static void TestLiveQuantizeAndLights()
+{
+    printf("live mode: quantize key and grid; tempo, PLAY and CHOMPI lights\n");
+    Rig r;
+    const float* p = r.m.settings.params;
+    r.ui.SetMode(Ui::Mode::PITCH);
+    // CHOMPI + D#4: quantize on/off; while on, white keys 1-3 pick the grid.
+    const bool q0 = StepIndex(p[QUANTIZE], 2) == 1;
+    r.ui.Chompi(true), r.Key(Ui::kKeyView);
+    CHECK((StepIndex(p[QUANTIZE], 2) == 1) != q0);
+    if(StepIndex(p[QUANTIZE], 2) == 0)
+        r.Key(Ui::kKeyView);
+    CHECK(StepIndex(p[QUANTIZE], 2) == 1);
+    r.White(1);
+    CHECK(QuantGridSteps(p[QUANT_GRID]) == 2);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[1]].b > 0.9f && f.key[Ui::kWhite[0]].b < 0.2f);
+    CHECK(f.key[Ui::kKeyView].b > 0.9f);
+    r.Key(Ui::kKeyView); // off: the grid keys go dark and don't change it
+    CHECK(StepIndex(p[QUANTIZE], 2) == 0);
+    r.White(2);
+    CHECK(QuantGridSteps(p[QUANT_GRID]) == 2);
+    r.ui.Chompi(false);
+    // Note entry (record on, stopped): CHOMPI + D#4 is the view key again.
+    r.ui.Loop(r.now);
+    CHECK(r.ui.NoteEntry());
+    const bool half = r.ui.SecondHalf();
+    r.ui.Chompi(true), r.Key(Ui::kKeyView), r.ui.Chompi(false);
+    CHECK(r.ui.SecondHalf() != half && StepIndex(p[QUANTIZE], 2) == 0);
+    r.ui.Loop(r.now);
+
+    // Volume page 2 (tempo): the light flashes the beat, stopped or running.
+    r.ui.KnobClick(5, r.now);
+    float lo = 9.f, hi = 0.f;
+    for(int i = 0; i < 100; i++)
+    {
+        r.Run(10);
+        r.ui.Draw(f, r.now);
+        const float b = f.knob[5].r + f.knob[5].g;
+        lo = std::min(lo, b), hi = std::max(hi, b);
+    }
+    CHECK(hi > 1.5f && lo < 0.5f);
+
+    // Running: PLAY steady green; CHOMPI flashes on note steps.
+    DemoPattern(r.m.patterns[0]);
+    r.m.TogglePlay();
+    float play_lo = 9.f, play_hi = 0.f, ch_lo = 9.f, ch_hi = 0.f;
+    for(int i = 0; i < 200; i++)
+    {
+        r.Run(5);
+        r.ui.NoteStep(r.now);
+        r.ui.Draw(f, r.now);
+        play_lo = std::min(play_lo, f.play.g), play_hi = std::max(play_hi, f.play.g);
+        const float c = f.chompi.r + f.chompi.g + f.chompi.b;
+        ch_lo = std::min(ch_lo, c), ch_hi = std::max(ch_hi, c);
+    }
+    CHECK(play_lo > 0.5f && play_hi - play_lo < 0.01f);
+    CHECK(ch_hi > ch_lo + 0.5f);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1137,6 +1203,7 @@ int main()
     TestNoteEntry();
     TestStepModeExtras();
     TestKnobColours();
+    TestLiveQuantizeAndLights();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

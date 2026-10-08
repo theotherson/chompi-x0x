@@ -102,17 +102,18 @@ constexpr uint8_t kKnobLength = 254;
 constexpr uint8_t kKnobNone   = 255;
 
 /** Knobs left to right: knobs 1-4, the big purple knob, volume.
- *  [knob][page][CHOMPI held]. Clicking knobs 1-4 steps through their pages;
- *  the big knob and volume have one. */
+ *  [knob][page][CHOMPI held]. Clicking a knob steps through its pages
+ *  (knob 1: 2, knob 4: 4, volume: 2); the big knob's click is tap tempo.
+ *  Quantize and its grid are on the keys (live mode, CHOMPI + D#4). */
 constexpr int     kMaxKnobPages       = 4;
-constexpr int     kKnobPages[6]       = {2, 2, 2, 4, 1, 1};
+constexpr int     kKnobPages[6]       = {2, 1, 1, 4, 1, 2};
 constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{ENV_MOD, DECAY}, {ACCENT, SLIDE_TIME}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{TEMPO, SWING}, {QUANTIZE, QUANT_GRID}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{ENV_MOD, ACCENT}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{DECAY, SLIDE_TIME}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{DELAY, DELAY_TIME}, {DELAY_FB, DELAY_TONE}, {MOD, MOD_WIDTH}, {CRUSH, CRUSH_RATE}},
     {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{VOLUME, DRIVE}, {TEMPO, SWING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
 /** How fast a knob turns a continuous parameter, relative to the rest:

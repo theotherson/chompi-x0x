@@ -15,7 +15,7 @@ PLAY runs and stops the pattern in both.
 
 ## The 16 steps on 15 white keys
 
-White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other half dimmed. The view follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. D#4 flips it by hand (CHOMPI + D#4 in pitch mode).
+White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other half dimmed. The view follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. D#4 flips it by hand (CHOMPI + D#4 in pitch mode's note entry).
 
 **Step lights:** on = red, accent = bright red, tie = dim red; steps past the pattern's length dimmer still.
 
@@ -51,7 +51,7 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | CHOMPI + C#3 / D#3 | Live keyboard an octave down / up (one each way) |
 | CHOMPI + F#3 / G#3 / A#3 | Accent / slide / tie (see below) |
 | CHOMPI + C#4 | Transpose mode on/off: while on, keys set the transpose instead of playing (middle C = none). C#4 dims and the amount's key lights yellow. A key tapped twice quickly also sets that transpose and leaves |
-| CHOMPI + D#4 | View steps 1-8 / 9-16 |
+| CHOMPI + D#4 | Quantize on/off for recording (lit blue when on). While it's on, white keys 1-3 show the grid and CHOMPI + white key 1 / 2 / 3 picks it: 1/16, 1/8, 1/4. In note entry (record on, stopped) it views steps 1-8 / 9-16 instead |
 | CHOMPI + PLAY | Arpeggiator on/off. While CHOMPI is held, PLAY shows it: cyan on, dim cyan off (and CHOMPI is lit teal while it's on) |
 | CHOMPI + LOOP | Arpeggiator latch (LOOP orange while CHOMPI is held and it's latched): keeps going after you let go; a fresh chord replaces it |
 | CHOMPI + F#4 / A#4 | Arpeggiator octaves below / above the chord, 0-2 each, cycling. White keys 1-5 show them for a moment (octaves -2 to +2, the chord's own bright). In note entry, CHOMPI + A#4 adds a rest instead |
@@ -59,7 +59,7 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 
 The step lights only show while the pattern plays or you're recording; otherwise the keybed is just a keyboard.
 
-**Recording while running.** A played note goes into the pattern; a note held across steps ties through them. With quantize on (knob 3, page 2) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat. CHOMPI + F#3 / G#3 / A#3 toggle accent, slide or tie on the step playing now. For octave jumps, shift the keyboard with CHOMPI + C#3 / D#3 and play.
+**Recording while running.** A played note goes into the pattern; a note held across steps ties through them. With quantize on (CHOMPI + D#4) notes land on the grid: every step (1/16), every other (1/8) or every fourth (1/4). With quantize off they keep their timing within the step, to 1/24 of a beat. CHOMPI + F#3 / G#3 / A#3 toggle accent, slide or tie on the step playing now. For octave jumps, shift the keyboard with CHOMPI + C#3 / D#3 and play.
 
 **Note entry (record on, stopped).** Arming LOOP while stopped starts at step 1. Each note you play fills the next step (in the keyboard's octave), its white key lights up, and the pattern grows to it. CHOMPI + F#3 / G#3 put an accent / slide on the last step, CHOMPI + A#3 adds a tie step, CHOMPI + A#4 a rest (rests you've entered show dim grey, the one just entered brighter). Press PLAY with record still on to carry on recording in real time.
 
@@ -67,24 +67,24 @@ The step lights only show while the pattern plays or you're recording; otherwise
 
 ## Knobs
 
-Turning the pattern length (knob 1, page 2), in either mode, shows it on the white keys for a moment: every step within the length dim white, the last one bright.
+Turning the pattern length (knob 1, page 2), in either mode, shows it on the white keys for a moment: every step within the length dim white, the last one bright: white for steps 1-8, cyan from step 9 (middle C shows step 8 or 9, so the colour tells them apart).
 
-Click knobs 1-4 to step through their pages (knob 4 has four); each page has its own colour, and so does each CHOMPI function (the light changes colour while CHOMPI is held). A knob never goes darker than a fifth, so you can always see which page it's on. Env mod, decay, accent and slide time turn 1.6 times faster than the other knobs, so their whole range takes about a turn and a quarter. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page.
+Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has four); each page has its own colour, and so does each CHOMPI function (the light changes colour while CHOMPI is held). A knob never goes darker than a fifth, so you can always see which page it's on. Env mod, decay, accent and slide time turn 1.6 times faster than the other knobs, so their whole range takes about a turn and a quarter. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page.
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
 | Knob 1 | Saw / square (amber / cyan) | Pulse width (magenta) | Pattern length (white) | Tuning, +/- 1 semitone (sky blue) |
-| Knob 2 | Env mod (green) | Decay (violet) | Accent (orange) | Slide time (blue) |
-| Knob 3 | Tempo, 1 BPM a click, 60-200 (yellow) | Swing (pink) | Quantize on/off (blue) | Quantize grid: 1/16, 1/8, 1/4 (lime) |
+| Knob 2 | Env mod (green) | Accent (orange) | | |
+| Knob 3 | Decay (violet) | Slide time (blue) | | |
 | Knob 4 | Delay dry/wet (cyan) | Delay time: 1/16, 1/8, 3/16, 1/4, 3/8, 1/2 (white) | Tape feedback (amber) | Tape tone: dark to bright (lavender) |
 | Knob 4, page 3 | Chorus into flanger (pink) | Stereo width / depth (teal) | | |
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction (red) | | |
 | Big purple | Cutoff (purple) | Resonance (red) | | |
-| Volume | Volume (white) | Drive (light orange to red) | | |
+| Volume | Volume (white) | Drive (light orange to red) | Tempo, 1 BPM a click, 60-200 (yellow, flashing the beat) | Swing (pink) |
 
-The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, alternating sides, on steps 1, 5, 9 and 13; the side of the current beat flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is green while running; the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
+The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, alternating sides, on steps 1, 5, 9 and 13; the side of the current beat flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
 
-Big purple knob click: tap tempo. Volume knob click: stop any stuck live notes.
+Big purple knob click: tap tempo. Volume knob click: flips between volume / drive and tempo / swing, and stops any stuck live notes.
 
 ## The voice
 

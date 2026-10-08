@@ -54,7 +54,10 @@
  *                                  arpeggio while the arpeggiator is on, the
  *                                  pattern otherwise; a key tapped twice
  *                                  quickly also sets it and leaves
- *    CHOMPI + D#4                  view steps 1-8 / 9-16
+ *    CHOMPI + D#4                  quantize on/off for recording; while it's
+ *                                  on, CHOMPI + white keys 1-3 pick its grid
+ *                                  (1/16, 1/8, 1/4), shown on those keys. In
+ *                                  note entry: view steps 1-8 / 9-16
  *    CHOMPI + PLAY                 arpeggiator on/off
  *    CHOMPI + LOOP                 arpeggiator latch: latched, each key adds
  *                                  its note to the chord or takes it out
@@ -64,10 +67,10 @@
  *                                  random, as played
  *    CHOMPI + A#4, note entry      a rest
  *
- *  Knobs: clicking knobs 1-4 flips each between two pages; CHOMPI + click
- *  resets both functions of the knob's page to their defaults (knob 4: all
- *  the effects, every page). The big
- *  knob's click is tap tempo. See params.h kKnobMap for what each turns.
+ *  Knobs: clicking knob 1, knob 4 or volume steps through its pages;
+ *  CHOMPI + click resets both functions of the knob's page to their
+ *  defaults (knob 4: all the effects, every page). The big knob's click is
+ *  tap tempo. See params.h kKnobMap for what each turns.
  */
 #pragma once
 #include "machine.h"
@@ -134,7 +137,7 @@ class Ui
     Mode GetMode() const { return mode_; }
     Page GetPage() const { return page_; }
     int  Selected() const { return selected_; }
-    int  KnobPage(int knob) const { return knob < 4 ? knob_page_[knob] : 0; }
+    int  KnobPage(int knob) const { return knob >= 0 && knob < 6 ? knob_page_[knob] : 0; }
     int  KeyboardOctave() const { return kbd_octave_; }
     bool NoteEntry() const { return mode_ == Mode::PITCH && m_->Recording() && !m_->Running(); }
     int  Cursor() const { return cursor_; }
@@ -294,12 +297,13 @@ class Ui
             }
             return;
         }
-        if(knob < 4)
-            knob_page_[knob] = (knob_page_[knob] + 1) % kKnobPages[knob];
-        else if(knob == 4)
+        if(knob == 4)
             m_->Tap(now);
         else
+            knob_page_[knob] = (knob_page_[knob] + 1) % kKnobPages[knob];
+        if(knob == 5)
         {
+            // The volume knob's click also ends any stuck notes.
             ReleaseAll();
             m_->AllLiveOff();
         }
@@ -389,15 +393,12 @@ class Ui
             for(int k = 0; k < kKeyNotes; k++)
                 f.key[k] = {1.f, 0.f, 0.f};
 
-        DrawKnobs(f);
+        DrawKnobs(f, now, cur_step);
         DrawBeat(f, now, cur_step);
 
-        // PLAY: green, pulsing each step, brighter on the beat.
+        // PLAY: steady green while running.
         if(m_->Running())
-        {
-            const float b = step_lit ? (cur_step % 4 == 0 ? 1.f : 0.45f) : 0.08f;
-            f.play        = {0.f, b, b * .15f};
-        }
+            f.play = {0.f, .7f, .1f};
         if(mode_ == Mode::STEP)
             f.loop = now - tapped_at_ < 100 ? Rgb{1.f, 1.f, 1.f} : Rgb{}; // tap tempo
         else if(loop_down_ && !loop_cleared_ && now - loop_down_at_ > 300)
@@ -424,6 +425,18 @@ class Ui
             f.chompi = {.5f, 0.f, 0.f};
         else
             f.chompi = m_->ArpOn() ? Rgb{0.f, .5f, .35f} : Rgb{0.f, .15f, .5f}; // teal = arp on
+        // While the pattern runs it flashes brighter on each step that plays
+        // a note, brightest on the beat.
+        if(!chompi_ && step_lit)
+        {
+            const Step& s = m_->Current().steps[cur_step];
+            if(s.on && !s.tie)
+            {
+                const float g = cur_step % 4 == 0 ? 2.f : 1.5f;
+                f.chompi      = {Clamp(f.chompi.r * g + .15f, 0.f, 1.f), Clamp(f.chompi.g * g + .15f, 0.f, 1.f),
+                                 Clamp(f.chompi.b * g + .15f, 0.f, 1.f)};
+            }
+        }
     }
 
     static constexpr Rgb kRed             = {1.f, 0.f, 0.f};
@@ -431,6 +444,7 @@ class Ui
     static constexpr Rgb kTransposeKeyColour = {1.f, .85f, 0.f};  // C#4, the mode key: yellow, dim
     static constexpr Rgb kArpOnColour        = {0.f, .85f, 1.f};  // cyan
     static constexpr Rgb kLatchColour        = {1.f, .45f, 0.f};  // orange
+    static constexpr Rgb kQuantizeColour     = {0.f, .5f, 1.f};   // blue
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -441,18 +455,18 @@ class Ui
         {{{1.f, .55f, 0.f}, {1.f, 0.f, .8f}},     // wave (amber, cyan for square) | pulse width (magenta)
          {{1.f, 1.f, 1.f},  {.3f, .6f, 1.f}},     // length (white) | tuning (sky blue)
          {}, {}},
-        {{{0.f, 1.f, .4f},  {.55f, 0.f, 1.f}},    // env mod (green) | decay (violet)
-         {{1.f, .3f, 0.f},  {0.f, .3f, 1.f}},     // accent (orange) | slide time (blue), as their step pages
-         {}, {}},
-        {{{1.f, .85f, 0.f}, {1.f, .15f, .45f}},   // tempo (yellow) | swing (pink)
-         {{0.f, .5f, 1.f},  {.6f, 1.f, 0.f}},     // quantize (blue) | grid (lime)
-         {}, {}},
+        {{{0.f, 1.f, .4f},  {1.f, .3f, 0.f}},     // env mod (green) | accent (orange, as its step page)
+         {}, {}, {}},
+        {{{.55f, 0.f, 1.f}, {0.f, .3f, 1.f}},     // decay (violet) | slide time (blue, as its step page)
+         {}, {}, {}},
         {{{0.f, .9f, 1.f},  {1.f, 1.f, 1.f}},     // delay (cyan) | delay time (white)
          {{1.f, .6f, .1f},  {.6f, .4f, 1.f}},     // tape feedback (amber) | tone (lavender)
          {{1.f, 0.f, .6f},  {0.f, .8f, .8f}},     // mod (pink) | width (teal)
          {{.3f, 1.f, 0.f},  {1.f, .15f, 0.f}}},   // crush (green) | rate (red)
         {{{.7f, .2f, 1.f},  {1.f, 0.f, .2f}}, {}, {}, {}},  // cutoff (purple) | resonance (red)
-        {{{1.f, 1.f, 1.f},  {}}, {}, {}, {}},     // volume (white) | drive: orange to red
+        {{{1.f, 1.f, 1.f},  {}},                  // volume (white) | drive: orange to red
+         {{1.f, .85f, 0.f}, {1.f, .15f, .45f}},   // tempo (yellow, flashing the beat) | swing (pink)
+         {}, {}},
     };
     // clang-format on
     static constexpr Rgb kPageColour[7] = {
@@ -572,6 +586,8 @@ class Ui
 
     void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
 
+    bool Quantizing() const { return StepIndex(m_->settings.params[QUANTIZE], 2) == 1; }
+
     /** In transpose mode: the same key twice within kDoubleTapMs ends it. */
     bool TransposeDoubleTap(int k, uint32_t now)
     {
@@ -637,7 +653,12 @@ class Ui
                         LiveFlag(BlackIndex(k));
                     break;
                 case 5: transpose_mode_ = !transpose_mode_, tap_key_ = -1; break;
-                case 6: half_ = SecondHalf() ? 0 : 1; break;
+                case 6:
+                    if(NoteEntry())
+                        half_ = SecondHalf() ? 0 : 1;
+                    else
+                        m_->SetParam(QUANTIZE, Quantizing() ? 0.f : 1.f);
+                    break;
                 case 7: CycleParam(ARP_OCT_DOWN, 3), arp_shown_ = kShowOctaves; break;
                 case 8: CycleParam(ARP_MODE, 5), arp_shown_ = kShowPattern; break;
                 case 9:
@@ -646,7 +667,14 @@ class Ui
                     else
                         CycleParam(ARP_OCT_UP, 3), arp_shown_ = kShowOctaves;
                     break;
-                default: break; // white keys: nothing
+                default:
+                {
+                    // White keys 1-3 pick the quantize grid while it's on.
+                    const int w = WhiteIndex(k);
+                    if(w >= 0 && w < 3 && Quantizing() && !NoteEntry())
+                        m_->SetParam(QUANT_GRID, StepValue(w, 3));
+                    break;
+                }
             }
             return;
         }
@@ -934,7 +962,19 @@ class Ui
             for(int i = 2; i < 5 && flags; i++)
                 f.key[kBlack[i]] = kPageColour[i + 1];
             f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 0.15f : 0.6f);
-            f.key[kKeyView]      = {.5f, .5f, .5f};
+            if(input)
+                f.key[kKeyView] = {.5f, .5f, .5f};
+            else
+            {
+                // Quantize on/off; while on, white keys 1-3 show its grid.
+                f.key[kKeyView] = Scale(kQuantizeColour, Quantizing() ? 1.f : 0.12f);
+                if(Quantizing())
+                {
+                    const int g = StepIndex(m_->settings.params[QUANT_GRID], 3);
+                    for(int i = 0; i < 3; i++)
+                        f.key[kWhite[i]] = Scale(kQuantizeColour, i == g ? 1.f : 0.1f);
+                }
+            }
             // Arpeggiator: octaves down (F#4) and up (A#4), brighter for
             // more; its pattern (G#4).
             const float* p   = m_->settings.params;
@@ -980,7 +1020,8 @@ class Ui
     }
 
     /** Turning the length knob, in either mode: every step within the
-     *  length dim white, the last one bright, the rest dark. Middle C shows
+     *  length dim white, the last one bright (white up to step 8, cyan from
+     *  step 9), the rest dark. Middle C shows
      *  step 8 or 9, whichever keeps the last step in view. */
     void DrawLength(LedFrame& f) const
     {
@@ -997,7 +1038,10 @@ class Ui
                 k = kMiddleC;
             else
                 continue;
-            f.key[k] = st == len - 1 ? Rgb{1.f, 1.f, 1.f} : st < len ? Rgb{.12f, .12f, .12f} : Rgb{};
+            // The last step bright: white for steps 1-8, cyan from step 9
+            // (middle C shows step 8 or 9, so the colour tells them apart).
+            const Rgb last = second ? Rgb{0.f, .8f, 1.f} : Rgb{1.f, 1.f, 1.f};
+            f.key[k]       = st == len - 1 ? last : st < len ? Rgb{.12f, .12f, .12f} : Rgb{};
         }
     }
 
@@ -1066,7 +1110,16 @@ class Ui
         f.big_right = right ? c : Rgb{};
     }
 
-    void DrawKnobs(LedFrame& f) const
+    /** On the beat: from the pattern while it runs, else from the tempo. */
+    bool TempoBeat(uint32_t now, int cur_step) const
+    {
+        if(m_->Running() && cur_step >= 0)
+            return cur_step % 4 == 0 && now - step_seen_at_ < 100;
+        const float beats = now * m_->TempoBpmNow() / 60000.f;
+        return beats - floorf(beats) < 0.1f;
+    }
+
+    void DrawKnobs(LedFrame& f, uint32_t now, int cur_step) const
     {
         for(int k = 0; k < 6; k++)
         {
@@ -1084,6 +1137,8 @@ class Ui
                 v = m_->settings.params[DRIVE];
                 c = {1.f, .45f * (1.f - v), 0.f};
             }
+            else if(sel == TEMPO)
+                v = TempoBeat(now, cur_step) ? 1.f : 0.f; // flashes the beat
             else if(sel != kKnobNone)
                 v = m_->settings.params[sel];
             // Never below a fifth, so the page's colour always shows.
@@ -1104,7 +1159,7 @@ class Ui
     int      transpose_before_hold_ = 0;
     int      tap_key_               = -1; // transpose mode: the last key, for double taps
     uint32_t tap_at_                = 0;
-    int      knob_page_[4] = {};
+    int      knob_page_[6] = {};
     int      kbd_octave_   = 0; // pitch mode's live keyboard: -1, 0, +1
     int      sounding_note_[kKeyNotes] = {};
     bool     loop_down_    = false;
@@ -1139,6 +1194,7 @@ constexpr Rgb Ui::kRed;
 constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
+constexpr Rgb Ui::kQuantizeColour;
 constexpr Rgb Ui::kLatchColour;
 constexpr Rgb Ui::kArpColour;
 constexpr Rgb Ui::kKnobColour[6][kMaxKnobPages][2];
