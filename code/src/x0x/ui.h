@@ -67,6 +67,12 @@
  *                                  random, as played
  *    CHOMPI + A#4, note entry      a rest
  *
+ *  CHOMPI double tap (two quick taps, nothing else touched): swap the panel
+ *  between the bass and the drums. Both always play; this only picks which
+ *  the keys and knobs edit. The drums aren't built yet: on their side the
+ *  keys, knobs 1-4 and LOOP do nothing (PLAY, tap tempo and the volume
+ *  knob, all shared, still work).
+ *
  *  Knobs: clicking knob 1, knob 4 or volume steps through its pages;
  *  CHOMPI + click resets both functions of the knob's page to their
  *  defaults (knob 4: all the effects, every page). The big knob's click is
@@ -129,12 +135,21 @@ class Ui
     static constexpr uint32_t kClearHoldMs  = 1000;
     static constexpr uint32_t kTransposeExitMs = 2000;
     static constexpr uint32_t kDoubleTapMs     = 350;
+    // CHOMPI double tap: each tap 30-250 ms, the second pressed 40-350 ms
+    // after the first is let go (the minimums keep contact bounce out).
+    static constexpr uint32_t kChompiTapMinMs  = 30;
+    static constexpr uint32_t kChompiTapMaxMs  = 250;
+    static constexpr uint32_t kChompiGapMinMs  = 40;
+    static constexpr uint32_t kChompiGapMaxMs  = 350;
+    static constexpr uint32_t kSwapFlashMs     = 350;
     static constexpr uint32_t kShowLengthMs = 1200;
     static constexpr uint32_t kLoopClearMs = 2000;
 
     void Init(Machine* m) { m_ = m; }
 
     Mode GetMode() const { return mode_; }
+    /** Which machine the panel edits: the bass, or the drums. */
+    bool OnDrums() const { return drums_; }
     Page GetPage() const { return page_; }
     int  Selected() const { return selected_; }
     int  KnobPage(int knob) const { return knob >= 0 && knob < 6 ? knob_page_[knob] : 0; }
@@ -158,6 +173,7 @@ class Ui
     {
         if(mode == mode_)
             return;
+        Touched();
         ReleaseAll();
         mode_           = mode;
         page_           = Page::NOTES;
@@ -171,13 +187,39 @@ class Ui
             return;
         ReleaseAll(); // notes started under one layer end when it changes
         chompi_ = down;
+        const uint32_t now = last_tick_;
+        if(down)
+        {
+            // The second tap must start soon (but not too soon) after the first.
+            const uint32_t gap = now - chompi_up_at_;
+            if(chompi_taps_ == 1 && (gap < kChompiGapMinMs || gap > kChompiGapMaxMs))
+                chompi_taps_ = 0;
+            chompi_down_at_ = now;
+            chompi_clean_   = true;
+            return;
+        }
+        const uint32_t held = now - chompi_down_at_;
+        if(!chompi_clean_ || held < kChompiTapMinMs || held > kChompiTapMaxMs)
+        {
+            chompi_taps_ = 0;
+            return;
+        }
+        chompi_up_at_ = now;
+        if(++chompi_taps_ == 2)
+        {
+            chompi_taps_ = 0;
+            SwapMachine();
+        }
     }
 
     void KeyDown(int k, uint32_t now)
     {
         if(k < 0 || k >= kKeyNotes)
             return;
+        Touched();
         held_[k] = true;
+        if(drums_)
+            return; // not built yet
         if(mode_ == Mode::PITCH)
             PitchKey(k, now);
         else
@@ -193,6 +235,8 @@ class Ui
             c4_held_ = false;
         if(sounding_[k])
             Sound(k, false);
+        if(drums_)
+            return;
         if(mode_ == Mode::STEP && !chompi_ && k == kKeyClear && !clear_done_)
         {
             m_->Current().steps[selected_] = Step{}; // a tap clears the selected step
@@ -203,6 +247,9 @@ class Ui
     /** PLAY: run / stop. CHOMPI + PLAY: arpeggiator on / off. */
     void Play()
     {
+        Touched();
+        if(chompi_ && drums_)
+            return;
         if(chompi_)
             m_->SetArpOn(!m_->ArpOn());
         else
@@ -213,6 +260,9 @@ class Ui
      *  let go, unless held 2 s, which clears the pattern instead. */
     void LoopDown(uint32_t now)
     {
+        Touched();
+        if(drums_)
+            return;
         if(chompi_)
         {
             m_->SetArpLatch(!m_->ArpLatch()); // CHOMPI + LOOP: arpeggiator latch
@@ -252,6 +302,9 @@ class Ui
     /** knob 0-5: knobs 1-4, big, volume. */
     void KnobTurn(int knob, int inc, bool fast)
     {
+        Touched();
+        if(drums_ && knob != 5)
+            return; // the volume knob (volume, drive, tempo, swing) is shared
         const uint8_t sel = kKnobMap[knob][KnobPage(knob)][chompi_ ? 1 : 0];
         if(sel == kKnobNone)
             return;
@@ -277,6 +330,9 @@ class Ui
 
     void KnobClick(int knob, uint32_t now)
     {
+        Touched();
+        if(drums_ && knob < 4)
+            return; // tap tempo and the volume knob are shared
         if(chompi_)
         {
             // Both functions of this knob's page back to their defaults;
@@ -425,9 +481,11 @@ class Ui
             f.chompi = {.5f, 0.f, 0.f};
         else
             f.chompi = m_->ArpOn() ? Rgb{0.f, .5f, .35f} : Rgb{0.f, .15f, .5f}; // teal = arp on
+        if(drums_)
+            DrawDrums(f, now, cur_step, step_lit);
         // While the pattern runs it flashes brighter on each step that plays
         // a note, brightest on the beat.
-        if(!chompi_ && step_lit)
+        else if(!chompi_ && step_lit)
         {
             const Step& s = m_->Current().steps[cur_step];
             if(s.on && !s.tie)
@@ -437,6 +495,47 @@ class Ui
                                  Clamp(f.chompi.b * g + .15f, 0.f, 1.f)};
             }
         }
+        // Just swapped: the keybed flashes the new side's colour, fading.
+        if(now - swapped_at_ < kSwapFlashMs)
+        {
+            const float k = 1.f - (now - swapped_at_) / static_cast<float>(kSwapFlashMs);
+            for(int i = 0; i < kKeyNotes; i++)
+                f.key[i] = Scale(drums_ ? kDrumColour : kRed, k);
+        }
+    }
+
+    /** The drums' side, for now a stand-in: black keys 1-8 dim in the
+     *  colours the 606's seven instruments and accent will have, the
+     *  playhead dim white on the white keys while running. Knobs 1-4 dark;
+     *  the volume knob and the beat lights work as on the bass side. */
+    void DrawDrums(LedFrame& f, uint32_t now, int cur_step, bool step_lit) const
+    {
+        static constexpr Rgb kInst[8] = {
+            {1.f, 0.f, 0.f}, {1.f, .5f, 0.f}, {1.f, 1.f, 0.f}, {0.f, 1.f, .2f},
+            {0.f, .8f, 1.f}, {0.f, .2f, 1.f}, {.7f, 0.f, 1.f}, {1.f, 1.f, 1.f},
+        };
+        for(int i = 0; i < kKeyNotes; i++)
+            f.key[i] = {};
+        for(int i = 0; i < 8; i++)
+            f.key[kBlack[i]] = Scale(kInst[i], 0.12f);
+        if(m_->Running() && cur_step >= 0)
+        {
+            const int k = WhiteOfStep(cur_step);
+            if(k >= 0)
+                f.key[k] = Rgb{.35f, .35f, .35f};
+        }
+        for(int k = 0; k < 5; k++)
+            f.knob[k] = {};
+        DrawBeat(f, now, cur_step);
+        f.loop = {};
+        f.play = m_->Running() ? Rgb{0.f, .7f, .1f} : Rgb{};
+        if(chompi_)
+            f.chompi = {1.f, 1.f, 1.f};
+        else
+        {
+            const float b = step_lit && cur_step % 4 == 0 ? 1.f : .45f;
+            f.chompi      = Scale(kDrumColour, b);
+        }
     }
 
     static constexpr Rgb kRed             = {1.f, 0.f, 0.f};
@@ -445,6 +544,7 @@ class Ui
     static constexpr Rgb kArpOnColour        = {0.f, .85f, 1.f};  // cyan
     static constexpr Rgb kLatchColour        = {1.f, .45f, 0.f};  // orange
     static constexpr Rgb kQuantizeColour     = {0.f, .5f, 1.f};   // blue
+    static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -585,6 +685,21 @@ class Ui
     }
 
     void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
+
+    /** Anything but CHOMPI was used: CHOMPI's press isn't a bare tap. */
+    void Touched()
+    {
+        chompi_clean_ = false;
+        chompi_taps_  = 0;
+    }
+
+    void SwapMachine()
+    {
+        ReleaseAll();
+        drums_          = !drums_;
+        transpose_mode_ = false;
+        swapped_at_     = last_tick_;
+    }
 
     bool Quantizing() const { return StepIndex(m_->settings.params[QUANTIZE], 2) == 1; }
 
@@ -1158,6 +1273,12 @@ class Ui
     uint32_t c4_down_at_            = 0;
     int      transpose_before_hold_ = 0;
     int      tap_key_               = -1; // transpose mode: the last key, for double taps
+    bool     drums_                 = false;
+    bool     chompi_clean_          = false; // CHOMPI down and nothing else touched
+    int      chompi_taps_           = 0;
+    uint32_t chompi_down_at_        = 0;
+    uint32_t chompi_up_at_          = 0;
+    uint32_t swapped_at_            = 0x80000000u;
     uint32_t tap_at_                = 0;
     int      knob_page_[6] = {};
     int      kbd_octave_   = 0; // pitch mode's live keyboard: -1, 0, +1
@@ -1194,6 +1315,7 @@ constexpr Rgb Ui::kRed;
 constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
+constexpr Rgb Ui::kDrumColour;
 constexpr Rgb Ui::kQuantizeColour;
 constexpr Rgb Ui::kLatchColour;
 constexpr Rgb Ui::kArpColour;

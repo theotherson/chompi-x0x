@@ -1237,6 +1237,68 @@ static void TestQuantizedPlayback()
     }
 }
 
+static void TestChompiDoubleTap()
+{
+    printf("CHOMPI double tap: bass / drums, and what doesn't count\n");
+    Rig r;
+    r.Run(1000);
+    auto tap = [&](int hold_ms) { r.ui.Chompi(true), r.Run(hold_ms), r.ui.Chompi(false); };
+    auto dbl = [&]() { tap(60), r.Run(120), tap(60); };
+
+    dbl();
+    CHECK(r.ui.OnDrums());
+    LedFrame f;
+    r.ui.Draw(f, r.now); // the swap flash: the keybed amber
+    CHECK(f.key[0].r > 0.5f && f.key[0].g > 0.3f && f.key[0].b < 0.1f);
+    r.Run(500);
+    r.ui.Draw(f, r.now);
+    CHECK(f.chompi.r > 0.3f && f.chompi.g > 0.2f && f.chompi.b < 0.1f);
+
+    // On the drums' side the bass can't be edited; shared controls work.
+    const Pattern before = r.m.Current();
+    const float   env    = r.m.settings.params[ENV_MOD];
+    const float   vol    = r.m.settings.params[VOLUME];
+    r.White(3), r.Black(2), r.ui.KnobTurn(1, 5, false), r.ui.Loop(r.now);
+    CHECK(r.m.Current().steps[3] == before.steps[3] && r.ui.Selected() == 0);
+    CHECK(r.m.settings.params[ENV_MOD] == env && !r.m.Recording());
+    r.ui.KnobTurn(5, -3, false);
+    CHECK(r.m.settings.params[VOLUME] < vol);
+    r.ui.Play();
+    CHECK(r.m.Running());
+    r.ui.Play();
+    r.Run(500);
+
+    dbl();
+    CHECK(!r.ui.OnDrums());
+    r.Run(500);
+
+    // Not a double tap: one tap; a long press; too slow; too quick (bounce);
+    // anything else used in between or during.
+    tap(60);
+    r.Run(1000);
+    CHECK(!r.ui.OnDrums());
+    tap(400), r.Run(120), tap(60);
+    r.Run(1000);
+    CHECK(!r.ui.OnDrums());
+    tap(60), r.Run(600), tap(60);
+    r.Run(1000);
+    CHECK(!r.ui.OnDrums());
+    tap(60), r.Run(10), tap(60);
+    r.Run(1000);
+    CHECK(!r.ui.OnDrums());
+    tap(60), r.Run(60), r.ui.KnobTurn(0, 1, false), r.Run(60), tap(60);
+    r.Run(1000);
+    CHECK(!r.ui.OnDrums());
+    // CHOMPI + key, twice quickly (a fast shift combination).
+    for(int i = 0; i < 2; i++)
+    {
+        r.ui.Chompi(true), r.Run(30);
+        r.Key(Ui::kBlack[6]);
+        r.Run(30), r.ui.Chompi(false), r.Run(80);
+    }
+    CHECK(!r.ui.OnDrums());
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1256,6 +1318,7 @@ int main()
     TestKnobColours();
     TestLiveQuantizeAndLights();
     TestQuantizedPlayback();
+    TestChompiDoubleTap();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
