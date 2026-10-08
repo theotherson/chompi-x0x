@@ -3,6 +3,7 @@
 #include "../code/src/x0x/ui.h"
 #include "../code/src/x0x/midifile.h"
 #include "../code/src/x0x/defaults.h"
+#include "../code/src/x0x/drums.h"
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -1846,6 +1847,61 @@ static void TestDefaults()
     CHECK(st.params[RESONANCE] == 1.f && st.params[VOLUME] > 0.1f);
 }
 
+static void TestDrumVoices()
+{
+    printf("drums: every voice sounds and settles; accent, decay, choke\n");
+    // Level (dB) over a window of a single hit, and how long it rings.
+    auto hit = [](Drum v, float accent, float decay, float secs, std::vector<float>& b) {
+        static Drums d;
+        d.Init(48000.f);
+        d.Params(v).decay = decay;
+        d.Trigger(v, accent);
+        b.assign(static_cast<size_t>(48000 * secs), 0.f);
+        for(size_t i = 0; i + 48 <= b.size(); i += 48)
+            d.Process(&b[i], 48);
+    };
+    auto rms_db = [](const std::vector<float>& b, double t0, double t1) {
+        double e = 0;
+        size_t n = 0;
+        for(size_t i = static_cast<size_t>(t0 * 48000); i < static_cast<size_t>(t1 * 48000) && i < b.size(); i++, n++)
+            e += b[i] * b[i];
+        return 10.0 * log10(e / (n ? n : 1) + 1e-20);
+    };
+    std::vector<float> b, a;
+    for(int v = 0; v < NUM_DRUMS; v++)
+    {
+        hit(static_cast<Drum>(v), 0.f, 0.5f, 3.f, b);
+        bool finite = true;
+        float peak = 0.f;
+        for(float x : b)
+            finite &= std::isfinite(x), peak = std::max(peak, fabsf(x));
+        CHECK(finite && peak > 0.02f && peak < 2.f);
+        CHECK(rms_db(b, 0.0, 0.05) - rms_db(b, 2.5, 3.0) > 60.0); // dies away
+        // Accent: louder, and the tail longer (it's hit harder).
+        hit(static_cast<Drum>(v), 1.f, 0.5f, 1.f, a);
+        CHECK(rms_db(a, 0.0, 0.02) > rms_db(b, 0.0, 0.02) + 3.0);
+        // Decay up: rings longer.
+        hit(static_cast<Drum>(v), 0.f, 0.9f, 1.f, a);
+        CHECK(rms_db(a, 0.1, 0.2) > rms_db(b, 0.1, 0.2) + 3.0);
+    }
+    // A closed hat chokes an open one.
+    Drums d;
+    d.Init(48000.f);
+    std::vector<float> open(48000), choked(48000);
+    d.Trigger(OH, 0.f);
+    for(size_t i = 0; i < open.size(); i += 48)
+        d.Process(&open[i], 48);
+    d.Init(48000.f);
+    d.Trigger(OH, 0.f);
+    for(size_t i = 0; i < choked.size(); i += 48)
+    {
+        if(i == 4800)
+            d.Trigger(CH, 0.f); // 100 ms in
+        d.Process(&choked[i], 48);
+    }
+    CHECK(rms_db(choked, 0.25, 0.35) < rms_db(open, 0.25, 0.35) - 30.0);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1874,6 +1930,7 @@ int main()
     TestMidiImport();
     TestDelayTime();
     TestDefaults();
+    TestDrumVoices();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
