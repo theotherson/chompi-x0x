@@ -17,8 +17,8 @@ PLAY runs and stops the pattern in both.
 
 Tap CHOMPI twice quickly (each tap short, nothing else touched in between) to swap the panel between the bass and the drums. Both always play; the swap only picks which one the keys and knobs edit. The keybed flashes the new side's colour (red for the bass, amber for the drums), and the CHOMPI light stays amber while you're on the drums. A shift combination never counts, however fast: a press only counts as a tap if no key, knob or button was used during it.
 
-The drums (a TR-606) aren't built yet. On their side, for now, the keys, knobs 1-4 and LOOP do nothing, so the bass can't be changed by accident; PLAY, tap tempo and the volume knob (volume, drive, tempo, swing) are shared and work on both sides.
-
+**The drums (a TR-606) aren't built yet. On their side, for now, the keys, knobs 1-4 and LOOP do nothing, so the bass can't be changed by accident; PLAY, tap tempo and the volume knob (volume, drive, tempo, swing) are shared and work on both sides.
+**
 ## The 16 steps on 15 white keys
 
 White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (white key 8) is step 8 or step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other half dimmed. The view follows the half you last pressed a key in, and while the pattern runs it follows the playhead once the second half has notes in it. D#4 flips it by hand (CHOMPI + D#4 in pitch mode's note entry).
