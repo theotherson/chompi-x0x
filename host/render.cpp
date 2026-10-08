@@ -12,6 +12,7 @@ static constexpr float  kSr    = 48000.f;
 static constexpr size_t kBlock = 48;
 static Machine          g_m;
 static Fx::Frame        g_delay[96000];
+static float            g_reverb[Reverb::kReverbFrames];
 static int              g_fail = 0;
 
 struct Knob
@@ -26,7 +27,7 @@ static void RenderPattern(const std::string& dir, const char* name, const Patter
                           std::function<void(Machine&, double)> during = nullptr)
 {
     Machine& m = g_m;
-    m.Init(kSr, g_delay, 96000);
+    m.Init(kSr, g_delay, 96000, g_reverb, Reverb::kReverbFrames);
     m.patterns[0] = pat;
     m.settings    = Settings{};
     for(auto& k : knobs)
@@ -119,6 +120,9 @@ int main(int argc, char** argv)
         for(int i : {0, 4, 8, 12})
             both.drums[i] |= kDrumAccent;
         RenderPattern(dir, "bass_and_drums", both, {}, 8.f);
+        // ...with the drums through reverb and the shared delay (the bass dry).
+        RenderPattern(dir, "bass_and_drums_fx", both,
+                      {{DRUM_REVERB, .55f}, {REVERB_SIZE, .6f}, {DRUM_DELAY, .45f}, {DELAY_TIME, StepValue(5, kDelayDivisions)}}, 8.f);
     }
     // Synced time changed every 2 s (1/16, 3/16, 1/8T, 1/2, 1/4): crossfades.
     RenderPattern(dir, "fx_delay_synced_changes", demo, {{DELAY, .55f}, {DELAY_FB, .5f}, {DELAY_TIME, StepValue(1, 9)}},

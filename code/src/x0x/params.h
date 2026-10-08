@@ -51,6 +51,13 @@ enum Param : uint8_t
     DRUM_ACCENT = DRUM_PARAMS + 3 * 7,
     MIX,             // bass / drums balance: centre both, left drums only, right bass only
     MIX_MUTE,        // CHOMPI + the mix: mute the bass / neither / mute the drums
+    DRUM_REVERB,     // the drums' effects (their knob 4): reverb send,
+    REVERB_SIZE,     //   its size,
+    DRUM_DELAY,      //   the shared delay's send,
+    DRUM_CRUSH,      //   bit crush,
+    DRUM_CRUSH_RATE, //   sample-rate reduction,
+    DRUM_FILTER,     //   one-knob filter (low-pass left, high-pass right),
+    DRUM_DRIVE,      //   drive
     NUM_PARAMS
 };
 
@@ -117,6 +124,13 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_accent", .5f,     0, 0},   // accent: up to 3x as loud
     {"mix",         .5f,      0, 0},   // bass / drums
     {"mix_mute",    .5f,      3, 0},   // mute bass / none / mute drums
+    {"drum_reverb", 0.f,      0, 0},
+    {"reverb_size", .5f,      0, 0},
+    {"drum_delay",  0.f,      0, 0},
+    {"drum_crush",  0.f,      0, 0},
+    {"drum_crush_rate", 0.f,  0, 0},
+    {"drum_filter", .5f,      0, 0},   // centre: off
+    {"drum_drive",  0.f,      0, 0},
 };
 // clang-format on
 

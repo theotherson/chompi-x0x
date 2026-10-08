@@ -211,6 +211,7 @@ static void TestTextRoundTrip()
 // ------------------------------------------------------------ machine + panel
 
 static Fx::Frame g_delay[96000];
+static float    g_reverb[Reverb::kReverbFrames];
 
 struct Rig
 {
@@ -219,7 +220,7 @@ struct Rig
     uint32_t now = 1000; // ms
     Rig()
     {
-        m.Init(kSr, g_delay, 96000);
+        m.Init(kSr, g_delay, 96000, g_reverb, Reverb::kReverbFrames);
         m.patterns[0].Clear();
         ui.Init(&m);
     }
@@ -1782,7 +1783,7 @@ static void TestDelayTime()
                 st.dly_div = static_cast<int>(b), st.dly_free_ms = b, fx.Set(st);
             for(int i = 0; i < 48; i++)
                 in[i] = 0.5f * sinf(static_cast<float>(ph)), ph += 2.0 * M_PI * 1000.0 / 48000.0;
-            fx.Process(in, l, r, 48);
+            fx.Process(in, nullptr, l, r, 48);
             for(int i = 0; i < 48; i++, n++)
             {
                 if(prev < 0.f && l[i] >= 0.f) // the delay is full by then: never silent
@@ -2133,6 +2134,126 @@ static void TestDrumMuteSoloMix()
     CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 3) == 2); // drums muted
 }
 
+static void TestDrumEffects()
+{
+    printf("drum effects: reverb, the shared delay's send, filter, the knob 4 pages\n");
+    // The reverb: an impulse rings on, longer for a bigger size; stable.
+    auto tail_db = [](float size) {
+        static float mem[Reverb::kReverbFrames];
+        Reverb rv;
+        rv.Init(48000.f, mem, Reverb::kReverbFrames);
+        rv.Set(size);
+        std::vector<float> in(48000 * 3, 0.f), l(in.size(), 0.f), r(in.size(), 0.f);
+        in[0] = 1.f;
+        for(size_t i = 0; i < in.size(); i += 48)
+            rv.Process(&in[i], &l[i], &r[i], 48);
+        double e1 = 0, e2 = 0;
+        bool   finite = true;
+        for(size_t i = 0; i < l.size(); i++)
+        {
+            finite &= std::isfinite(l[i]) && std::isfinite(r[i]);
+            if(i < 9600) e1 += l[i] * l[i];
+            else if(i >= 48000 && i < 57600) e2 += l[i] * l[i];
+        }
+        CHECK(finite && e1 > 0);
+        return 10 * log10((e2 + 1e-30) / e1); // 1.0-1.2 s against the first 0.2 s
+    };
+    const double small = tail_db(0.1f), big = tail_db(0.9f);
+    printf("  (reverb at 1 s: size 0.1 %.0f dB, size 0.9 %.0f dB)\n", small, big);
+    CHECK(big > small + 20 && small < -40);
+
+    // A drum part: one BD at step 1.
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    p.drums[0] = 1 << BD;
+    auto run_energy = [&](double t0, double t1) {
+        // The output's energy between t0 and t1 seconds after PLAY.
+        r.m.Stop();
+        r.Run(300);
+        r.m.Play();
+        double e = 0;
+        float  L[48], R[48];
+        for(int ms = 0; ms < static_cast<int>(t1 * 1000); ms++)
+        {
+            r.m.Process(L, R, 48);
+            r.now++;
+            r.ui.Tick(r.now);
+            if(ms >= t0 * 1000)
+                for(int i = 0; i < 48; i++)
+                    e += L[i] * L[i];
+        }
+        return e;
+    };
+    float* prm = r.m.settings.params;
+    prm[DELAY_TIME] = StepValue(3, kDelayDivisions); // 1/8: 250 ms at 120 BPM
+    // No send: quiet between 260 and 400 ms (the BD has died away, step 2 is
+    // empty... the next BD is at 2 s).
+    const double dry = run_energy(0.26, 0.4);
+    prm[DRUM_DELAY] = 0.8f;
+    const double wet = run_energy(0.26, 0.4);
+    CHECK(wet > dry * 30);
+    // The mix knob's 'mute the drums' silences their echoes too.
+    prm[MIX_MUTE] = 1.f;
+    const double muted = run_energy(0.26, 0.4);
+    CHECK(muted < wet * 0.01);
+    prm[MIX_MUTE] = 0.5f, prm[DRUM_DELAY] = 0.f;
+    // The reverb send: a tail after the hit.
+    prm[DRUM_REVERB] = 0.8f;
+    const double rev = run_energy(0.26, 0.4);
+    CHECK(rev > dry * 30);
+    prm[DRUM_REVERB] = 0.f;
+
+    // The filter: low-pass left takes the highs, high-pass right the lows.
+    auto band = [](float filter, bool high) {
+        DrumFx fx;
+        fx.Init(48000.f);
+        DrumFx::Settings st;
+        st.filter = filter;
+        fx.Set(st);
+        uint32_t seed = 1;
+        double   e    = 0;
+        float    b[48];
+        float    lp = 0.f;
+        // Below 300 Hz, or above 5 kHz (one-pole splits).
+        const float k = high ? 1.f - expf(-2.f * 3.14159f * 5000.f / 48000.f) : 1.f - expf(-2.f * 3.14159f * 300.f / 48000.f);
+        for(int blk = 0; blk < 1000; blk++)
+        {
+            for(int i = 0; i < 48; i++)
+                seed = seed * 1664525u + 1013904223u, b[i] = static_cast<int32_t>(seed) * 4.6e-10f;
+            fx.Process(b, 48);
+            for(int i = 0; i < 48; i++)
+            {
+                lp += (b[i] - lp) * k;
+                const float d = high ? b[i] - lp : lp;
+                e += d * d;
+            }
+        }
+        return e;
+    };
+    CHECK(band(0.1f, true) < band(0.5f, true) * 0.3);
+    CHECK(band(0.9f, false) < band(0.5f, false) * 0.3);
+
+    // The panel: drums' knob 4, its pages and CHOMPI layers.
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.ui.OnDrums());
+    r.ui.KnobTurn(3, 5, false);
+    CHECK(prm[DRUM_REVERB] > 0.f);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, -5, false), r.ui.Chompi(false);
+    CHECK(prm[REVERB_SIZE] < 0.5f);
+    r.ui.KnobClick(3, r.now); // page 2: delay send / the shared delay's time
+    const int div = StepIndex(prm[DELAY_TIME], kDelayDivisions);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(prm[DELAY_TIME], kDelayDivisions) == div + 1);
+    r.ui.KnobClick(3, r.now), r.ui.KnobClick(3, r.now); // page 4: filter / drive
+    r.ui.KnobTurn(3, -5, false);
+    CHECK(prm[DRUM_FILTER] < 0.5f);
+    r.ui.Chompi(true), r.ui.KnobClick(3, r.now), r.ui.Chompi(false); // reset them all
+    CHECK(prm[DRUM_REVERB] == 0.f && prm[REVERB_SIZE] == kParams[REVERB_SIZE].def && prm[DRUM_FILTER] == 0.5f);
+    CHECK(StepIndex(prm[DELAY_TIME], kDelayDivisions) == div + 1); // the shared time stays
+}
+
 int main()
 {
     TestDemoTiming();
@@ -2165,6 +2286,7 @@ int main()
     TestDrumSequencing();
     TestDrumPanel();
     TestDrumMuteSoloMix();
+    TestDrumEffects();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

@@ -91,7 +91,11 @@ class Fx
             head_a_ = head_b_ = target_delay_, heads_set_ = true;
     }
 
-    void Process(const float* in, float* left, float* right, size_t n)
+    /** in: the bass (mono); send: the drums' send into the delay (mono),
+     *  nullptr for none. The delay is shared: the bass reaches it through
+     *  its delay knob (lower half sends, upper half also fades the dry), the
+     *  drums through their send; its return joins left / right. */
+    void Process(const float* in, const float* send, float* left, float* right, size_t n)
     {
         // Drive
         const bool  driving = s_.drive > 0.005f;
@@ -130,7 +134,8 @@ class Fx
         const float phase_r = 0.5f * w; // width: the right side's LFO offset
 
         // Tape delay
-        const bool  delaying = s_.dly_mix > 0.005f || delay_tail_ > 0;
+        const bool  sending  = s_.dly_mix > 0.005f || send != nullptr;
+        const bool  delaying = sending || delay_tail_ > 0;
         float       dry, dwet;
         MixGains(s_.dly_mix, &dry, &dwet);
         const float dfb     = 1.05f * s_.dly_fb;
@@ -224,7 +229,7 @@ class Fx
                 }
 
                 // Each repeat through the tape: low-pass, high-pass, saturation.
-                const float in_d = s_.dly_mix > 0.005f ? (l + r) * 0.5f : 0.f;
+                const float in_d = dwet * (l + r) * 0.5f + (send ? send[i] : 0.f);
                 float       fl   = in_d + dfb * d.r;
                 float       fr   = dfb * d.l;
                 lp_l_ += (fl - lp_l_) * tape_lp;
@@ -234,11 +239,11 @@ class Fx
                 delay_[delay_pos_] = {FastTanh(lp_l_ - hpl_), FastTanh(lp_r_ - hpr_)};
                 delay_pos_         = (delay_pos_ + 1) % delay_size_;
 
-                l = l * dry + dwet * d.l;
-                r = r * dry + dwet * d.r;
-                // Keep running a while after the mix goes to zero, so the
+                l = l * dry + d.l;
+                r = r * dry + d.r;
+                // Keep running a while after the sends go to zero, so the
                 // echoes die away instead of stopping.
-                if(s_.dly_mix > 0.005f)
+                if(sending)
                     delay_tail_ = static_cast<int>(sr_ * 6.f);
                 else if(delay_tail_ > 0)
                     delay_tail_--;
@@ -319,5 +324,176 @@ class Fx
     float  wow_ = 0.f, flutter_ = 0.f;
     float  lp_l_ = 0.f, lp_r_ = 0.f, hpl_ = 0.f, hpr_ = 0.f;
 };
+
+/** A stereo reverb: four delay lines feeding back through a Householder
+ *  matrix (a feedback delay network), each damped by a low-pass, after two
+ *  allpass diffusers. Size sets the room (the lines' lengths) and the
+ *  decay (RT60 ~0.3 to ~6 s) together. Memory: kReverbFrames floats. */
+class Reverb
+{
+  public:
+    static constexpr size_t kReverbFrames = 16384;
+
+    void Init(float sample_rate, float* mem, size_t frames)
+    {
+        sr_  = sample_rate;
+        mem_ = frames >= kReverbFrames ? mem : nullptr;
+        if(mem_)
+            for(size_t i = 0; i < kReverbFrames; i++)
+                mem_[i] = 0.f;
+        // The memory, split: two diffusers, then the four lines.
+        size_t at = 0;
+        for(int k = 0; k < 2; k++)
+            ap_[k] = mem_ + at, at += kApLen[k];
+        for(int k = 0; k < 4; k++)
+            line_[k] = mem_ + at, at += kLineMax;
+        damp_ = TauToCoef(1.f / (2.f * kPi * 6000.f), sr_);
+        Set(0.5f);
+    }
+
+    /** 0..1: a small room, quick, to a big hall, long. */
+    void Set(float size)
+    {
+        const float scale = 0.7f + 0.6f * Clamp(size, 0.f, 1.f);
+        const float rt60  = 0.3f * FastExp2(4.3f * Clamp(size, 0.f, 1.f));
+        for(int k = 0; k < 4; k++)
+        {
+            len_[k] = static_cast<int>(kLineLen[k] * scale * sr_ / 48000.f);
+            if(len_[k] > static_cast<int>(kLineMax) - 1)
+                len_[k] = static_cast<int>(kLineMax) - 1;
+            g_[k] = powf(10.f, -3.f * len_[k] / (rt60 * sr_));
+        }
+    }
+
+    /** Adds the reverb of `in` to left / right. */
+    void Process(const float* in, float* left, float* right, size_t n)
+    {
+        if(!mem_)
+            return;
+        for(size_t i = 0; i < n; i++)
+        {
+            // Diffuse the input.
+            float x = in[i];
+            for(int k = 0; k < 2; k++)
+            {
+                float*      b = ap_[k];
+                const float d = b[ap_pos_[k]];
+                const float v = x + 0.6f * d;
+                b[ap_pos_[k]] = v;
+                x             = d - 0.6f * v;
+                ap_pos_[k]    = (ap_pos_[k] + 1) % kApLen[k];
+            }
+            // The lines' outputs, damped.
+            float o[4], sum = 0.f;
+            for(int k = 0; k < 4; k++)
+            {
+                int rd = pos_ - len_[k];
+                if(rd < 0)
+                    rd += static_cast<int>(kLineMax);
+                lp_[k] += (line_[k][rd] - lp_[k]) * damp_;
+                o[k] = lp_[k] * g_[k];
+                sum += o[k];
+            }
+            // Householder: each line gets its own output less half the sum,
+            // plus the input (signs alternating).
+            const float h = 0.5f * sum;
+            for(int k = 0; k < 4; k++)
+                line_[k][pos_] = o[k] - h + ((k & 1) ? -x : x);
+            pos_ = (pos_ + 1) % static_cast<int>(kLineMax);
+            left[i] += 0.5f * (o[0] + o[2]);
+            right[i] += 0.5f * (o[1] - o[3]);
+        }
+    }
+
+  private:
+    static constexpr int    kApLen[2]   = {225, 556};
+    static constexpr int    kLineLen[4] = {1557, 1871, 2311, 2803}; // at 48 kHz
+    static constexpr size_t kLineMax    = 3880;                      // 2803 x 1.3, and to spare
+
+    float  sr_ = 48000.f;
+    float* mem_ = nullptr;
+    float* ap_[2] = {};
+    float* line_[4] = {};
+    int    ap_pos_[2] = {};
+    int    pos_ = 0;
+    int    len_[4] = {};
+    float  g_[4] = {};
+    float  lp_[4] = {};
+    float  damp_ = 0.5f;
+};
+
+/** The drums' own effects, in place: drive, a one-knob filter (low-pass
+ *  turned left, high-pass turned right, off in the middle), bit crush. */
+class DrumFx
+{
+  public:
+    void Init(float sample_rate) { sr_ = sample_rate; }
+
+    struct Settings
+    {
+        float drive      = 0.f;
+        float filter     = 0.5f;
+        float crush_bits = 0.f;
+        float crush_rate = 0.f;
+    };
+
+    void Set(const Settings& s) { s_ = s; }
+
+    void Process(float* x, size_t n)
+    {
+        const bool  driving = s_.drive > 0.005f;
+        const float gain    = 1.f + 20.f * s_.drive * s_.drive;
+        const float makeup  = 1.f / (1.f + 1.5f * s_.drive);
+        const float f       = s_.filter - 0.5f;
+        const bool  lp      = f < -0.02f, hp = f > 0.02f;
+        // Low-pass from 20 kHz down to 200 Hz; high-pass from 20 Hz up to 5 kHz.
+        const float hz = lp ? 200.f * FastExp2(6.64f * (1.f + 2.f * f)) : 20.f * FastExp2(7.97f * 2.f * f);
+        const float k  = TauToCoef(1.f / (2.f * kPi * Clamp(hz, 20.f, 0.45f * sr_)), sr_);
+        const bool  crush = s_.crush_bits > 0.005f;
+        const float levels = FastExp2(15.f - 12.f * s_.crush_bits);
+        const int   hold   = 1 + static_cast<int>(31.f * s_.crush_rate * s_.crush_rate);
+        for(size_t i = 0; i < n; i++)
+        {
+            float y = x[i];
+            if(driving)
+                y = FastTanh(y * gain) * makeup;
+            // Two one-pole stages: 12 dB / octave.
+            if(lp)
+            {
+                f1_ += (y - f1_) * k;
+                f2_ += (f1_ - f2_) * k;
+                y = f2_;
+            }
+            else if(hp)
+            {
+                f1_ += (y - f1_) * k;
+                const float h1 = y - f1_;
+                f2_ += (h1 - f2_) * k;
+                y = h1 - f2_;
+            }
+            if(crush || hold > 1)
+            {
+                if(hold_count_-- <= 0)
+                {
+                    hold_count_ = hold - 1;
+                    held_       = crush ? floorf(Clamp(y, -1.f, 1.f) * levels + 0.5f) / levels : y;
+                }
+                y = held_;
+            }
+            x[i] = y;
+        }
+    }
+
+  private:
+    float    sr_ = 48000.f;
+    Settings s_;
+    float    f1_ = 0.f, f2_ = 0.f, held_ = 0.f;
+    int      hold_count_ = 0;
+};
+
+constexpr int    Reverb::kApLen[2];
+constexpr int    Reverb::kLineLen[4];
+constexpr size_t Reverb::kLineMax;
+constexpr size_t Reverb::kReverbFrames;
 
 } // namespace x0x

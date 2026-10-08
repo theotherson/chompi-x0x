@@ -44,11 +44,16 @@ class Machine
 
     /** delay_mem: the delay's memory (2 s = 96000 frames at 48 kHz); on the
      *  hardware it lives in SDRAM. */
-    void Init(float sample_rate, Fx::Frame* delay_mem, size_t delay_frames)
+    /** reverb_mem: Reverb::kReverbFrames floats (SDRAM on the hardware);
+     *  without it there's no reverb. */
+    void Init(float sample_rate, Fx::Frame* delay_mem, size_t delay_frames, float* reverb_mem = nullptr,
+              size_t reverb_frames = 0)
     {
         sr_ = sample_rate;
         voice_.Init(sample_rate);
         drums_.Init(sample_rate);
+        drum_fx_.Init(sample_rate);
+        reverb_.Init(sample_rate, reverb_mem, reverb_frames);
         fx_.Init(sample_rate, delay_mem, delay_frames);
         seq_.Init(sample_rate);
         for(int i = 0; i < kPatterns; i++)
@@ -574,18 +579,39 @@ class Machine
         if(arp_clock_ > 0.0)
             arp_clock_ -= n;
 
-        fx_.Process(mono, left, right, n);
-        // The drums join after the bass's effects (their own come later),
-        // balanced by the mix knob.
+        // The mix (bass / drums) first, so a side's echoes follow it.
         float gb, gd;
         MixGains(p[MIX], p[MIX_MUTE], &gb, &gd);
         mix_bass_ += (gb - mix_bass_) * 0.2f; // a little smoothing, per block
         mix_drums_ += (gd - mix_drums_) * 0.2f;
+        for(size_t i = 0; i < n; i++)
+            mono[i] *= mix_bass_, drum[i] *= mix_drums_;
+
+        // The drums' own effects, then their sends to the shared delay and
+        // the reverb.
+        DrumFx::Settings ds;
+        ds.drive      = p[DRUM_DRIVE];
+        ds.filter     = p[DRUM_FILTER];
+        ds.crush_bits = p[DRUM_CRUSH];
+        ds.crush_rate = p[DRUM_CRUSH_RATE];
+        drum_fx_.Set(ds);
+        drum_fx_.Process(drum, n);
+        reverb_.Set(p[REVERB_SIZE]);
+        const float dly_send = p[DRUM_DELAY] * p[DRUM_DELAY];
+        const float rev_send = p[DRUM_REVERB] * p[DRUM_REVERB];
+        float       dsend[64], rin[64];
+        for(size_t i = 0; i < n; i++)
+            dsend[i] = drum[i] * dly_send, rin[i] = drum[i] * rev_send;
+
+        fx_.Process(mono, dly_send > 0.0001f ? dsend : nullptr, left, right, n);
+        for(size_t i = 0; i < n; i++)
+            left[i] += drum[i], right[i] += drum[i];
+        reverb_.Process(rin, left, right, n);
         const float vol = settings.params[VOLUME] * settings.params[VOLUME] * 1.5f;
         for(size_t i = 0; i < n; i++)
         {
-            left[i]  = SoftLimit((left[i] * mix_bass_ + drum[i] * mix_drums_) * vol);
-            right[i] = SoftLimit((right[i] * mix_bass_ + drum[i] * mix_drums_) * vol);
+            left[i]  = SoftLimit(left[i] * vol);
+            right[i] = SoftLimit(right[i] * vol);
         }
     }
 
@@ -830,6 +856,8 @@ class Machine
     float       sr_ = 48000.f;
     Voice       voice_;
     Drums       drums_;
+    DrumFx      drum_fx_;
+    Reverb      reverb_;
     int         drum_pos_ = -1;
     uint8_t     hits_[kHitQueue] = {};
     int8_t      hit_semis_[kHitQueue] = {};

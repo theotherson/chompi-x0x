@@ -39,11 +39,14 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | Knob 1 | The selected voice's level; page 2: the drum part's length | Accent level |
 | Knob 2 | Attack: the voice's click / snap | |
 | Knob 3 | Decay | |
-| Knob 4 | (the drums' effects, to come) | |
+| Knob 4, page 1 | Reverb send (blue) | Reverb size: a small room, quick, to a big hall, long (lavender) |
+| Knob 4, page 2 | Delay send (cyan): into the delay the bass uses too | The delay's synced time (shared with the bass side; white keys 1-9 show it) |
+| Knob 4, page 3 | Bit crush (green) | Sample-rate reduction (red) |
+| Knob 4, page 4 | Filter: low-pass turned left, high-pass turned right, off in the middle (yellow) | Drive (orange) |
 | Purple | Tempo (flashing the beat) | Swing |
 | Volume | As on the bass side (shared) | |
 
-The drums mix in after the bass's effects for now. MIDI out sends them on channel 10 (GM notes: BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42), and MIDI files export and import the drum part on channel 10.
+Knob 4's click steps through its pages; CHOMPI + click resets all the drums' effects (not the shared delay time). The delay is shared: the bass reaches it through its own delay knob, the drums through their send, so their echoes always line up; its feedback and tone (the bass's knob 4, page 2) set it for both. The mix knob (volume, page 3) acts before the effects, so muting a side mutes its echoes too. MIDI out sends them on channel 10 (GM notes: BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42), and MIDI files export and import the drum part on channel 10.
 
 ## The 16 steps on 15 white keys
 
@@ -129,6 +132,7 @@ The resonance amount, cutoff range and envelope times are first estimates, to be
 
 In this order after the voice, each off at zero:
 
+- **Shared delay.** The delay is one effect, shared with the drums. The bass's delay knob sends the bass into it (the lower half brings the echoes in, the upper half also fades the dry bass out); turned down, the echoes already in it ring out rather than stopping.
 - **Delay time.** Synced (CHOMPI + knob 4) or free (push knob 4 and turn). A new synced time crossfades to it over 80 ms, so it changes without a pitch bend; a free time glides there like a tape machine's rate control, bending the repeats' pitch up to a third (a swoop, never backwards). Push and turn starts the free time from the synced one, so nothing jumps; CHOMPI + turn goes back to synced, crossfading to the setting it had.
 - **Drive** (CHOMPI + volume): a pedal-style hard clipper in the spirit of a DS-1: a high-pass tightens the low end and a treble lift puts the highs in front, up to ~60x gain hits a nearly hard, slightly asymmetric clip, and a tone low-pass (8 to 6 kHz) takes only the harshest fizz off. The level is evened out as it turns up.
 - **Bit crusher** (knob 4, page 4): bit depth 16 down to 4, and sample rate down to 1/32, separately.

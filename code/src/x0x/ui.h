@@ -112,6 +112,10 @@
  *    knob 1                        level (CHOMPI: accent level); page 2:
  *                                  the drum part's length
  *    knob 2 / 3                    attack (the click) / decay
+ *    knob 4 (4 pages)              reverb (CHOMPI: size), delay send (CHOMPI:
+ *                                  the shared delay's time), bit crush
+ *                                  (CHOMPI: rate), filter: low-pass left,
+ *                                  high-pass right (CHOMPI: drive)
  *    purple knob                   tempo (CHOMPI: swing)
  *
  *  Knobs: clicking knob 1, knob 4 or volume steps through its pages;
@@ -842,7 +846,22 @@ class Ui
             f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_ACCENT]) : Scale(vc, 0.2f + 0.8f * p[pv]);
         f.knob[1] = chompi_ ? Rgb{} : Scale(vc, 0.2f + 0.8f * p[pv + 1]);
         f.knob[2] = chompi_ ? Rgb{} : Scale(vc, 0.2f + 0.8f * p[pv + 2]);
-        f.knob[3] = {};
+        {
+            // Knob 4: the effects page's colour; CHOMPI, its second control's.
+            static constexpr Rgb kFxCol[4][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},  // reverb | size
+                                                 {{0.f, .9f, 1.f}, {1.f, 1.f, 1.f}},  // delay send | time
+                                                 {{.3f, 1.f, 0.f}, {1.f, .15f, 0.f}}, // crush | rate
+                                                 {{1.f, .85f, 0.f}, {1.f, .3f, 0.f}}}; // filter | drive
+            static constexpr int kFxP[4][2] = {{DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME},
+                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_FILTER, DRUM_DRIVE}};
+            const int q = kFxP[drum_knob4_page_][chompi_ ? 1 : 0];
+            float     v = p[q];
+            if(q == DRUM_FILTER)
+                v = fabsf(v - 0.5f) * 2.f; // off in the middle, brighter either way
+            f.knob[3] = Scale(kFxCol[drum_knob4_page_][chompi_ ? 1 : 0], 0.2f + 0.8f * v);
+        }
+        if(now - delay_shown_at_ < kShowValueMs)
+            DrawDelayTime(f);
         f.knob[4] = chompi_ ? Scale(Rgb{1.f, .15f, .45f}, 0.2f + 0.8f * p[SWING])
                             : Scale(Rgb{1.f, .85f, 0.f}, TempoBeat(now, cur_step) ? 1.f : 0.2f);
         f.big_right = f.knob[4];
@@ -1078,7 +1097,29 @@ class Ui
                     return;
                 }
                 break;
-            default: return; // knob 4: the drums' effects, to come
+            case 3:
+            {
+                // Knob 4: the drums' effects, four pages.
+                static constexpr int kFx[4][2] = {{DRUM_REVERB, REVERB_SIZE},
+                                                  {DRUM_DELAY, DELAY_TIME},
+                                                  {DRUM_CRUSH, DRUM_CRUSH_RATE},
+                                                  {DRUM_FILTER, DRUM_DRIVE}};
+                param = kFx[drum_knob4_page_][chompi_ ? 1 : 0];
+                if(param == DELAY_TIME)
+                {
+                    // The shared delay's synced time, as on the bass side.
+                    if(StepIndex(p[DELAY_FREE_ON], 2) == 1)
+                        m_->SetParam(DELAY_FREE_ON, 0.f);
+                    else
+                        m_->SetParam(DELAY_TIME, StepValue(StepIndex(p[DELAY_TIME], kDelayDivisions) + (inc > 0 ? 1 : -1),
+                                                           kDelayDivisions));
+                    delay_shown_at_ = last_tick_;
+                    return;
+                }
+                m_->SetParam(static_cast<Param>(param), p[param] + inc * step);
+                return;
+            }
+            default: return;
         }
         if(chompi_ && (knob == 1 || knob == 2))
             return;
@@ -1092,6 +1133,18 @@ class Ui
         {
             if(knob == 0)
                 drum_knob1_page_ ^= 1;
+            else if(knob == 3)
+                drum_knob4_page_ = (drum_knob4_page_ + 1) % 4;
+            return;
+        }
+        if(knob == 3)
+        {
+            // CHOMPI + click on knob 4: all the drums' effects back to their
+            // defaults (the shared delay's time stays).
+            static constexpr int kDrumFx[7] = {DRUM_REVERB, REVERB_SIZE, DRUM_DELAY, DRUM_CRUSH,
+                                               DRUM_CRUSH_RATE, DRUM_FILTER, DRUM_DRIVE};
+            for(int q : kDrumFx)
+                m_->SetParam(static_cast<Param>(q), kParams[q].def);
             return;
         }
         // CHOMPI + click: back to defaults.
@@ -2017,6 +2070,7 @@ class Ui
     uint32_t solo_at_               = 0x80000000u;
     bool     drum_acc_page_         = false; // step mode: the accent page
     int      drum_knob1_page_       = 0;
+    int      drum_knob4_page_       = 0;     // reverb, delay, crush, filter
     bool     drum_clear_down_       = false;
     uint32_t drum_len_shown_at_     = 0x80000000u;
     uint32_t drum_hits_seen_[kDrumVoices] = {};
