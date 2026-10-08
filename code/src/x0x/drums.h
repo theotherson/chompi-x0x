@@ -12,10 +12,10 @@
  *     through a bandpass at ~7.1 kHz (and, for the cymbal, a second at
  *     ~3.4 kHz), each through a VCA on an envelope, then high-passed. Open
  *     and closed hats share one VCA: a closed hat chokes an open one.
- *   - Accent hits every voice harder: louder, the resonators ring on, and
- *     the metal's envelopes (which start higher) ring ~3.5x as long.
+ *   - Accent hits every voice harder: up to 3x as loud, the same shape.
  *
- *  Starting values fitted to clean single hits of a real TR-606.
+ *  Fitted to clean single hits from six 606 sample kits (the consensus
+ *  where units differ: the BD is 54-62 Hz across them).
  *
  *  Per voice: level, attack (the click / snap), decay. Plain C++, no
  *  libDaisy, so the desktop can test and render it.
@@ -110,7 +110,8 @@ class Drums
   public:
     void Init(float sample_rate)
     {
-        sr_ = sample_rate;
+        *this = Drums{}; // nothing left ringing
+        sr_   = sample_rate;
         for(int i = 0; i < 6; i++)
             metal_ph_[i] = 0.17f * i;
         hat_bp_.Set(7100.f, 1.6f, sr_);
@@ -134,23 +135,24 @@ class Drums
     void Trigger(Drum d, float accent)
     {
         const DrumParams& p = params_[d];
-        const float       hit = 1.f + 0.7f * Clamp(accent, 0.f, 1.f); // the trigger voltage
-        const float       dk  = DecayScale(p.decay) * (1.f + 0.25f * (hit - 1.f)); // harder rings on
-        const float       ck  = 2.f * p.attack;                                     // click: 0..2
-        // The metal's envelopes start higher on an accent and so take far
-        // longer to fall away: an accented closed hat rings ~3.5x as long.
-        const float       mk  = DecayScale(p.decay) * (1.f + 2.5f * Clamp(accent, 0.f, 1.f));
+        // Accent raises the trigger voltage: up to 3x as loud (the service
+        // notes: 2 Vp-p at accent minimum, 6 at maximum), the shape the same
+        // (plain and accented hits of one 606 decay alike).
+        const float       hit = 1.f + 2.f * Clamp(accent, 0.f, 1.f);
+        const float       dk  = DecayScale(p.decay);
+        const float       mk  = dk;
+        const float       ck  = 2.f * p.attack; // click: 0..2
         switch(d)
         {
             case BD:
-                bd_body_.Set(62.f, 0.040f * dk, sr_);
-                bd_knock_.Set(128.f, 0.007f * dk, sr_);
+                bd_body_.Set(60.f, 0.040f * dk, sr_);
+                bd_knock_.Set(124.f, 0.007f * dk, sr_);
                 bd_body_.Ping(hit);
                 bd_knock_.Ping(0.3f * hit);
                 bd_click_ = 0.35f * ck * hit;
                 break;
             case SD:
-                sd_tone_.Set(217.f, 0.019f * dk, sr_);
+                sd_tone_.Set(212.f, 0.024f * dk, sr_);
                 sd_tone_.Ping(0.55f * hit);
                 sd_noise_env_ = hit;
                 sd_noise_tau_ = 0.033f * dk;
@@ -161,30 +163,31 @@ class Drums
                 lt_.Ping(hit);
                 lt_glide_ = 1.f;
                 tom_click_ = 0.3f * ck * hit;
-                tom_noise_ = 0.15f * hit;
+                tom_noise_ = 0.06f * hit;
                 break;
             case HT:
-                ht_.Set(216.f, 0.039f * dk, sr_);
+                ht_.Set(208.f, 0.035f * dk, sr_);
                 ht_.Ping(hit);
                 tom_click_ = 0.3f * ck * hit;
-                tom_noise_ = 0.15f * hit;
+                tom_noise_ = 0.06f * hit;
                 break;
             case CY:
-                cy_env_fast_ = 0.85f * hit, cy_env_slow_ = 0.15f * hit;
+                cy_env_fast_ = 0.78f * hit, cy_env_slow_ = 0.22f * hit;
                 cy_time_     = 0.f;
                 cy_tau_      = mk;
                 cy_click_    = 0.3f * ck * hit;
                 break;
             case OH:
                 oh_env_   = hit;
-                oh_tau_   = 0.19f * mk;
+                oh_tau_   = 0.25f * mk;
                 oh_time_  = 0.f;
                 hat_click_ = 0.3f * ck * hit;
                 break;
             case CH:
                 oh_env_    = 0.f; // the choke: a closed hat cuts the open one
                 ch_env_    = hit;
-                ch_tau_    = 0.015f * mk;
+                ch_tau_    = 0.017f * mk;
+                ch_time_   = 0.f;
                 hat_click_ = 0.3f * ck * hit;
                 break;
             default: break;
@@ -252,8 +255,10 @@ class Drums
             // envelopes), then the high-pass.
             hat_bp_.Process(metal);
             oh_time_ += 1.f / sr_;
-            oh_env_ -= oh_env_ * (oh_time_ > 0.55f * oh_tau_ / 0.19f ? oh_cut + oh_k : oh_k);
-            ch_env_ -= ch_env_ * ch_k;
+            oh_env_ -= oh_env_ * (oh_time_ > 0.55f * oh_tau_ / 0.25f ? oh_cut + oh_k : oh_k);
+            ch_time_ += 1.f / sr_;
+            if(ch_time_ > 0.004f) // a moment's hold
+                ch_env_ -= ch_env_ * ch_k;
             const float hat_vca = lv[OH] * oh_env_ + lv[CH] * ch_env_;
             hat_hp_.Process(hat_bp_.Band() * hat_vca + hat_click_ * noise * 0.2f);
             hat_hp2_.Process(hat_hp_.High()); // steep: the squares' low end stays out
@@ -271,7 +276,7 @@ class Drums
             cy_hp_hi_.Process(cy_bp_hi_.Band() * cy_env + cy_click_ * noise * 0.2f);
             cy_hp_hi2_.Process(cy_hp_hi_.High());
             cy_click_ -= cy_click_ * click_k;
-            const float cy = 0.05f * cy_hp_lo_.High() + cy_hp_hi2_.High();
+            const float cy = 0.02f * cy_hp_lo_.High() + cy_hp_hi2_.High();
 
             out[i] += kGain * (lv[BD] * bd + lv[SD] * sd + lv[LT] * lt + lv[HT] * ht + lv[CY] * 1.6f * cy
                                + 1.6f * hat_hp2_.High());
@@ -319,9 +324,9 @@ class Drums
     float     tom_noise_ = 0.f;
     Svf       hat_hp2_, cy_hp_hi2_;
     Svf       sd_hp_, sd_lp_, tom_lp_, hat_bp_, hat_hp_, cy_bp_lo_, cy_bp_hi_, cy_hp_lo_, cy_hp_hi_;
-    float     metal_ph_[6];
+    float     metal_ph_[6] = {};
     float     oh_env_ = 0.f, oh_tau_ = 0.25f, oh_time_ = 0.f;
-    float     ch_env_ = 0.f, ch_tau_ = 0.01f;
+    float     ch_env_ = 0.f, ch_tau_ = 0.01f, ch_time_ = 1.f;
     float     cy_env_fast_ = 0.f, cy_env_slow_ = 0.f, cy_tau_ = 1.f, cy_time_ = 1.f;
 };
 
