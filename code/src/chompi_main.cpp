@@ -173,7 +173,7 @@ int main(void)
             settings_seen = machine.settings_changes;
             settings_at   = now;
         }
-        if(pattern_seen != saved_patterns && now - pattern_at > 2000)
+        if(pattern_seen != saved_patterns && now - pattern_at > 2000 && !machine.Protected())
         {
             saved_patterns = pattern_seen;
             storage.SavePatterns(machine);

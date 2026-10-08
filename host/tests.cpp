@@ -1346,6 +1346,47 @@ static void TestQuantizeHold()
     CHECK(StepIndex(r.m.settings.params[QUANTIZE], 2) == 1);
 }
 
+static void TestWriteProtect()
+{
+    printf("write protect: hold the pattern key 2 s; flashes; kept in current.txt\n");
+    Rig r;
+    CHECK(!r.m.Protected());
+    r.ui.KeyDown(Ui::kKeyPattern, r.now);
+    r.Run(1000);
+    CHECK(!r.m.Protected() && r.ui.GetPage() == Ui::Page::NOTES); // not yet, and no page
+    r.Run(1100);
+    CHECK(r.m.Protected());
+    LedFrame f;
+    r.ui.Draw(f, r.now); // everything flashes red
+    CHECK(f.key[0].r > 0.9f && f.key[0].g < 0.1f && f.play.r > 0.9f && f.knob[2].r > 0.9f);
+    r.ui.KeyUp(Ui::kKeyPattern, r.now);
+    CHECK(r.ui.GetPage() == Ui::Page::NOTES); // the hold didn't open the page
+    r.Run(1000);
+    r.ui.Draw(f, r.now); // the pattern key stays red
+    CHECK(f.key[Ui::kKeyPattern].r > 0.2f && f.key[Ui::kKeyPattern].g < 0.05f);
+    // A tap still opens the pattern page, and edits still work.
+    r.Key(Ui::kKeyPattern);
+    CHECK(r.ui.GetPage() == Ui::Page::PATTERN);
+    r.Key(Ui::kKeyPattern);
+    const bool was_on = r.S(2).on;
+    r.White(2), r.White(2); // select step 3, then turn it on / off
+    CHECK(r.S(2).on != was_on);
+    // Kept across a restart.
+    char buf[2048];
+    const size_t n = WriteSettings(r.m.settings, buf, sizeof buf);
+    CHECK(n > 0 && strstr(buf, "protect 1"));
+    Settings back;
+    ReadSettings(buf, back);
+    CHECK(back.protect);
+    // Hold again: off, flashing green.
+    r.ui.KeyDown(Ui::kKeyPattern, r.now);
+    r.Run(2100);
+    CHECK(!r.m.Protected());
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[0].g > 0.9f && f.key[0].r < 0.1f);
+    r.ui.KeyUp(Ui::kKeyPattern, r.now);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1367,6 +1408,7 @@ int main()
     TestQuantizedPlayback();
     TestChompiDoubleTap();
     TestQuantizeHold();
+    TestWriteProtect();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

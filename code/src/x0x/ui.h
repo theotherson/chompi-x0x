@@ -31,7 +31,9 @@
  *    black key 7 (D#4)             view steps 1-8 / 9-16
  *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16.
  *                                  Running, it waits for the bar; the same key
- *                                  again switches at once
+ *                                  again switches at once. Held 2 s: write
+ *                                  protect on/off (all LEDs flash red / green;
+ *                                  the key is red while protected)
  *    black key 9 (G#4)             COPY: hold it and press a step key to copy
  *                                  this pattern to that pattern number
  *    black key 10 (A#4)            CLEAR: tap clears the selected step, hold
@@ -149,6 +151,7 @@ class Ui
     static constexpr uint32_t kShowLengthMs = 1200;
     static constexpr uint32_t kLoopClearMs = 2000;
     static constexpr uint32_t kQuantizeHoldMs = 2000;
+    static constexpr uint32_t kProtectHoldMs  = 2000;
 
     void Init(Machine* m) { m_ = m; }
 
@@ -181,6 +184,7 @@ class Ui
         Touched();
         ReleaseAll();
         quant_down_     = false;
+        pattern_down_   = false;
         mode_           = mode;
         page_           = Page::NOTES;
         transpose_mode_ = false;
@@ -243,6 +247,11 @@ class Ui
             Sound(k, false);
         if(drums_)
             return;
+        if(k == kKeyPattern && pattern_down_)
+        {
+            pattern_down_ = false; // let go before the 2 s: a tap
+            TogglePage(Page::PATTERN);
+        }
         if(k == kKeyView && quant_down_)
         {
             quant_down_ = false; // let go before the 2 s: a tap
@@ -386,6 +395,12 @@ class Ui
             c4_held_        = false;
             m_->SetTranspose(transpose_before_hold_);
         }
+        if(pattern_down_ && now - pattern_down_at_ >= kProtectHoldMs)
+        {
+            pattern_down_ = false;
+            m_->SetProtected(!m_->Protected());
+            protect_flash_at_ = now;
+        }
         if(quant_down_ && now - quant_down_at_ >= kQuantizeHoldMs)
         {
             quant_down_ = false;
@@ -521,6 +536,17 @@ class Ui
                                  Clamp(f.chompi.b * g + .15f, 0.f, 1.f)};
             }
         }
+        // Write protect switched: every light flashes red (on) or green (off).
+        if(now - protect_flash_at_ < 600)
+        {
+            const Rgb c = m_->Protected() ? kProtectColour : kUnprotectColour;
+            const Rgb d = ((now - protect_flash_at_) / 150) % 2 == 0 ? c : Rgb{};
+            for(int k = 0; k < kKeyNotes; k++)
+                f.key[k] = d;
+            for(int k = 0; k < 6; k++)
+                f.knob[k] = d;
+            f.big_right = f.play = f.loop = f.chompi = d;
+        }
         // Just swapped: the keybed flashes the new side's colour, fading.
         if(now - swapped_at_ < kSwapFlashMs)
         {
@@ -572,6 +598,8 @@ class Ui
     static constexpr Rgb kQuantizeColour     = {0.f, .5f, 1.f};   // blue
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
+    static constexpr Rgb kProtectColour      = {1.f, 0.f, 0.f};   // write protect on
+    static constexpr Rgb kUnprotectColour    = {0.f, 1.f, .2f};   // write protect off
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -705,7 +733,7 @@ class Ui
             case 4: TogglePage(Page::TIE); break;
             case 5: transpose_mode_ = true, tap_key_ = -1; break;
             case 6: half_ = SecondHalf() ? 0 : 1; break;
-            case 7: TogglePage(Page::PATTERN); break;
+            case 7: pattern_down_ = true, pattern_down_at_ = now; break; // a tap or a 2 s hold: see KeyUp, Tick
             case 9: clear_down_ = now, clear_done_ = false; break;
             default: break; // 8 = COPY, used while held
         }
@@ -1034,7 +1062,15 @@ class Ui
             f.key[kBlack[i]] = Scale(kPageColour[static_cast<int>(pages[i])], page_ == pages[i] ? 1.f : 0.1f);
         f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
         f.key[kKeyView]      = SecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
-        f.key[kKeyPattern]   = Scale(kPageColour[static_cast<int>(Page::PATTERN)], page_ == Page::PATTERN ? 1.f : 0.1f);
+        // The pattern key: yellow, or red while the patterns are write-protected.
+        f.key[kKeyPattern] = Scale(m_->Protected() ? kProtectColour : kPageColour[static_cast<int>(Page::PATTERN)],
+                                   page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
+        if(pattern_down_ && now - pattern_down_at_ > 300)
+        {
+            // Held: fills towards the switch, red to protect, green to unprotect.
+            const float b = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
+            f.key[kKeyPattern] = Scale(m_->Protected() ? kUnprotectColour : kProtectColour, b);
+        }
         f.key[kKeyCopy]      = held_[kKeyCopy] ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
         if(held_[kKeyClear] && !clear_done_)
         {
@@ -1303,6 +1339,9 @@ class Ui
     int      tap_key_               = -1; // transpose mode: the last key, for double taps
     bool     drums_                 = false;
     bool     quant_down_            = false; // CHOMPI + D#4 down in live mode
+    bool     pattern_down_          = false; // step mode: F#4 down (tap: page, hold: protect)
+    uint32_t pattern_down_at_       = 0;
+    uint32_t protect_flash_at_      = 0x80000000u;
     uint32_t quant_down_at_         = 0;
     uint32_t quantized_at_          = 0x80000000u;
     bool     chompi_clean_          = false; // CHOMPI down and nothing else touched
@@ -1346,6 +1385,8 @@ constexpr Rgb Ui::kRed;
 constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
+constexpr Rgb Ui::kProtectColour;
+constexpr Rgb Ui::kUnprotectColour;
 constexpr Rgb Ui::kQuantizedColour;
 constexpr Rgb Ui::kDrumColour;
 constexpr Rgb Ui::kQuantizeColour;

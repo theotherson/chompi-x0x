@@ -181,11 +181,13 @@ inline void ToVoiceParams(const float* p, VoiceParams& vp)
 
 // ------------------------------------------------------------------ settings
 
-/** What current.txt keeps: the knobs and the selected pattern. */
+/** What current.txt keeps: the knobs, the selected pattern, and whether
+ *  the patterns are write-protected (edits not saved to the card). */
 struct Settings
 {
     float params[NUM_PARAMS];
     int   pattern = 0;
+    bool  protect = false;
 
     Settings()
     {
@@ -207,7 +209,7 @@ inline size_t WriteSettings(const Settings& s, char* buf, size_t size)
             return 0;
         len += w;
     }
-    const int w = snprintf(buf + len, size - len, "pattern %d\n", s.pattern + 1);
+    const int w = snprintf(buf + len, size - len, "pattern %d\nprotect %d\n", s.pattern + 1, s.protect ? 1 : 0);
     if(w <= 0 || static_cast<size_t>(w) >= size - len)
         return 0;
     return len + w;
@@ -255,6 +257,8 @@ inline void ReadSettings(char* text, Settings& s)
                 s.params[WAVE] = atoi(sp + 1) ? 1.f : 0.f;
             else if(strcmp(line, "pattern") == 0)
                 s.pattern = ClampInt(atoi(sp + 1), 1, 16) - 1;
+            else if(strcmp(line, "protect") == 0)
+                s.protect = atoi(sp + 1) != 0;
             else
                 for(int i = 0; i < NUM_PARAMS; i++)
                     if(strcmp(line, kParams[i].name) == 0)

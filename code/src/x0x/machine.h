@@ -121,6 +121,17 @@ class Machine
 
     void PatternEdited() { pattern_changes++; }
 
+    /** Write protect: the patterns can still be edited, but the edits
+     *  aren't saved to the card (the main loop checks this), so the next
+     *  start-up loads them as they were. Turning it off keeps what's in
+     *  memory, which then saves as usual. */
+    bool Protected() const { return settings.protect; }
+    void SetProtected(bool on)
+    {
+        settings.protect = on;
+        settings_changes++;
+    }
+
     /** Quantize for good: every recorded note moves to where it plays with
      *  quantize on at this grid (Pattern::PlayedStep), its timing dropped. */
     void QuantizePattern(int grid_steps)
