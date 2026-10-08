@@ -6,6 +6,10 @@
  *    options.txt    MIDI options, written with the defaults if missing
  *    MIDI/01A.mid   each pattern as a MIDI file, when exported (16B.mid the
  *                   last); empty patterns' files are removed
+ *    IMPORT/3B.mid  read into that pattern at power-on, then renamed
+ *                   3B.done; a file it can't read is renamed 3B.bad and
+ *                   changes nothing. Each is renamed 3B.try before it's
+ *                   read, so a file can never be read at every power-on
  *
  *  Writes go to a temporary file renamed over the old one, so a power cut
  *  never leaves half a file. Main loop only: these block on the card.
@@ -48,6 +52,66 @@ class Storage
             x0x::ReadOptions(buf_, m.options);
         else
             SaveOptions(m.options);
+        ImportMidi(m);
+    }
+
+    /** MIDI files in /X0X/IMPORT into their patterns (startup only). Saved
+     *  at once, write protect or not: an import is meant to stay. */
+    void ImportMidi(x0x::Machine& m)
+    {
+        f_mkdir("IMPORT"); // there to drop files into; fails harmlessly if it's there
+        // The names first: renaming while reading the folder could skip some.
+        static constexpr int kMax = 2 * x0x::kPatterns;
+        char                 names[kMax][16];
+        int                  count = 0;
+        DIR                  dir;
+        FILINFO              info;
+        if(f_opendir(&dir, "IMPORT") != FR_OK)
+            return;
+        while(count < kMax && f_readdir(&dir, &info) == FR_OK && info.fname[0])
+            if(!(info.fattrib & AM_DIR) && x0x::ParseImportName(info.fname) >= 0)
+            {
+                // A name it takes is at most 7 characters ("16B.mid").
+                char* to = names[count++];
+                for(int c = 0; c < 15 && info.fname[c]; c++)
+                    to[c] = info.fname[c], to[c + 1] = '\0';
+            }
+        f_closedir(&dir);
+
+        for(int i = 0; i < count; i++)
+        {
+            const int  idx  = x0x::ParseImportName(names[i]);
+            const int  num  = x0x::PatternNumber(idx) + 1;
+            const char side = x0x::PatternSide(idx) ? 'B' : 'A';
+            char       src[32] = "IMPORT/", tried[32], done[32];
+            for(int c = 0; c < 15 && names[i][c]; c++)
+                src[7 + c] = names[i][c], src[8 + c] = '\0';
+            snprintf(tried, sizeof tried, "IMPORT/%d%c.try", num, side);
+            f_unlink(tried);
+            if(f_rename(src, tried) != FR_OK)
+            {
+                m.import_failed++;
+                continue;
+            }
+            x0x::Pattern p;
+            UINT         n  = 0;
+            bool         ok = f_open(&file_.fil, tried, FA_READ) == FR_OK;
+            if(ok)
+            {
+                ok = f_size(&file_.fil) <= sizeof(buf_) && f_read(&file_.fil, buf_, sizeof(buf_), &n) == FR_OK;
+                f_close(&file_.fil);
+            }
+            ok = ok && x0x::ReadMidiFile(reinterpret_cast<const uint8_t*>(buf_), n, p);
+            if(ok)
+                m.patterns[idx] = p, m.imported++;
+            else
+                m.import_failed++;
+            snprintf(done, sizeof done, "IMPORT/%d%c.%s", num, side, ok ? "done" : "bad");
+            f_unlink(done);
+            f_rename(tried, done);
+        }
+        if(m.imported)
+            SavePatterns(m);
     }
 
     /** The patterns as they are now. The copy is taken with interrupts off,

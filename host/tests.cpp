@@ -1589,6 +1589,112 @@ static void TestMidiExport()
         fwrite(mf, 1, n, fp), fclose(fp);
 }
 
+static void TestMidiImport()
+{
+    printf("MIDI import: round trip, other files fitted, anything else turned down\n");
+    static uint8_t buf[8192];
+    // What the x0x writes comes back as it was: the demo, and recorded timing.
+    Pattern demo;
+    DemoPattern(demo);
+    size_t  n = WriteMidiFile(demo, 120.f, 0, "x", buf, sizeof buf);
+    Pattern back;
+    CHECK(ReadMidiFile(buf, n, back) && back == demo);
+    Pattern late;
+    late.length = 12;
+    late.steps[1].on = true, late.steps[1].note = 2, late.steps[1].nudge = 3;
+    late.steps[2].on = late.steps[2].tie = true, late.steps[2].note = 2;
+    late.steps[5].on = true, late.steps[5].note = 24, late.steps[5].octave = 1, late.steps[5].accent = true;
+    n = WriteMidiFile(late, 133.f, 0, "x", buf, sizeof buf);
+    CHECK(ReadMidiFile(buf, n, back) && back == late);
+
+    // A DAW-style file: format 1, 480 ticks a beat, two tracks, a chord, a
+    // note out of range, two bars long (only the first is kept).
+    std::vector<uint8_t> f = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 2, 0x01, 0xe0};
+    auto track = [&](std::vector<uint8_t> ev) {
+        ev.insert(ev.end(), {0x00, 0xff, 0x2f, 0x00});
+        f.insert(f.end(), {'M', 'T', 'r', 'k', 0, 0, static_cast<uint8_t>(ev.size() >> 8), static_cast<uint8_t>(ev.size())});
+        f.insert(f.end(), ev.begin(), ev.end());
+    };
+    track({0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20});
+    track({
+        0x00, 0x90, 40, 100, 0x00, 0x90, 43, 127, // step 1: a chord: the higher (43), accented
+        0x60, 0x80, 40, 0, 0x00, 43, 0,           // 96 ticks later off (running status, vel 0)
+        0x81, 0x68, 0x90, 100, 80,                 // step 3 (240 ticks after): MIDI 100, folded into range
+        0x87, 0x40, 0x80, 100, 0,                  // held 1000 ticks: ties on through steps 4-10
+        0x8f, 0x00, 0x90, 50, 80, 0x60, 0x80, 50, 0, // way later: bar 2, dropped
+    });
+    CHECK(ReadMidiFile(f.data(), f.size(), back));
+    CHECK(back.length == 16);
+    CHECK(back.steps[0].on && back.steps[0].Midi() == 43 && back.steps[0].accent && !back.steps[0].tie);
+    CHECK(back.steps[2].on && back.steps[2].Midi() >= kBaseNote - 12 && back.steps[2].Midi() <= kBaseNote + 36);
+    CHECK(back.steps[3].tie && back.steps[9].tie && !back.steps[11].on);
+
+    // Turned down, and `out` untouched: not MIDI, SMPTE time, no notes, cut
+    // short, broken lengths... and thousands of corrupted and random files.
+    Pattern keep;
+    DemoPattern(keep);
+    Pattern out = keep;
+    const uint8_t junk[] = "hello, this is not a MIDI file at all";
+    CHECK(!ReadMidiFile(junk, sizeof junk, out) && out == keep);
+    std::vector<uint8_t> smpte = f;
+    smpte[12] = 0xe7;
+    CHECK(!ReadMidiFile(smpte.data(), smpte.size(), out) && out == keep);
+    const uint8_t empty[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 'M', 'T', 'r', 'k', 0, 0, 0, 4, 0, 0xff, 0x2f, 0};
+    CHECK(!ReadMidiFile(empty, sizeof empty, out) && out == keep);
+    for(size_t cut = 0; cut < f.size(); cut++)
+        if(ReadMidiFile(f.data(), cut, out))
+            CHECK(out.length >= 1 && out.length <= kSteps); // a shorter read may still be whole; never broken
+    out = keep;
+    uint32_t seed = 12345;
+    auto rnd = [&]() { return seed = seed * 1664525u + 1013904223u; };
+    int read = 0;
+    for(int trial = 0; trial < 20000; trial++)
+    {
+        std::vector<uint8_t> g = trial % 2 ? f : std::vector<uint8_t>(buf, buf + n);
+        const int flips = 1 + rnd() % 8;
+        for(int i = 0; i < flips; i++)
+            g[rnd() % g.size()] = static_cast<uint8_t>(rnd());
+        if(trial % 5 == 0)
+            g.resize(rnd() % (g.size() + 1));
+        if(trial % 7 == 0)
+            for(auto& b : g)
+                b = static_cast<uint8_t>(rnd());
+        Pattern o = keep;
+        if(ReadMidiFile(g.data(), g.size(), o))
+        {
+            read++;
+            bool fine = o.length >= 1 && o.length <= kSteps;
+            for(int i = 0; i < kSteps; i++)
+                fine &= o.steps[i].note < kKeyNotes && o.steps[i].octave >= -1 && o.steps[i].octave <= 1
+                        && o.steps[i].nudge <= 5;
+            CHECK(fine);
+        }
+        else
+            CHECK(o == keep);
+    }
+    printf("  (fuzz: %d of 20000 corrupted files still read as valid patterns)\n", read);
+
+    // File names: only "3B.mid"-style names are taken.
+    CHECK(ParseImportName("3B.mid") == PatternIndex(2, 1) && ParseImportName("03b.MID") == PatternIndex(2, 1));
+    CHECK(ParseImportName("16A.mid") == 15 && ParseImportName("1a.Mid") == 0);
+    for(const char* bad : {"0A.mid", "17A.mid", "3C.mid", "3B.midi", "3B.mi", "B3.mid", "3B.done", "3B.try", "3B.bad",
+                           "bassline.mid", "", "123A.mid"})
+        CHECK(ParseImportName(bad) == -1);
+
+    // At power-on: the keys flash green after imports, red if any failed.
+    Rig r;
+    r.m.imported = 2;
+    r.ui.NoteStep(r.now);
+    LedFrame lf;
+    r.ui.Draw(lf, r.now);
+    CHECK(lf.key[0].g > 0.9f && lf.key[0].r < 0.1f);
+    Rig r2;
+    r2.m.imported = 1, r2.m.import_failed = 1;
+    r2.ui.NoteStep(r2.now);
+    r2.ui.Draw(lf, r2.now);
+    CHECK(lf.key[0].r > 0.9f && lf.key[0].g < 0.1f);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1614,6 +1720,7 @@ int main()
     TestPatternPageWhileRunning();
     TestPatternSides();
     TestMidiExport();
+    TestMidiImport();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

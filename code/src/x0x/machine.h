@@ -127,6 +127,10 @@ class Machine
     volatile uint32_t exports_done    = 0;
     volatile bool     export_ok       = false;
     void RequestExport() { export_requests++; }
+
+    /** MIDI files imported at power-on (read once by the panel, to flash). */
+    int imported      = 0;
+    int import_failed = 0;
     void ExportDone(bool ok)
     {
         export_ok = ok;

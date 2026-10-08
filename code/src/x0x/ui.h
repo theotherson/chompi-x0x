@@ -469,6 +469,12 @@ class Ui
             last_record_count_ = rc;
             rec_flash_at_      = now;
         }
+        if(!import_seen_)
+        {
+            import_seen_ = true; // imports happen before the panel starts
+            if(m_->imported || m_->import_failed)
+                import_flash_at_ = now;
+        }
         if(m_->exports_done != last_export_seen_)
         {
             last_export_seen_ = m_->exports_done;
@@ -568,6 +574,15 @@ class Ui
                                  Clamp(f.chompi.b * g + .15f, 0.f, 1.f)};
             }
         }
+        // MIDI files imported at power-on: the keys flash green, or red three
+        // times if any couldn't be read (renamed .bad, nothing changed).
+        if(now - import_flash_at_ < 900)
+        {
+            const bool bad = m_->import_failed > 0;
+            const bool on  = !bad || ((now - import_flash_at_) / 150) % 2 == 0;
+            for(int k = 0; k < kKeyNotes; k++)
+                f.key[k] = on ? (bad ? kRed : kImportColour) : Rgb{};
+        }
         // MIDI export done: the keys flash white, or red three times if the
         // card failed.
         if(now - export_flash_at_ < (export_flash_ok_ ? 400u : 900u))
@@ -643,6 +658,7 @@ class Ui
     static constexpr Rgb kClearColour        = {1.f, .4f, 0.f};   // CLEAR (A#4): orange
     static constexpr Rgb kSideBColour        = {1.f, .5f, .28f};  // pattern side B: peach
     static constexpr Rgb kProtectBColour     = {1.f, .3f, 0.f};   // side B, write-protected: orange
+    static constexpr Rgb kImportColour       = {0.f, 1.f, .3f};   // MIDI files imported: green
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -1480,6 +1496,8 @@ class Ui
     uint32_t last_export_seen_      = 0;
     uint32_t export_flash_at_       = 0x80000000u;
     bool     export_flash_ok_       = false;
+    bool     import_seen_           = false;
+    uint32_t import_flash_at_       = 0x80000000u;
     uint32_t pattern_down_at_       = 0;
     uint32_t protect_flash_at_      = 0x80000000u;
     uint32_t quant_down_at_         = 0;
@@ -1526,6 +1544,7 @@ constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
 constexpr Rgb Ui::kProtectColour;
+constexpr Rgb Ui::kImportColour;
 constexpr Rgb Ui::kSideBColour;
 constexpr Rgb Ui::kProtectBColour;
 constexpr Rgb Ui::kClearColour;
