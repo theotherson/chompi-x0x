@@ -2,6 +2,7 @@
 //   make -C host && host/tests
 #include "../code/src/x0x/ui.h"
 #include "../code/src/x0x/midifile.h"
+#include "../code/src/x0x/defaults.h"
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -1824,6 +1825,27 @@ static void TestDelayTime()
     CHECK(p[DELAY_FB] > fb && r.ui.KnobPage(3) == 1);
 }
 
+static void TestDefaults()
+{
+    printf("a new card's defaults: the demo patterns and settings parse\n");
+    static char    buf[sizeof(kDefaultPatterns)];
+    static Pattern pats[kPatterns];
+    memcpy(buf, kDefaultPatterns, sizeof buf);
+    ReadPatterns(buf, pats, kPatterns);
+    int used = 0;
+    for(int i = 0; i < kPatterns; i++)
+        used += !pats[i].Empty();
+    CHECK(used == 3 && !pats[PatternIndex(13, 0)].Empty() && !pats[PatternIndex(14, 0)].Empty()
+          && !pats[PatternIndex(15, 0)].Empty());
+    char sb[sizeof(kDefaultSettings)];
+    memcpy(sb, kDefaultSettings, sizeof sb);
+    Settings st;
+    st.protect = true;
+    ReadSettings(sb, st);
+    CHECK(st.pattern == PatternIndex(15, 0) && !st.protect); // 16A; never write-protected on a new card
+    CHECK(st.params[RESONANCE] == 1.f && st.params[VOLUME] > 0.1f);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1851,6 +1873,7 @@ int main()
     TestMidiExport();
     TestMidiImport();
     TestDelayTime();
+    TestDefaults();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

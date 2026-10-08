@@ -131,7 +131,7 @@ Channels and on/off switches are in `/X0X/options.txt`.
 | `current.txt` | Every knob setting, the selected pattern and write protect, restored at power-on. Knob settings save even while the patterns are protected |
 | `options.txt` | MIDI channels (1-16) and which MIDI in/out is on; written with the defaults the first time |
 
-Patterns save 2 s after the last edit and settings 3 s after the last change. A fresh card starts with a demo pattern in pattern 1. CHOMPI blinking red three times at power-on means the card didn't mount; it then runs without saving.
+Patterns save 2 s after the last edit and settings 3 s after the last change. A new card (no `patterns.txt` or `current.txt` yet) starts with a demo set: patterns 14A-16A and knob settings to go with them, written to the card at once. They live in `defaults/` (edit those, then run `python3 defaults/make_header.py`). Existing files are never replaced. CHOMPI blinking red three times at power-on means the card didn't mount; it then runs without saving.
 
 CHOMPI + PLAY + LOOP held at power-on puts the battery in shipping mode, as in the stock firmwares.
 

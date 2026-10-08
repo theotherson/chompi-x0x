@@ -16,6 +16,7 @@
  */
 #pragma once
 #include "fatfs.h"
+#include "x0x/defaults.h"
 #include "x0x/machine.h"
 #include "x0x/midifile.h"
 
@@ -44,10 +45,24 @@ class Storage
     {
         if(!ok_)
             return;
+        // A new card (no files yet): the demo set (x0x/defaults.h), saved
+        // to the card at once so it's there from then on.
         if(Read("patterns.txt"))
             x0x::ReadPatterns(buf_, m.patterns, x0x::kPatterns);
+        else if(UseDefault(x0x::kDefaultPatterns, sizeof(x0x::kDefaultPatterns)))
+        {
+            for(int i = 0; i < x0x::kPatterns; i++)
+                m.patterns[i].Clear();
+            x0x::ReadPatterns(buf_, m.patterns, x0x::kPatterns);
+            SavePatterns(m);
+        }
         if(Read("current.txt"))
             x0x::ReadSettings(buf_, m.settings);
+        else if(UseDefault(x0x::kDefaultSettings, sizeof(x0x::kDefaultSettings)))
+        {
+            x0x::ReadSettings(buf_, m.settings);
+            SaveSettings(m);
+        }
         if(Read("options.txt"))
             x0x::ReadOptions(buf_, m.options);
         else
@@ -185,6 +200,15 @@ class Storage
     {
         const size_t n = x0x::WriteOptions(o, buf_, sizeof(buf_));
         return n > 0 && Write("options.txt", n);
+    }
+
+    /** A default (text) into buf_, to parse like a file. */
+    bool UseDefault(const char* text, size_t size)
+    {
+        if(size > sizeof(buf_))
+            return false;
+        memcpy(buf_, text, size);
+        return true;
     }
 
     /** Reads a whole file into buf_, NUL-terminated. */

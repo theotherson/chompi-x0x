@@ -1,0 +1,576 @@
+pattern 1A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 2A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 3A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 4A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 5A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 6A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 7A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 8A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 9A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 10A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 11A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 12A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 13A
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 14A
+length 8
+step 1 13 -1 1 0 0 0 0
+step 2 13 1 1 0 0 0 0
+step 3 13 -1 1 0 0 0 0
+step 4 22 0 1 0 0 0 0
+step 5 21 1 1 0 1 0 0
+step 6 21 -1 1 0 0 0 0
+step 7 13 0 1 1 0 0 0
+step 8 22 0 1 1 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 15A
+length 16
+step 1 7 0 1 0 0 0 0
+step 2 22 1 1 0 0 0 0
+step 3 7 1 1 0 1 0 0
+step 4 17 1 1 0 0 0 0
+step 5 3 1 1 1 1 0 0
+step 6 12 0 1 1 0 0 0
+step 7 0 0 1 1 1 0 0
+step 8 12 1 1 1 0 0 0
+step 9 15 1 1 0 1 0 0
+step 10 17 0 1 0 0 0 0
+step 11 5 1 1 0 1 0 0
+step 12 7 1 1 1 1 0 0
+step 13 19 0 1 0 0 0 0
+step 14 7 0 1 0 1 0 0
+step 15 0 0 1 0 1 0 0
+step 16 7 1 1 0 1 0 0
+pattern 16A
+length 16
+step 1 0 0 1 1 0 0 0
+step 2 0 0 1 0 0 0 0
+step 3 12 0 1 0 1 0 0
+step 4 3 0 1 1 0 0 0
+step 5 0 0 1 0 0 0 0
+step 6 7 0 0 0 0 0 0
+step 7 5 0 1 1 1 0 0
+step 8 0 -1 1 0 0 0 0
+step 9 10 0 1 1 0 0 0
+step 10 12 0 1 0 0 0 0
+step 11 3 1 1 0 1 0 0
+step 12 7 0 1 1 0 0 0
+step 13 0 0 1 0 0 0 0
+step 14 12 0 1 1 0 0 0
+step 15 10 0 0 0 1 0 0
+step 16 7 0 1 0 0 0 0
+pattern 1B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 2B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 3B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 4B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 5B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 6B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 7B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 8B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 9B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 10B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 11B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 12B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 13B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 14B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 15B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
+pattern 16B
+length 16
+step 1 0 0 0 0 0 0 0
+step 2 0 0 0 0 0 0 0
+step 3 0 0 0 0 0 0 0
+step 4 0 0 0 0 0 0 0
+step 5 0 0 0 0 0 0 0
+step 6 0 0 0 0 0 0 0
+step 7 0 0 0 0 0 0 0
+step 8 0 0 0 0 0 0 0
+step 9 0 0 0 0 0 0 0
+step 10 0 0 0 0 0 0 0
+step 11 0 0 0 0 0 0 0
+step 12 0 0 0 0 0 0 0
+step 13 0 0 0 0 0 0 0
+step 14 0 0 0 0 0 0 0
+step 15 0 0 0 0 0 0 0
+step 16 0 0 0 0 0 0 0
