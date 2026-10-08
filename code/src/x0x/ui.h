@@ -36,7 +36,10 @@
  *                                  in its own colour (A light blue, B yellow;
  *                                  magenta /
  *                                  orange when protected): the current
- *                                  number's key again flips it, 1A to 1B. On
+ *                                  number's key again flips it, 1A to 1B.
+ *                                  CHOMPI + a number picks its other side
+ *                                  (1A straight to 2B); held, CHOMPI shows
+ *                                  each number's other side. On
  *                                  the page, a pattern key held 2 s exports
  *                                  every pattern as a MIDI file to /X0X/MIDI
  *                                  (keys flash white; red if it failed).
@@ -273,7 +276,7 @@ class Ui
             const int n   = pat_key_step_;
             pat_key_step_ = -1;
             if(page_ == Page::PATTERN)
-                PickPattern(n);
+                PickPattern(n, pat_key_other_);
         }
         if(k == kKeyView && quant_down_)
         {
@@ -499,7 +502,7 @@ class Ui
         const int  cur_step = m_->CurrentStep();
         const bool step_lit = cur_step >= 0 && now - step_seen_at_ < 70;
 
-        if(mode_ == Mode::STEP && chompi_)
+        if(mode_ == Mode::STEP && chompi_ && page_ != Page::PATTERN)
             DrawKeyboard(f, blink);
         else if(mode_ == Mode::STEP && transpose_mode_)
             DrawPlayhead(f, cur_step); // the transpose on top, as in live mode
@@ -765,6 +768,22 @@ class Ui
             }
             return;
         }
+        if(chompi_ && page_ == Page::PATTERN)
+        {
+            // CHOMPI + a pattern key: that number's other side (from 1A
+            // straight to 2B). Picked when let go, as without CHOMPI.
+            const int w = WhiteIndex(k);
+            if(w >= 0)
+            {
+                if(w != 7)
+                    half_ = w > 7 ? 1 : 0;
+                pat_key_       = k;
+                pat_key_step_  = StepOfWhite(w);
+                pat_key_at_    = now;
+                pat_key_other_ = true;
+            }
+            return;
+        }
         if(chompi_)
         {
             // The keybed as a keyboard: set the selected step's note.
@@ -841,10 +860,24 @@ class Ui
      *  Another number: pick it, on the side it shows. The current number:
      *  flip it to its other side (1A to 1B). Running, the change waits for
      *  the bar, and the queued number again switches at once. */
-    void PickPattern(int n)
+    void PickPattern(int n, bool other)
     {
         const int q = m_->QueuedPattern(), cur = m_->CurrentPattern();
         int       i;
+        if(other)
+        {
+            // CHOMPI held: the side this number isn't showing. Already
+            // queued: switch now, as a second press does.
+            i = PatternIndex(n, 1 - SideOf(n));
+            if(i == q)
+            {
+                m_->SelectPattern(q, true);
+                return;
+            }
+            side_of_[n] = PatternSide(i);
+            m_->SelectPattern(i, false);
+            return;
+        }
         if(q >= 0 && PatternNumber(q) == n)
         {
             m_->SelectPattern(q, true);
@@ -929,8 +962,9 @@ class Ui
             case Page::TIE: s.tie = !s.tie; break;
             case Page::PATTERN:
                 // Picked when let go (KeyUp); held 2 s it exports instead.
-                pat_key_step_ = step;
-                pat_key_at_   = last_tick_;
+                pat_key_step_  = step;
+                pat_key_at_    = last_tick_;
+                pat_key_other_ = false;
                 return;
         }
         m_->PatternEdited();
@@ -1159,8 +1193,9 @@ class Ui
                         break;
                     case Page::PATTERN:
                     {
-                        // Each number in its own side's colour.
-                        const int  i   = PatternIndex(step, SideOf(step));
+                        // Each number in its own side's colour; with CHOMPI
+                        // held, the other side's (what CHOMPI + it picks).
+                        const int  i   = PatternIndex(step, chompi_ ? 1 - SideOf(step) : SideOf(step));
                         const Rgb  sc  = PatternColour(PatternSide(i));
                         const int  cur = m_->CurrentPattern();
                         if(i == m_->QueuedPattern())
@@ -1493,6 +1528,7 @@ class Ui
     int      side_of_[kPatternNumbers] = {}; // the side each number last showed (0 = A)
     int      pat_key_               = -1;    // pattern page: the key down, its number,
     int      pat_key_step_          = -1;    // picked when let go or exporting at 2 s
+    bool     pat_key_other_         = false; // pressed with CHOMPI: the other side
     uint32_t pat_key_at_            = 0;
     uint32_t copied_at_             = 0x80000000u;
     uint32_t last_export_seen_      = 0;

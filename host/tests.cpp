@@ -1474,6 +1474,29 @@ static void TestPatternSides()
     r.ui.Play();
     r.White(0); // stopped: 1A at once
     CHECK(r.m.CurrentPattern() == 0);
+    // CHOMPI + a number: its other side. Playing 1A: CHOMPI + 2 queues 2B
+    // without passing through 2A; 2 again switches at once.
+    r.m.patterns[PatternIndex(1, 1)].steps[0].on = true; // 2B in use
+    r.ui.Play();
+    r.Run(100);
+    r.ui.Chompi(true);
+    r.ui.Draw(f, r.now); // held: each number shows its other side; 2 yellow
+    CHECK(f.key[Ui::kWhite[1]].r > 0.05f && f.key[Ui::kWhite[1]].g > 0.6f * f.key[Ui::kWhite[1]].r
+          && f.key[Ui::kWhite[1]].b < 0.1f);
+    r.White(1);
+    r.ui.Chompi(false);
+    CHECK(r.m.CurrentPattern() == 0 && r.m.QueuedPattern() == PatternIndex(1, 1));
+    r.White(1);
+    CHECK(r.m.CurrentPattern() == PatternIndex(1, 1));
+    r.ui.Play();
+    // Stopped: CHOMPI + 3 is 3B at once; CHOMPI + 3 again, 3A.
+    r.ui.Chompi(true), r.White(2), r.ui.Chompi(false);
+    CHECK(r.m.CurrentPattern() == PatternIndex(2, 1));
+    r.ui.Chompi(true), r.White(2), r.ui.Chompi(false);
+    CHECK(r.m.CurrentPattern() == PatternIndex(2, 0));
+    r.White(0); // 1A again
+    CHECK(r.m.CurrentPattern() == 0);
+    CHECK(r.m.patterns[0] == [] { Pattern d; DemoPattern(d); return d; }()); // CHOMPI didn't set a note
     r.Key(Ui::kKeyPattern);
     CHECK(r.ui.GetPage() == Ui::Page::NOTES);
     // COPY + PATTERN: 1A to 1B.
