@@ -36,7 +36,7 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | Black F#3 / G#3 / A#3 (keys 3-5) | ACCENT / SLIDE / TIE page |
 | Black C#4 (key 6) | Transpose mode: every key sets the transpose (middle C = none; C#4 itself = +1), its key lit yellow; the white keys show only the playhead. Tap any key twice quickly to set that transpose and leave; or hold C#4 for 2 s to leave (the hold doesn't change the transpose) |
 | Black D#4 (key 7) | View steps 1-8 / 9-16 |
-| Black F#4 (key 8) | Tap: PATTERN page, the step keys pick pattern 1-16. Hold 2 s: write protect on/off. While it's on you can edit freely, but nothing is saved to the card, so the next power-on loads your patterns as they were. Every light flashes red when it goes on (green when it goes off), and this key stays red while protected. Turning it off keeps what you have now, which then saves as usual. It stays on across restarts |
+| Black F#4 (key 8) | Tap: PATTERN page, the step keys pick pattern 1-16 (no playhead or dimmed half there, even while running; middle C is pattern 8 or 9 by the half you last chose). Hold 2 s: write protect on/off. While it's on you can edit freely, but nothing is saved to the card, so the next power-on loads your patterns as they were. Every light flashes red when it goes on (green when it goes off), and this key stays red while protected. Turning it off keeps what you have now, which then saves as usual. It stays on across restarts |
 | Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that pattern number |
 | Black A#4 (key 10) | CLEAR: tap clears the selected step; hold 1 s clears the whole pattern |
 | LOOP | Tap tempo |

@@ -660,7 +660,7 @@ class Ui
             return w;
         if(w > 7)
             return w + 1;
-        return SecondHalf() ? 8 : 7;
+        return ShownSecondHalf() ? 8 : 7;
     }
 
     /** The white key that shows step s, or -1 if it isn't shown now (step 8
@@ -671,7 +671,7 @@ class Ui
             return kWhite[s];
         if(s > 8)
             return kWhite[s - 1];
-        return (s == 8) == SecondHalf() ? kMiddleC : -1;
+        return (s == 8) == ShownSecondHalf() ? kMiddleC : -1;
     }
 
     bool SecondHalfUsed() const
@@ -732,7 +732,7 @@ class Ui
             case 3: TogglePage(Page::SLIDE); break;
             case 4: TogglePage(Page::TIE); break;
             case 5: transpose_mode_ = true, tap_key_ = -1; break;
-            case 6: half_ = SecondHalf() ? 0 : 1; break;
+            case 6: half_ = ShownSecondHalf() ? 0 : 1; break;
             case 7: pattern_down_ = true, pattern_down_at_ = now; break; // a tap or a 2 s hold: see KeyUp, Tick
             case 9: clear_down_ = now, clear_done_ = false; break;
             default: break; // 8 = COPY, used while held
@@ -740,6 +740,16 @@ class Ui
     }
 
     void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
+
+    /** Which of 8 / 9 middle C stands for now. On the pattern page that's
+     *  the half you chose (the last key pressed, or D#4), never the
+     *  playhead: the keys there are patterns. */
+    bool ShownSecondHalf() const
+    {
+        if(mode_ == Mode::STEP && page_ == Page::PATTERN)
+            return half_ == 1;
+        return SecondHalf();
+    }
 
     /** Anything but CHOMPI was used: CHOMPI's press isn't a bare tap. */
     void Touched()
@@ -980,13 +990,16 @@ class Ui
     template <typename F>
     void ForEachShownStep(F colour, LedFrame& f) const
     {
-        const bool second = SecondHalf();
+        const bool second = ShownSecondHalf();
+        // On the pattern page the keys are patterns, not steps: no half is
+        // dimmed.
+        const bool dim = !(mode_ == Mode::STEP && page_ == Page::PATTERN);
         for(int s = 0; s < kSteps; s++)
         {
             const int k = WhiteOfStep(s);
             if(k < 0)
                 continue;
-            const bool in_view = (s >= 8) == second;
+            const bool in_view = !dim || (s >= 8) == second;
             f.key[k]           = in_view ? colour(s) : Scale(colour(s), 0.2f);
         }
     }
@@ -1051,8 +1064,8 @@ class Ui
                         break;
                     }
                 }
-                if(step_lit && cur_step == step)
-                    c = {1.f, 1.f, 1.f}; // the playhead
+                if(step_lit && cur_step == step && page_ != Page::PATTERN)
+                    c = {1.f, 1.f, 1.f}; // the playhead (not over the patterns)
                 return c;
             },
             f);
@@ -1061,7 +1074,7 @@ class Ui
         for(int i = 0; i < 5; i++)
             f.key[kBlack[i]] = Scale(kPageColour[static_cast<int>(pages[i])], page_ == pages[i] ? 1.f : 0.1f);
         f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
-        f.key[kKeyView]      = SecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
+        f.key[kKeyView]      = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         // The pattern key: yellow, or red while the patterns are write-protected.
         f.key[kKeyPattern] = Scale(m_->Protected() ? kProtectColour : kPageColour[static_cast<int>(Page::PATTERN)],
                                    page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));

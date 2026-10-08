@@ -1387,6 +1387,44 @@ static void TestWriteProtect()
     r.ui.KeyUp(Ui::kKeyPattern, r.now);
 }
 
+static void TestPatternPageWhileRunning()
+{
+    printf("pattern page while running: no playhead, no dimmed half\n");
+    Rig r;
+    for(int i = 0; i < kPatterns; i++)
+        DemoPattern(r.m.patterns[i]); // all in use, second halves too
+    r.m.TogglePlay();
+    r.Key(Ui::kKeyPattern);
+    CHECK(r.ui.GetPage() == Ui::Page::PATTERN);
+    float lo = 9.f, hi = 0.f;
+    bool  white = false;
+    for(int t = 0; t < 400; t++)
+    {
+        r.Run(5);
+        r.ui.NoteStep(r.now);
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        for(int w = 1; w < 15; w++) // every pattern key but the current one (pattern 1)
+        {
+            const Rgb c = f.key[Ui::kWhite[w]];
+            lo = std::min(lo, c.r), hi = std::max(hi, c.r);
+            white |= c.b > 0.5f;
+        }
+    }
+    CHECK(!white && hi - lo < 0.01f);
+    // Middle C is pattern 8 (the half last chosen), wherever the playhead is.
+    for(int t = 0; t < 2; t++)
+    {
+        r.Run(t ? 1100 : 600);
+        r.White(7);
+        CHECK(r.m.QueuedPattern() == 7);
+        r.White(7); // switch at once
+        r.Key(Ui::kKeyPattern);
+        r.m.SelectPattern(0, true);
+        r.Key(Ui::kKeyPattern);
+    }
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1409,6 +1447,7 @@ int main()
     TestChompiDoubleTap();
     TestQuantizeHold();
     TestWriteProtect();
+    TestPatternPageWhileRunning();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
