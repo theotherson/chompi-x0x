@@ -1441,22 +1441,39 @@ static void TestPatternSides()
     DemoPattern(r.m.patterns[0]);
     r.Key(Ui::kKeyPattern); // the page; F#4 again closes it
     LedFrame f;
+    // Drawn while the current pattern's slow flash is on (it flashes 400 ms
+    // on, 400 ms off).
+    auto draw_on  = [&]() { r.ui.Draw(f, r.now - r.now % 800); };
+    auto draw_off = [&]() { r.ui.Draw(f, r.now - r.now % 800 + 400); };
     auto blue   = [](Rgb c) { return c.b > 0.9f && c.r < 0.4f && c.g > 0.4f; };  // side A
     auto yellow = [](Rgb c) { return c.r > 0.9f && c.g > 0.6f && c.b < 0.1f; };  // side B
     auto dim_yellow = [](Rgb c) { return c.r > 0.05f && c.r < 0.5f && c.g > 0.6f * c.r && c.b < 0.1f * c.r; };
     r.m.patterns[PatternIndex(1, 0)].steps[0].on = true; // 2A in use
     r.m.patterns[PatternIndex(1, 1)].steps[0].on = true; // 2B in use
-    r.ui.Draw(f, r.now);
+    // The current pattern flashes: bright, then dim as it has notes...
+    draw_on();
+    const float bright = f.key[Ui::kWhite[0]].b;
+    draw_off();
+    CHECK(f.key[Ui::kWhite[0]].b > 0.05f && f.key[Ui::kWhite[0]].b < 0.3f * bright);
+    // ...or off if it's empty.
+    r.White(5); // 6A: empty
+    CHECK(r.m.CurrentPattern() == 5);
+    draw_off();
+    CHECK(f.key[Ui::kWhite[5]].b == 0.f);
+    draw_on();
+    CHECK(f.key[Ui::kWhite[5]].b > 0.9f);
+    r.White(0);
+    draw_on();
     CHECK(blue(f.key[Ui::kWhite[0]]));                      // 1A, current
     CHECK(f.key[Ui::kWhite[1]].b > 0.05f && f.key[Ui::kWhite[1]].r < 0.4f * f.key[Ui::kWhite[1]].b); // 2A dim
     r.ui.Chompi(true);
-    r.ui.Draw(f, r.now);
+    draw_on();
     CHECK(dim_yellow(f.key[Ui::kWhite[1]]));               // 2B dim
     CHECK(blue(f.key[Ui::kWhite[0]]));                      // the current (1A) still shows
     r.White(1);                                             // CHOMPI + 2: 2B
     r.ui.Chompi(false);
     CHECK(r.m.CurrentPattern() == PatternIndex(1, 1));
-    r.ui.Draw(f, r.now);
+    draw_on();
     CHECK(yellow(f.key[Ui::kWhite[1]]) && yellow(f.key[Ui::kKeyPattern])); // in the A view too
     r.White(1);                                             // 2: 2A
     CHECK(r.m.CurrentPattern() == PatternIndex(1, 0));
@@ -1486,12 +1503,12 @@ static void TestPatternSides()
     // Locked: A magenta, B orange.
     r.m.SetProtected(true);
     r.Run(1000);
-    r.ui.Draw(f, r.now);
+    draw_on();
     const Rgb lk = f.key[Ui::kKeyPattern];
     CHECK(lk.r > 0.05f && lk.b > 0.9f * lk.r && lk.g < 0.02f);
     r.Key(Ui::kKeyPattern);
     r.ui.Chompi(true), r.White(0), r.ui.Chompi(false); // 1B
-    r.ui.Draw(f, r.now);
+    draw_on();
     CHECK(f.key[Ui::kWhite[0]].r > 0.9f && f.key[Ui::kWhite[0]].g > 0.2f && f.key[Ui::kWhite[0]].g < 0.5f
           && f.key[Ui::kWhite[0]].b < 0.05f);
     r.White(0); // back to 1A

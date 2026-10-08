@@ -168,6 +168,7 @@ class Ui
     static constexpr uint32_t kQuantizeHoldMs = 2000;
     static constexpr uint32_t kProtectHoldMs  = 2000;
     static constexpr uint32_t kExportHoldMs   = 2000;
+    static constexpr uint32_t kCurrentFlashMs = 400; // the current pattern's slow flash (queued: fast)
 
     void Init(Machine* m) { m_ = m; }
 
@@ -1165,7 +1166,15 @@ class Ui
                         if(!m_->patterns[i].Empty())
                             c = Scale(PatternColour(ViewSide()), 0.12f);
                         if(PatternNumber(cur) == step)
-                            c = PatternColour(PatternSide(cur));
+                        {
+                            // The current pattern flashes slowly: bright and
+                            // dim if it has notes, bright and off if empty.
+                            const Rgb cc = PatternColour(PatternSide(cur));
+                            if((now / kCurrentFlashMs) % 2 == 0)
+                                c = cc;
+                            else
+                                c = m_->patterns[cur].Empty() ? Rgb{} : Scale(cc, 0.12f);
+                        }
                         if(q >= 0 && PatternNumber(q) == step && blink)
                             c = PatternColour(PatternSide(q)); // waiting for the bar
                         else if(q >= 0 && PatternNumber(q) == step && PatternNumber(cur) != step)
