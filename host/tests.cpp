@@ -497,7 +497,8 @@ static void TestNoteEntry()
     r.Black(2); // accent on the last step
     r.Black(3); // slide
     r.Black(4); // a tie
-    r.Black(9); // a rest (A#4)
+    r.White(2);  // not the next step's key: nothing
+    r.White(4);  // the next step's key (step 5): a rest
     r.Black(0); // keyboard back down
     r.ui.Chompi(false);
     CHECK(r.S(2).accent && r.S(2).slide);
@@ -511,6 +512,13 @@ static void TestNoteEntry()
         r.ui.Draw(f, 0); // a moment when the next-step blink is off
         const Rgb c = f.key[Ui::kWhite[4]];
         CHECK(c.r > 0.2f && c.r == c.g && c.g == c.b);
+    }
+    {
+        // A#4 is the arpeggiator's octave up, in note entry too.
+        const float up0 = r.m.settings.params[ARP_OCT_UP];
+        r.ui.Chompi(true), r.Black(9), r.ui.Chompi(false);
+        CHECK(r.m.settings.params[ARP_OCT_UP] != up0 && r.m.Current().length == 5);
+        r.m.SetParam(ARP_OCT_UP, up0);
     }
     // CHOMPI + D#4 switches the view of steps 1-8 / 9-16.
     const bool second = r.ui.SecondHalf();
@@ -613,8 +621,9 @@ static void TestArp()
         LedFrame f;
         r.ui.Draw(f, r.now);
         CHECK(f.key[Ui::kWhite[2]].r > 0.9f);                            // the chord's own
-        CHECK(f.key[Ui::kWhite[1]].g > 0.4f && f.key[Ui::kWhite[0]].g < 0.1f); // -1 lit, -2 not
-        CHECK(f.key[Ui::kWhite[3]].g < 0.1f);                            // +1 not
+        // -1 lit purple, -2 not; +1 (cyan) not.
+        CHECK(f.key[Ui::kWhite[1]].b > 0.4f && f.key[Ui::kWhite[1]].g < 0.1f && f.key[Ui::kWhite[0]].b < 0.1f);
+        CHECK(f.key[Ui::kWhite[3]].b < 0.1f);
     }
     // An octave down and up: a single held C3 plays C2, C3 (down 1, up 0), up mode.
     r.m.SetParam(ARP_MODE, 0.f);

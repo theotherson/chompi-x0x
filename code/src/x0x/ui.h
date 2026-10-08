@@ -68,7 +68,8 @@
  *                                  chord, 0-2 each (white keys 1-5 show it)
  *    CHOMPI + G#4                  arpeggiator pattern: up, down, up-down,
  *                                  random, as played
- *    CHOMPI + A#4, note entry      a rest
+ *    CHOMPI + the blinking step's      in note entry: a rest
+ *      white key
  *
  *  CHOMPI double tap (two quick taps, nothing else touched): swap the panel
  *  between the bass and the drums. Both always play; this only picks which
@@ -802,17 +803,19 @@ class Ui
                     break;
                 case 7: CycleParam(ARP_OCT_DOWN, 3), arp_shown_ = kShowOctaves; break;
                 case 8: CycleParam(ARP_MODE, 5), arp_shown_ = kShowPattern; break;
-                case 9:
-                    if(NoteEntry())
-                        Append(Step{}); // a rest (the arpeggiator doesn't run in note entry)
-                    else
-                        CycleParam(ARP_OCT_UP, 3), arp_shown_ = kShowOctaves;
-                    break;
+                case 9: CycleParam(ARP_OCT_UP, 3), arp_shown_ = kShowOctaves; break;
                 default:
                 {
-                    // White keys 1-3 pick the quantize grid while it's on.
                     const int w = WhiteIndex(k);
-                    if(w >= 0 && w < 3 && Quantizing() && !NoteEntry())
+                    // Note entry: the next step's key (the one blinking)
+                    // enters a rest. Middle C counts for step 8 or 9.
+                    if(w >= 0 && NoteEntry())
+                    {
+                        if(StepOfWhite(w) == cursor_ || (w == 7 && (cursor_ == 7 || cursor_ == 8)))
+                            Append(Step{});
+                    }
+                    // White keys 1-3 pick the quantize grid while it's on.
+                    else if(w >= 0 && w < 3 && Quantizing())
                         m_->SetParam(QUANT_GRID, StepValue(w, 3));
                     break;
                 }
@@ -1116,15 +1119,12 @@ class Ui
                         f.key[kWhite[i]] = Scale(kQuantizeColour, i == g ? 1.f : 0.1f);
                 }
             }
-            // Arpeggiator: octaves down (F#4) and up (A#4), brighter for
-            // more; its pattern (G#4).
+            // Arpeggiator: octaves down (F#4) and up (A#4) in the octave
+            // keys' purple and cyan, brighter for more; its pattern (G#4).
             const float* p   = m_->settings.params;
-            f.key[kBlack[7]] = Scale(kArpColour, 0.15f + 0.425f * StepIndex(p[ARP_OCT_DOWN], 3));
+            f.key[kBlack[7]] = Scale(kPageColour[1], 0.15f + 0.425f * StepIndex(p[ARP_OCT_DOWN], 3));
             f.key[kBlack[8]] = kArpColour;
-            if(input)
-                f.key[kBlack[9]] = {.3f, .3f, .3f}; // rest
-            else
-                f.key[kBlack[9]] = Scale(kArpColour, 0.15f + 0.425f * StepIndex(p[ARP_OCT_UP], 3));
+            f.key[kBlack[9]] = Scale(kPageColour[2], 0.15f + 0.425f * StepIndex(p[ARP_OCT_UP], 3));
         }
         for(int i = 0; i < kKeyNotes; i++)
             if(held_[i])
@@ -1150,12 +1150,14 @@ class Ui
         for(int o = -2; o <= 2; o++)
         {
             Rgb c;
+            // Below the chord purple, above it cyan, as the octave keys.
+            const Rgb oc = o < 0 ? kPageColour[1] : kPageColour[2];
             if(o == 0)
                 c = {1.f, 1.f, 1.f};
             else if(o >= -down && o <= up)
-                c = Scale(kArpColour, 0.6f);
+                c = Scale(oc, 0.6f);
             else
-                c = Scale(kArpColour, 0.05f);
+                c = Scale(oc, 0.05f);
             f.key[kWhite[o + 2]] = c;
         }
     }
