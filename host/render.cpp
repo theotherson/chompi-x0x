@@ -107,6 +107,19 @@ int main(int argc, char** argv)
 
     // Effects: each on its own, then all at once.
     RenderPattern(dir, "fx_delay", demo, {{DELAY, .5f}, {DELAY_TIME, StepValue(2, kDelayDivisions)}}, 6.f);
+    {
+        // The demo bassline with a 606 beat in its drum part.
+        Pattern both = demo;
+        const char* rows[7] = {"x.....x...x.....", "....x.......x...", "...............x", "..............x.",
+                               "x...............", "..x...x...x...x.", "x.x.x.x.x.x.x.x."};
+        for(int v = 0; v < 7; v++)
+            for(int i = 0; i < 16; i++)
+                if(rows[v][i] == 'x')
+                    both.drums[i] |= static_cast<uint8_t>(1 << v);
+        for(int i : {0, 4, 8, 12})
+            both.drums[i] |= kDrumAccent;
+        RenderPattern(dir, "bass_and_drums", both, {}, 8.f);
+    }
     // Synced time changed every 2 s (1/16, 3/16, 1/8T, 1/2, 1/4): crossfades.
     RenderPattern(dir, "fx_delay_synced_changes", demo, {{DELAY, .55f}, {DELAY_FB, .5f}, {DELAY_TIME, StepValue(1, 9)}},
                   12.f, [](Machine& m, double t) {
