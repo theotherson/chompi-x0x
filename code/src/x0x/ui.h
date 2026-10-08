@@ -2014,6 +2014,18 @@ class Ui
             }
             else if(sel == TEMPO)
                 v = TempoBeat(now, cur_step) ? 1.f : 0.f; // flashes the beat
+            else if(sel == COMP)
+            {
+                // Teal; dims as it compresses.
+                c = {0.f, 1.f, .6f};
+                v = m_->settings.params[COMP] * Clamp(1.f - m_->CompReduction() / 12.f, 0.25f, 1.f);
+            }
+            else if(sel == SIDECHAIN)
+            {
+                // The kick's red, pulsing with each duck.
+                c = {1.f, .1f, .1f};
+                v = m_->settings.params[SIDECHAIN] * (1.f - 0.8f * m_->Duck());
+            }
             else if(sel == MIX || sel == MIX_MUTE)
             {
                 // The balance: amber (all drums) .. white .. red (all bass);

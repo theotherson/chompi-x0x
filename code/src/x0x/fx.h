@@ -491,6 +491,59 @@ class DrumFx
     int      hold_count_ = 0;
 };
 
+/** The master compressor: one knob, from off to heavy (threshold down and
+ *  ratio up together, ~1.5:1 to ~8:1, a soft knee, automatic make-up gain),
+ *  stereo-linked, ~8 ms attack and ~120 ms release. */
+class Compressor
+{
+  public:
+    void Init(float sample_rate)
+    {
+        att_ = TauToCoef(0.008f, sample_rate);
+        rel_ = TauToCoef(0.12f, sample_rate);
+    }
+
+    void Set(float amount)
+    {
+        amount_ = Clamp(amount, 0.f, 1.f);
+        thresh_ = -6.f - 24.f * amount_;           // dB
+        ratio_  = 1.5f + 6.5f * amount_;
+        makeup_ = -thresh_ * (1.f - 1.f / ratio_) * 0.45f; // most of the reduction at a typical level
+    }
+
+    /** The gain reduction now, dB (for the LEDs). */
+    float Reduction() const { return gr_; }
+
+    void Process(float* left, float* right, size_t n)
+    {
+        if(amount_ < 0.005f)
+        {
+            gr_ = 0.f;
+            return;
+        }
+        for(size_t i = 0; i < n; i++)
+        {
+            const float peak = fmaxf(fabsf(left[i]), fabsf(right[i]));
+            const float db   = 20.f * log10f(peak + 1e-9f);
+            // Soft knee, 6 dB wide.
+            const float over = db - thresh_;
+            float       want = 0.f;
+            if(over > 3.f)
+                want = over * (1.f - 1.f / ratio_);
+            else if(over > -3.f)
+                want = (1.f - 1.f / ratio_) * (over + 3.f) * (over + 3.f) / 12.f;
+            gr_ += (want - gr_) * (want > gr_ ? att_ : rel_);
+            const float g = powf(10.f, (makeup_ - gr_) / 20.f);
+            left[i] *= g;
+            right[i] *= g;
+        }
+    }
+
+  private:
+    float amount_ = 0.f, thresh_ = 0.f, ratio_ = 1.f, makeup_ = 0.f;
+    float att_ = 0.1f, rel_ = 0.01f, gr_ = 0.f;
+};
+
 constexpr int    Reverb::kApLen[2];
 constexpr int    Reverb::kLineLen[4];
 constexpr size_t Reverb::kLineMax;

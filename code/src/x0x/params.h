@@ -58,6 +58,8 @@ enum Param : uint8_t
     DRUM_CRUSH_RATE, //   sample-rate reduction,
     DRUM_FILTER,     //   one-knob filter (low-pass left, high-pass right),
     DRUM_DRIVE,      //   drive
+    COMP,            // the master compressor (volume knob, page 4)
+    SIDECHAIN,       // CHOMPI + it: the kick ducks the rest (sidechain depth)
     NUM_PARAMS
 };
 
@@ -131,6 +133,8 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_crush_rate", 0.f,  0, 0},
     {"drum_filter", .5f,      0, 0},   // centre: off
     {"drum_drive",  0.f,      0, 0},
+    {"comp",        0.f,      0, 0},   // off .. heavy
+    {"sidechain",   0.f,      0, 0},   // none .. -20 dB on each kick
 };
 // clang-format on
 
@@ -155,14 +159,14 @@ constexpr uint8_t kKnobNone   = 255;
  *  (knob 1: 2, knob 4: 4, volume: 2); the big knob's click is tap tempo.
  *  Quantize and its grid are on the keys (live mode, CHOMPI + D#4). */
 constexpr int     kMaxKnobPages       = 4;
-constexpr int     kKnobPages[6]       = {2, 1, 1, 4, 1, 3};
+constexpr int     kKnobPages[6]       = {2, 1, 1, 4, 1, 4};
 constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{ENV_MOD, ACCENT}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{DECAY, SLIDE_TIME}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{DELAY, DELAY_TIME}, {DELAY_FB, DELAY_TONE}, {MOD, MOD_WIDTH}, {CRUSH, CRUSH_RATE}},
     {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{VOLUME, DRIVE}, {TEMPO, SWING}, {MIX, MIX_MUTE}, {kKnobNone, kKnobNone}},
+    {{VOLUME, DRIVE}, {TEMPO, SWING}, {MIX, MIX_MUTE}, {COMP, SIDECHAIN}},
 };
 
 /** How far one click of a knob moves a continuous parameter, by how long

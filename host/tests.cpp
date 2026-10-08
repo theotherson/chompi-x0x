@@ -385,7 +385,7 @@ static void TestKnobPages()
     CHECK(fabsf(TempoBpm(p[TEMPO]) - 130.f) < 0.01f);
     r.ui.Chompi(true), r.ui.KnobTurn(5, 4, false), r.ui.Chompi(false); // swing
     CHECK(p[SWING] > 0.f);
-    r.ui.KnobClick(5, r.now), r.ui.KnobClick(5, r.now); // page 3 (the mix), then round
+    r.ui.KnobClick(5, r.now), r.ui.KnobClick(5, r.now), r.ui.KnobClick(5, r.now); // the mix, the compressor, round
     CHECK(r.ui.KnobPage(5) == 0);
 
     r.ui.KnobTurn(3, 20, false); // delay
@@ -2254,6 +2254,55 @@ static void TestDrumEffects()
     CHECK(StepIndex(prm[DELAY_TIME], kDelayDivisions) == div + 1); // the shared time stays
 }
 
+static void TestCompressorAndSidechain()
+{
+    printf("master compressor and the kick's sidechain\n");
+    // The compressor: loud parts down, quiet ones (with make-up) up; off is off.
+    auto level = [](float amount, float in) {
+        Compressor c;
+        c.Init(48000.f);
+        c.Set(amount);
+        float  l[48], r[48];
+        double e = 0;
+        for(int blk = 0; blk < 1000; blk++)
+        {
+            for(int i = 0; i < 48; i++)
+                l[i] = r[i] = in * sinf(6.2832f * 200.f * (blk * 48 + i) / 48000.f);
+            c.Process(l, r, 48);
+            if(blk > 500)
+                for(int i = 0; i < 48; i++)
+                    e += l[i] * l[i];
+        }
+        return 10 * log10(e / (499.0 * 48) + 1e-20);
+    };
+    const double loud0 = level(0.f, 0.9f), quiet0 = level(0.f, 0.05f);
+    const double loud = level(0.8f, 0.9f), quiet = level(0.8f, 0.05f);
+    printf("  (range: off %.1f dB, heavy %.1f dB)\n", loud0 - quiet0, loud - quiet);
+    CHECK(fabs((loud0 - quiet0) - 25.1) < 0.5);     // off: untouched
+    CHECK(loud - quiet < (loud0 - quiet0) - 10.0);  // heavy: much less range
+    CHECK(loud < loud0);
+
+    // The sidechain: a BD ducks the bass, which recovers by the next beat;
+    // the drums aren't ducked.
+    Rig r;
+    Pattern& p = r.m.Current();
+    DemoPattern(p); // a bassline
+    p.ClearDrums();
+    p.drums[0] = 1 << BD;
+    p.drums[8] = 1 << BD;
+    float* prm = r.m.settings.params;
+    prm[SIDECHAIN] = 1.f;
+    r.m.Play();
+    float  dmin = 1.f, dmax = 0.f;
+    for(int ms = 0; ms < 2000; ms++)
+    {
+        r.Run(1);
+        dmin = std::min(dmin, r.m.Duck()), dmax = std::max(dmax, r.m.Duck());
+    }
+    CHECK(dmax > 0.9f && dmin < 0.1f); // ducks on each kick, recovers between
+    r.m.Stop();
+}
+
 int main()
 {
     TestDemoTiming();
@@ -2287,6 +2336,7 @@ int main()
     TestDrumPanel();
     TestDrumMuteSoloMix();
     TestDrumEffects();
+    TestCompressorAndSidechain();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

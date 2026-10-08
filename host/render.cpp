@@ -123,6 +123,10 @@ int main(int argc, char** argv)
         // ...with the drums through reverb and the shared delay (the bass dry).
         RenderPattern(dir, "bass_and_drums_fx", both,
                       {{DRUM_REVERB, .55f}, {REVERB_SIZE, .6f}, {DRUM_DELAY, .45f}, {DELAY_TIME, StepValue(5, kDelayDivisions)}}, 8.f);
+        // ...glued by the master compressor, the kick pumping the rest.
+        RenderPattern(dir, "bass_and_drums_pump", both,
+                      {{DRUM_REVERB, .55f}, {REVERB_SIZE, .6f}, {DRUM_DELAY, .45f}, {DELAY_TIME, StepValue(5, kDelayDivisions)},
+                       {COMP, .6f}, {SIDECHAIN, .75f}}, 8.f);
     }
     // Synced time changed every 2 s (1/16, 3/16, 1/8T, 1/2, 1/4): crossfades.
     RenderPattern(dir, "fx_delay_synced_changes", demo, {{DELAY, .55f}, {DELAY_FB, .5f}, {DELAY_TIME, StepValue(1, 9)}},

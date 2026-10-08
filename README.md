@@ -117,10 +117,11 @@ Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has 
 | Big purple | Cutoff (purple) | Resonance (red) | | |
 | Volume | Volume (white) | Drive (light orange to red) | Tempo, 60-200 (1 BPM a click turned slowly; yellow, flashing the beat) | Swing (pink) |
 | Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through white to red (bass) | Mute the bass / neither / mute the drums |
+| Volume, page 4 | **Compressor** on the whole mix, after every effect: off to heavy (threshold down and ratio up together, about 1.5:1 to 8:1, soft knee, automatic make-up gain; about 8 ms attack, 120 ms release). Teal, dimming as it compresses | **Sidechain** from the kick: each BD hit ducks the bass, the delay echoes and the reverb (not the drums) by up to about 20 dB, recovering by the next beat. Red, pulsing with each duck |
 
 The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, alternating sides, on steps 1, 5, 9 and 13; the side of the current beat flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
 
-Big purple knob click: tap tempo. Volume knob click: steps through volume / drive, tempo / swing and the bass / drums mix, and stops any stuck live notes.
+Big purple knob click: tap tempo. Volume knob click: steps through volume / drive, tempo / swing, the bass / drums mix and the compressor, and stops any stuck live notes.
 
 ## The voice
 

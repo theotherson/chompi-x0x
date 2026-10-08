@@ -53,6 +53,7 @@ class Machine
         voice_.Init(sample_rate);
         drums_.Init(sample_rate);
         drum_fx_.Init(sample_rate);
+        comp_.Init(sample_rate);
         reverb_.Init(sample_rate, reverb_mem, reverb_frames);
         fx_.Init(sample_rate, delay_mem, delay_frames);
         seq_.Init(sample_rate);
@@ -203,6 +204,11 @@ class Machine
     bool DrumMuted(int v) const { return (drum_mute_ >> v) & 1; }
     bool DrumSoloed(int v) const { return (drum_solo_ >> v) & 1; }
     bool DrumAudible(int v) const { return !DrumMuted(v) && (!drum_solo_ || DrumSoloed(v)); }
+
+    /** For the LEDs: the compressor's gain reduction (dB) and the sidechain's
+     *  duck now (0..1). */
+    float CompReduction() const { return comp_.Reduction(); }
+    float Duck() const { return duck_; }
 
     /** Counts drum hits as they play (pattern or live), for the LEDs. */
     uint32_t DrumHitCount(int voice) const { return drum_hit_count_[voice]; }
@@ -604,9 +610,25 @@ class Machine
             dsend[i] = drum[i] * dly_send, rin[i] = drum[i] * rev_send;
 
         fx_.Process(mono, dly_send > 0.0001f ? dsend : nullptr, left, right, n);
+        float rl[64], rr[64];
         for(size_t i = 0; i < n; i++)
-            left[i] += drum[i], right[i] += drum[i];
-        reverb_.Process(rin, left, right, n);
+            rl[i] = rr[i] = 0.f;
+        reverb_.Process(rin, rl, rr, n);
+        // The kick's sidechain: each BD hit ducks the bass, the echoes and
+        // the reverb (not the drums), recovering by the next beat.
+        const float depth   = 0.9f * p[SIDECHAIN];
+        const float rel     = TauToCoef(0.25f * 60.f / seq_.Tempo(), sr_);
+        const float smooth  = TauToCoef(0.002f, sr_);
+        for(size_t i = 0; i < n; i++)
+        {
+            duck_ -= duck_ * rel;
+            duck_gain_ += ((1.f - depth * duck_) - duck_gain_) * smooth;
+            left[i]  = (left[i] + rl[i]) * duck_gain_ + drum[i];
+            right[i] = (right[i] + rr[i]) * duck_gain_ + drum[i];
+        }
+        // The master compressor, on everything.
+        comp_.Set(p[COMP]);
+        comp_.Process(left, right, n);
         const float vol = settings.params[VOLUME] * settings.params[VOLUME] * 1.5f;
         for(size_t i = 0; i < n; i++)
         {
@@ -625,6 +647,8 @@ class Machine
     void PlayDrum(int v, bool accent, int semitones = 0)
     {
         drums_.Trigger(static_cast<Drum>(v), accent ? settings.params[DRUM_ACCENT] : 0.f, semitones);
+        if(v == BD)
+            duck_ = 1.f; // the sidechain: duck from now
         drum_hit_count_[v]++;
         if(options.notes_out)
         {
@@ -857,6 +881,8 @@ class Machine
     Voice       voice_;
     Drums       drums_;
     DrumFx      drum_fx_;
+    Compressor  comp_;
+    float       duck_ = 0.f, duck_gain_ = 1.f;
     Reverb      reverb_;
     int         drum_pos_ = -1;
     uint8_t     hits_[kHitQueue] = {};
