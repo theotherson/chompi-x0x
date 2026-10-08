@@ -75,14 +75,14 @@ The step lights only show while the pattern plays or you're recording; otherwise
 
 Turning the pattern length (knob 1, page 2), in either mode, shows it on the white keys for a moment: every step within the length dim white, the last one bright: white for steps 1-8, cyan from step 9 (middle C shows step 8 or 9, so the colour tells them apart).
 
-Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has four); each page has its own colour, and so does each CHOMPI function (the light changes colour while CHOMPI is held). A knob never goes darker than a fifth, so you can always see which page it's on. Env mod, decay, accent and slide time turn 1.6 times faster than the other knobs, so their whole range takes about a turn and a quarter. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page.
+Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has four). The click comes when you let go, and not at all if you turned the knob while it was pushed; each page has its own colour, and so does each CHOMPI function (the light changes colour while CHOMPI is held). A knob never goes darker than a fifth, so you can always see which page it's on. Env mod, decay, accent and slide time turn 1.6 times faster than the other knobs, so their whole range takes about a turn and a quarter. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page.
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
 | Knob 1 | Saw / square (amber / cyan) | Pulse width (magenta) | Pattern length (white) | Tuning, +/- 1 semitone (sky blue) |
 | Knob 2 | Env mod (green) | Accent (orange) | | |
 | Knob 3 | Decay (violet) | Slide time (blue) | | |
-| Knob 4 | Delay dry/wet (cyan) | Delay time: 1/16, 1/8, 3/16, 1/4, 3/8, 1/2 (white) | Tape feedback (amber) | Tape tone: dark to bright (lavender) |
+| Knob 4 | Delay dry/wet (cyan); **push and turn**: free delay time, 30 ms to 1.9 s, gliding like tape | Synced delay time: 1/16T, 1/16, 1/8T, 1/8, 1/4T, 3/16, 1/4, 3/8, 1/2 (white; white keys 1-9 show it as you turn) | Tape feedback (amber) | Tape tone: dark to bright (lavender) |
 | Knob 4, page 3 | Chorus into flanger (pink) | Stereo width / depth (teal) | | |
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction (red) | | |
 | Big purple | Cutoff (purple) | Resonance (red) | | |
@@ -102,6 +102,7 @@ The resonance amount, cutoff range and envelope times are first estimates, to be
 
 In this order after the voice, each off at zero:
 
+- **Delay time.** Synced (CHOMPI + knob 4) or free (push knob 4 and turn). A new synced time crossfades to it over 80 ms, so it changes without a pitch bend; a free time glides there like a tape machine's rate control, bending the repeats' pitch up to a third (a swoop, never backwards). Push and turn starts the free time from the synced one, so nothing jumps; CHOMPI + turn goes back to synced, crossfading to the setting it had.
 - **Drive** (CHOMPI + volume): a pedal-style hard clipper in the spirit of a DS-1: a high-pass tightens the low end and a treble lift puts the highs in front, up to ~60x gain hits a nearly hard, slightly asymmetric clip, and a tone low-pass (8 to 6 kHz) takes only the harshest fizz off. The level is evened out as it turns up.
 - **Bit crusher** (knob 4, page 4): bit depth 16 down to 4, and sample rate down to 1/32, separately.
 - **Chorus / flanger** (knob 4, page 3): the first half of the turn is chorus, the second half flanger with rising feedback; width spreads the sides apart and deepens it.

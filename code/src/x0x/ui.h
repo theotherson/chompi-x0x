@@ -345,11 +345,48 @@ class Ui
     }
 
     /** knob 0-5: knobs 1-4, big, volume. */
+    /** A knob (not the big one) pushed down: its click comes when it's let
+     *  go, and only if it wasn't turned meanwhile (KnobUp), so a push and
+     *  turn never also clicks. */
+    void KnobDown(int knob)
+    {
+        if(knob < 0 || knob >= 6)
+            return;
+        knob_down_[knob]   = true;
+        knob_turned_[knob] = false;
+    }
+
+    void KnobUp(int knob, uint32_t now)
+    {
+        if(knob < 0 || knob >= 6 || !knob_down_[knob])
+            return;
+        knob_down_[knob] = false;
+        if(!knob_turned_[knob])
+            KnobClick(knob, now);
+    }
+
     void KnobTurn(int knob, int inc, bool fast)
     {
         Touched();
         if(drums_ && knob != 5)
             return; // the volume knob (volume, drive, tempo, swing) is shared
+        if(knob_down_[knob])
+            knob_turned_[knob] = true;
+        if(knob == 3 && knob_down_[3] && KnobPage(3) == 0)
+        {
+            // Knob 4 pushed and turned, on the delay page: the free delay
+            // time, gliding there like tape. From synced, it starts at the
+            // synced time so nothing jumps.
+            float* p = m_->settings.params;
+            if(StepIndex(p[DELAY_FREE_ON], 2) == 0)
+            {
+                const float beats = kDelayBeats[StepIndex(p[DELAY_TIME], kDelayDivisions)];
+                m_->SetParam(DELAY_FREE, DelayFreeKnob(beats * 60000.f / m_->TempoBpmNow()));
+                m_->SetParam(DELAY_FREE_ON, 1.f);
+            }
+            m_->SetParam(DELAY_FREE, p[DELAY_FREE] + inc * (fast ? 0.02f : 0.005f));
+            return;
+        }
         const uint8_t sel = kKnobMap[knob][KnobPage(knob)][chompi_ ? 1 : 0];
         if(sel == kKnobNone)
             return;
@@ -365,7 +402,17 @@ class Ui
         const Param p     = static_cast<Param>(sel);
         const int   steps = kParams[p].steps;
         const float v     = m_->settings.params[p];
-        if(steps)
+        if(p == DELAY_TIME)
+        {
+            // Synced time: back from free, the same setting first (it
+            // crossfades there); shown on the white keys for a moment.
+            if(StepIndex(m_->settings.params[DELAY_FREE_ON], 2) == 1)
+                m_->SetParam(DELAY_FREE_ON, 0.f);
+            else
+                m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
+            delay_shown_at_ = last_tick_;
+        }
+        else if(steps)
             m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
         else if(p == TEMPO)
             m_->SetParam(p, v + inc / 140.f); // 1 BPM a click
@@ -395,6 +442,11 @@ class Ui
                 }
                 else if(sel != kKnobNone)
                     m_->SetParam(sel, kParams[sel].def);
+            }
+            if(knob == 3)
+            {
+                m_->SetParam(DELAY_FREE, kParams[DELAY_FREE].def);
+                m_->SetParam(DELAY_FREE_ON, 0.f);
             }
             return;
         }
@@ -518,6 +570,8 @@ class Ui
             DrawLength(f);
         if(now - arp_shown_at_ < kShowValueMs)
             DrawArpSetting(f);
+        if(now - delay_shown_at_ < kShowValueMs)
+            DrawDelayTime(f);
 
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -1322,6 +1376,16 @@ class Ui
                 f.key[i] = {0.f, .4f, 1.f};
     }
 
+    /** Turning the synced delay time: white keys 1-9 are its nine settings
+     *  (1/16T, 1/16, 1/8T, 1/8, 1/4T, 3/16, 1/4, 3/8, 1/2), the one chosen
+     *  bright, in knob 4's delay-time white. */
+    void DrawDelayTime(LedFrame& f) const
+    {
+        const int d = StepIndex(m_->settings.params[DELAY_TIME], kDelayDivisions);
+        for(int i = 0; i < kDelayDivisions; i++)
+            f.key[kWhite[i]] = Scale(Rgb{1.f, 1.f, 1.f}, i == d ? 1.f : 0.06f);
+    }
+
     /** After CHOMPI + F#4 / A#4 / G#4: white keys 1-5 show the arpeggiator's
      *  octaves (-2 to +2, the chord's own octave bright, the others in use
      *  lit) or its pattern (up, down, up-down, random, as played). */
@@ -1498,6 +1562,9 @@ class Ui
     int      pat_key_               = -1;    // pattern page: the key down, its number,
     int      pat_key_step_          = -1;    // picked when let go or exporting at 2 s
     int      pat_key_side_          = 0;     // the side shown when it was pressed (1 = B)
+    bool     knob_down_[6]          = {};    // pushed (its click comes on release)
+    bool     knob_turned_[6]        = {};    // ...and turned while pushed: no click
+    uint32_t delay_shown_at_        = 0x80000000u;
     uint32_t pat_key_at_            = 0;
     uint32_t copied_at_             = 0x80000000u;
     uint32_t last_export_seen_      = 0;

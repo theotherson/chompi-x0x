@@ -19,6 +19,8 @@
 namespace x0x
 {
 
+static_assert(kParams[DELAY_TIME].steps == kDelayDivisions, "delay_time's positions are the delay's divisions");
+
 class Machine
 {
   public:
@@ -438,6 +440,8 @@ class Machine
         fs.mod_width  = p[MOD_WIDTH];
         fs.dly_mix    = p[DELAY];
         fs.dly_div    = StepIndex(p[DELAY_TIME], kDelayDivisions);
+        fs.dly_free   = StepIndex(p[DELAY_FREE_ON], 2) == 1;
+        fs.dly_free_ms = DelayFreeMs(p[DELAY_FREE]);
         fs.dly_fb     = p[DELAY_FB];
         fs.dly_tone   = p[DELAY_TONE];
         fs.bpm        = seq_.Tempo();

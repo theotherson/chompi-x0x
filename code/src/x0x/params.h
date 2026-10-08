@@ -43,6 +43,8 @@ enum Param : uint8_t
     ARP_OCT_DOWN,
     ARP_OCT_UP,
     ARP_ON,
+    DELAY_FREE,      // the free delay time (push knob 4 and turn)
+    DELAY_FREE_ON,   // the delay on its free time, not synced
     NUM_PARAMS
 };
 
@@ -70,7 +72,7 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"quantize",    1.f,      2, 0},   // off, on
     {"quant_grid",  0.f,      3, 0},   // 1/16, 1/8, 1/4
     {"delay",       0.f,      0, 91},  // dry/wet
-    {"delay_time",  .4f,      6, 92},  // 1/16 1/8 3/16 1/4 3/8 1/2
+    {"delay_time",  .625f,    9, 92},  // 1/16T 1/16 1/8T 1/8 1/4T 3/16 1/4 3/8 1/2 (default 3/16)
     {"delay_fb",    .35f,     0, 94},  // feedback, just past self-oscillation at the top
     {"delay_tone",  .4f,      0, 95},  // tape EQ: dark .. bright
     {"mod",         0.f,      0, 93},  // off, chorus .. flanger
@@ -83,6 +85,8 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"arp_oct_down", 0.f,     3, 0},   // octaves below the chord, 0-2 (CHOMPI + F#4)
     {"arp_oct_up",  0.f,      3, 0},   // octaves above, 0-2 (CHOMPI + A#4)
     {"arp_on",      0.f,      2, 0},   // CHOMPI + F#4 in live mode
+    {"delay_free",  .55f,     0, 0},   // 30 ms .. 1.9 s, exponential (~300 ms)
+    {"delay_free_on", 0.f,    2, 0},   // synced (0) or free (1)
 };
 // clang-format on
 
@@ -123,6 +127,10 @@ inline float KnobSpeed(Param p)
 {
     return (p == ENV_MOD || p == DECAY || p == ACCENT || p == SLIDE_TIME) ? 1.6f : 1.f;
 }
+
+/** The free delay time's knob value to ms (30 ms .. 1.9 s), and back. */
+inline float DelayFreeMs(float v) { return 30.f * FastExp2(v * 5.985f); } // log2(1900 / 30)
+inline float DelayFreeKnob(float ms) { return Clamp(log2f(ms / 30.f) / 5.985f, 0.f, 1.f); }
 
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
 inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }

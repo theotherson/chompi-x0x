@@ -388,7 +388,7 @@ static void TestKnobPages()
     r.ui.KnobTurn(3, 20, false); // delay
     CHECK(p[DELAY] > 0.f);
     r.ui.Chompi(true), r.ui.KnobTurn(3, 2, false), r.ui.Chompi(false); // delay time
-    CHECK(StepIndex(p[DELAY_TIME], kDelayDivisions) == 3); // one turn event = one position
+    CHECK(StepIndex(p[DELAY_TIME], kDelayDivisions) == 6); // one turn event = one position (3/16 to 1/4)
     r.ui.KnobClick(3, r.now); // page 2: tape feedback / tone
     r.ui.KnobTurn(3, 10, false);
     r.ui.Chompi(true), r.ui.KnobTurn(3, -10, false), r.ui.Chompi(false);
@@ -1722,6 +1722,85 @@ static void TestMidiImport()
     CHECK(lf.key[0].r > 0.9f && lf.key[0].g < 0.1f);
 }
 
+static void TestDelayTime()
+{
+    printf("delay time: synced changes crossfade (no pitch bend), free glides\n");
+    // A 1 kHz tone through the delay, wet only, no feedback. The pitch of
+    // what comes out, from zero crossings, around a change of time.
+    auto pitch_swing = [](bool free, float a, float b) {
+        static Fx::Frame mem[96000];
+        Fx fx;
+        fx.Init(48000.f, mem, 96000);
+        Fx::Settings st;
+        st.dly_mix = 1.f, st.dly_fb = 0.f, st.bpm = 120.f;
+        st.dly_free = free;
+        st.dly_div = static_cast<int>(a), st.dly_free_ms = a;
+        fx.Set(st);
+        float in[48], l[48], r[48];
+        double ph = 0.0, lo = 1e9, hi = 0.0;
+        float  prev = 0.f;
+        int    last = -1, n = 0;
+        for(int blk = 0; blk < 3000; blk++) // 3 s; the change at 1.5 s
+        {
+            if(blk == 1500)
+                st.dly_div = static_cast<int>(b), st.dly_free_ms = b, fx.Set(st);
+            for(int i = 0; i < 48; i++)
+                in[i] = 0.5f * sinf(static_cast<float>(ph)), ph += 2.0 * M_PI * 1000.0 / 48000.0;
+            fx.Process(in, l, r, 48);
+            for(int i = 0; i < 48; i++, n++)
+            {
+                if(prev < 0.f && l[i] >= 0.f) // the delay is full by then: never silent
+                {
+                    if(last >= 0 && n > 1500 * 48 - 2400 && n < 1500 * 48 + 48000)
+                    {
+                        const double hz = 48000.0 / (n - last);
+                        lo = std::min(lo, hz), hi = std::max(hi, hz);
+                    }
+                    last = n;
+                }
+                prev = l[i];
+            }
+        }
+        return std::max(1000.0 - lo, hi - 1000.0);
+    };
+    const double still  = pitch_swing(false, 1, 1); // no change: the wow and flutter alone
+    const double synced = pitch_swing(false, 1, 7); // 1/16 to 3/8: a big jump
+    const double free   = pitch_swing(true, 200.f, 600.f);
+    printf("  (pitch swing at 1 kHz: unchanged %.1f Hz, synced change %.1f Hz, free change %.1f Hz)\n", still,
+           synced, free);
+    CHECK(synced < still + 15.0); // a crossfade: no bend beyond a little phase drift
+    CHECK(free > 100.0 && free < 400.0); // the tape glide bends it, but never runs backwards
+
+    // The panel: push knob 4 and turn = free time; a click (no turn) still
+    // flips the page, on release; CHOMPI + turn goes back to synced.
+    Rig r;
+    const float* p = r.m.settings.params;
+    r.ui.KnobDown(3);
+    r.ui.KnobTurn(3, 5, false);
+    r.ui.KnobUp(3, r.now);
+    CHECK(StepIndex(p[DELAY_FREE_ON], 2) == 1 && r.ui.KnobPage(3) == 0);
+    const float ms = DelayFreeMs(p[DELAY_FREE]);
+    CHECK(ms > 375.f && ms < 500.f); // from the synced 3/16 (375 ms), up a little
+    r.ui.KnobDown(3);
+    r.ui.KnobUp(3, r.now);
+    CHECK(r.ui.KnobPage(3) == 1);
+    r.ui.KnobDown(3), r.ui.KnobUp(3, r.now), r.ui.KnobDown(3), r.ui.KnobUp(3, r.now), r.ui.KnobDown(3), r.ui.KnobUp(3, r.now);
+    CHECK(r.ui.KnobPage(3) == 0);
+    const int div = StepIndex(p[DELAY_TIME], kDelayDivisions);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(p[DELAY_FREE_ON], 2) == 0 && StepIndex(p[DELAY_TIME], kDelayDivisions) == div); // back, same setting
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(p[DELAY_TIME], kDelayDivisions) == div + 1);
+    LedFrame f;
+    r.ui.Draw(f, r.now); // white keys 1-9: the settings, this one bright
+    CHECK(f.key[Ui::kWhite[div + 1]].r > 0.9f && f.key[Ui::kWhite[div]].r < 0.1f && f.key[Ui::kWhite[div]].r > 0.f);
+    // Push and turn on another page: a normal turn, and no click after.
+    r.ui.KnobClick(3, r.now); // page 2: tape feedback
+    const float fb = p[DELAY_FB];
+    r.ui.KnobDown(3), r.ui.KnobTurn(3, 3, false), r.ui.KnobUp(3, r.now);
+    CHECK(p[DELAY_FB] > fb && r.ui.KnobPage(3) == 1);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1748,6 +1827,7 @@ int main()
     TestPatternSides();
     TestMidiExport();
     TestMidiImport();
+    TestDelayTime();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

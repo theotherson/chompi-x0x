@@ -93,11 +93,19 @@ class Panel
         else if(sr.FallingEdge(static_cast<int>(kSwLoop)))
             ui_->LoopUp(now);
 
+        // Knob clicks: the big knob's at once (tap tempo); the others when
+        // let go, unless turned while pushed (push and turn: Ui::KnobDown).
+        if(hw_->enc[4].RisingEdge())
+            ui_->KnobClick(4, now);
         for(int k = 0; k < 6; k++)
         {
-            const bool clicked = k == 4 ? hw_->enc[4].RisingEdge() : Pressed(kKnobClick[k]);
-            if(clicked)
-                ui_->KnobClick(k, now);
+            if(k == 4)
+                continue;
+            const int i = static_cast<int>(kKnobClick[k]);
+            if(sr.RisingEdge(i))
+                ui_->KnobDown(k);
+            else if(sr.FallingEdge(i))
+                ui_->KnobUp(k, now);
         }
         for(int e = 0; e < 6; e++)
         {

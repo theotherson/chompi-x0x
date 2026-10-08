@@ -4,6 +4,7 @@
 #include "../code/src/x0x/machine.h"
 #include "wav.h"
 #include <chrono>
+#include <functional>
 
 using namespace x0x;
 
@@ -21,7 +22,8 @@ struct Knob
 
 /** Plays pattern 1 for `seconds` with these knob settings. */
 static void RenderPattern(const std::string& dir, const char* name, const Pattern& pat,
-                          std::initializer_list<Knob> knobs, float seconds)
+                          std::initializer_list<Knob> knobs, float seconds,
+                          std::function<void(Machine&, double)> during = nullptr)
 {
     Machine& m = g_m;
     m.Init(kSr, g_delay, 96000);
@@ -37,6 +39,8 @@ static void RenderPattern(const std::string& dir, const char* name, const Patter
     const size_t       blocks = static_cast<size_t>(seconds * kSr / kBlock);
     for(size_t b = 0; b < blocks; b++)
     {
+        if(during)
+            during(m, b * kBlock / kSr); // knob moves while it plays
         auto t0 = std::chrono::steady_clock::now();
         m.Process(l, r, kBlock);
         cpu += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -103,6 +107,23 @@ int main(int argc, char** argv)
 
     // Effects: each on its own, then all at once.
     RenderPattern(dir, "fx_delay", demo, {{DELAY, .5f}, {DELAY_TIME, StepValue(2, kDelayDivisions)}}, 6.f);
+    // Synced time changed every 2 s (1/16, 3/16, 1/8T, 1/2, 1/4): crossfades.
+    RenderPattern(dir, "fx_delay_synced_changes", demo, {{DELAY, .55f}, {DELAY_FB, .5f}, {DELAY_TIME, StepValue(1, 9)}},
+                  12.f, [](Machine& m, double t) {
+                      static const int kSeq[] = {1, 5, 2, 8, 6};
+                      const int        i      = static_cast<int>(t / 2.0);
+                      if(i < 5)
+                          m.settings.params[DELAY_TIME] = StepValue(kSeq[i], 9);
+                  });
+    // Free time pushed about (300 ms, 900, 120, 600): the tape swoop.
+    RenderPattern(dir, "fx_delay_free_swoops", demo,
+                  {{DELAY, .55f}, {DELAY_FB, .5f}, {DELAY_FREE_ON, 1.f}, {DELAY_FREE, DelayFreeKnob(300.f)}}, 12.f,
+                  [](Machine& m, double t) {
+                      static const float kMs[] = {300.f, 900.f, 120.f, 600.f, 600.f};
+                      const int          i     = static_cast<int>(t / 2.5);
+                      if(i < 5)
+                          m.settings.params[DELAY_FREE] = DelayFreeKnob(kMs[i]);
+                  });
     RenderPattern(dir, "fx_tape_long", demo, {{DELAY, .5f}, {DELAY_FB, .8f}, {DELAY_TONE, .2f}}, 8.f);
     RenderPattern(dir, "fx_tape_selfosc", demo, {{DELAY, .6f}, {DELAY_FB, 1.f}, {DELAY_TONE, .8f}}, 8.f);
     RenderPattern(dir, "fx_crush_bits", demo, {{CRUSH, .7f}}, 4.f);

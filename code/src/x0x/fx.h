@@ -14,10 +14,15 @@
  *   - Modulation: one knob morphs chorus (first half: two voices swinging
  *     against each other) into flanger (second half: very short, with
  *     feedback). Width spreads the two sides apart and deepens it.
- *   - Tape delay: tempo-synced ping-pong. Each repeat goes through tape-like
- *     EQ (a low-pass set by tone, a high-pass) and saturation, so repeats
- *     darken as they fade; a little wow and flutter on the time. Feedback
- *     goes just past self-oscillation, where the saturation holds it.
+ *   - Tape delay: ping-pong, tempo-synced (nine settings, triplets and
+ *     dotted ones too) or free (30 ms to 1.9 s). Each repeat goes through
+ *     tape-like EQ (a low-pass set by tone, a high-pass) and saturation, so
+ *     repeats darken as they fade; a little wow and flutter on the time.
+ *     Feedback goes just past self-oscillation, where the saturation holds
+ *     it. A new synced time crossfades between two read heads (no pitch
+ *     bend); the free time glides there slowly, like a tape machine's rate
+ *     control, bending the repeats' pitch. Small changes (the tempo moving)
+ *     glide too.
  */
 #pragma once
 #include "dsp.h"
@@ -25,9 +30,14 @@
 namespace x0x
 {
 
-/** Delay times, as fractions of a beat. */
-constexpr int   kDelayDivisions              = 6;
-constexpr float kDelayBeats[kDelayDivisions] = {0.25f, 0.5f, 0.75f, 1.f, 1.5f, 2.f};
+/** Synced delay times, as fractions of a beat: 1/16T, 1/16, 1/8T, 1/8,
+ *  1/4T, 3/16, 1/4, 3/8, 1/2. */
+constexpr int   kDelayDivisions              = 9;
+constexpr float kDelayBeats[kDelayDivisions] = {1.f / 6, 0.25f, 1.f / 3, 0.5f, 2.f / 3, 0.75f, 1.f, 1.5f, 2.f};
+
+/** The free delay time's range, in ms. */
+constexpr float kDelayFreeMinMs = 30.f;
+constexpr float kDelayFreeMaxMs = 1900.f;
 
 class Fx
 {
@@ -45,7 +55,9 @@ class Fx
         float mod        = 0.f; // 0 off, chorus to flanger
         float mod_width  = 0.5f;
         float dly_mix    = 0.f; // dry/wet
-        int   dly_div    = 2;   // index into kDelayBeats
+        int   dly_div    = 5;   // index into kDelayBeats
+        bool  dly_free   = false; // free time instead of synced
+        float dly_free_ms = 375.f;
         float dly_fb     = 0.35f;
         float dly_tone   = 0.4f; // dark .. bright
         float bpm        = 120.f;
@@ -63,13 +75,20 @@ class Fx
         for(int i = 0; i < kModSize; i++)
             mod_buf_[i] = 0.f;
         delay_pos_ = mod_pos_ = 0;
+        heads_set_ = false;
     }
 
     void Set(const Settings& s)
     {
         s_ = s;
-        const float beats = kDelayBeats[ClampInt(s.dly_div, 0, kDelayDivisions - 1)];
-        target_delay_     = Clamp(beats * 60.f / s.bpm * sr_, 64.f, static_cast<float>(delay_size_ - 400));
+        float samples;
+        if(s.dly_free)
+            samples = Clamp(s.dly_free_ms, kDelayFreeMinMs, kDelayFreeMaxMs) * 0.001f * sr_;
+        else
+            samples = kDelayBeats[ClampInt(s.dly_div, 0, kDelayDivisions - 1)] * 60.f / s.bpm * sr_;
+        target_delay_ = Clamp(samples, 64.f, static_cast<float>(delay_size_ - 400));
+        if(!heads_set_)
+            head_a_ = head_b_ = target_delay_, heads_set_ = true;
     }
 
     void Process(const float* in, float* left, float* right, size_t n)
@@ -117,6 +136,8 @@ class Fx
         const float dfb     = 1.05f * s_.dly_fb;
         const float tape_lp = TauToCoef(1.f / (2.f * kPi * (900.f + 6000.f * s_.dly_tone * s_.dly_tone)), sr_);
         const float tape_hp = TauToCoef(1.f / (2.f * kPi * 90.f), sr_);
+        const float glide   = TauToCoef(s_.dly_free ? 0.15f : 0.05f, sr_); // free: tape-slow
+        const float fade_in = 1.f / (0.08f * sr_);                             // crossfade: 80 ms
 
         for(size_t i = 0; i < n; i++)
         {
@@ -167,8 +188,25 @@ class Fx
 
             if(delaying)
             {
-                // Glide to the set time, plus a little wow and flutter.
-                cur_delay_ += (target_delay_ - cur_delay_) * 0.0005f;
+                // To the set time: a big synced change crossfades to a second
+                // read head (one at a time; a newer change waits for it);
+                // the free time and small changes glide the head there.
+                const bool far = fabsf(target_delay_ - head_a_) > 0.03f * head_a_;
+                if(fading_)
+                {
+                    fade_ += fade_in;
+                    if(fade_ >= 1.f)
+                        head_a_ = head_b_, fade_ = 0.f, fading_ = false;
+                }
+                else if(far && !s_.dly_free)
+                    head_b_ = target_delay_, fade_ = 0.f, fading_ = true;
+                else
+                {
+                    // At most a third faster or slower than the tape's
+                    // speed: a swoop of the repeats' pitch, never backwards.
+                    const float step = Clamp((target_delay_ - head_a_) * glide, -0.33f, 0.33f);
+                    head_a_ += step;
+                }
                 wow_ += 0.55f / sr_;
                 if(wow_ >= 1.f)
                     wow_ -= 1.f;
@@ -176,7 +214,14 @@ class Fx
                 if(flutter_ >= 1.f)
                     flutter_ -= 1.f;
                 const float wobble = sr_ * (0.0012f * Sine(wow_) + 0.00015f * Sine(flutter_));
-                const Frame d      = DelayTap(cur_delay_ + wobble);
+                Frame       d      = DelayTap(head_a_ + wobble);
+                if(fading_)
+                {
+                    // Equal-power, so the level holds through the fade.
+                    const Frame b  = DelayTap(head_b_ + wobble);
+                    const float gb = sinf(0.5f * kPi * fade_), ga = cosf(0.5f * kPi * fade_);
+                    d              = {d.l * ga + b.l * gb, d.r * ga + b.r * gb};
+                }
 
                 // Each repeat through the tape: low-pass, high-pass, saturation.
                 const float in_d = s_.dly_mix > 0.005f ? (l + r) * 0.5f : 0.f;
@@ -265,7 +310,11 @@ class Fx
     size_t delay_size_   = 1;
     size_t delay_pos_    = 0;
     float  target_delay_ = 12000.f;
-    float  cur_delay_    = 12000.f;
+    float  head_a_       = 12000.f; // the read head playing
+    float  head_b_       = 12000.f; // the one fading in
+    float  fade_         = 0.f;
+    bool   fading_       = false;
+    bool   heads_set_    = false;
     int    delay_tail_   = 0;
     float  wow_ = 0.f, flutter_ = 0.f;
     float  lp_l_ = 0.f, lp_r_ = 0.f, hpl_ = 0.f, hpr_ = 0.f;
