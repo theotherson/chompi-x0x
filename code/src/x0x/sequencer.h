@@ -21,7 +21,7 @@ namespace x0x
 class Sequencer
 {
   public:
-    static constexpr int kTicksPerStep = 6;
+    static constexpr int kTicksPerStep = kStepTicks;
     static constexpr int kMaxEvents    = 32;
 
     struct Event
@@ -49,6 +49,8 @@ class Sequencer
     /** 0..1 */
     void SetSwing(float s) { swing_ticks_ = 2.f * Clamp(s, 0.f, 1.f); }
     void SetTranspose(int st) { transpose_ = ClampInt(st, -24, 24); }
+    /** Play recorded notes on a grid of this many steps, 0 = as recorded. */
+    void SetQuantize(int grid_steps) { quant_grid_ = grid_steps; }
     int  Transpose() const { return transpose_; }
 
     /** The pattern to play now (also when stopped). */
@@ -185,7 +187,7 @@ class Sequencer
     /** When step `step` actually starts: its grid position plus its nudge. */
     double StepStart(int step) const
     {
-        const double nudge = pat_ && step >= 0 && step < kSteps ? pat_->steps[step].nudge : 0;
+        const double nudge = pat_ && step >= 0 && step < kSteps ? At(step).nudge : 0;
         return GridStart(step) + nudge;
     }
 
@@ -197,6 +199,9 @@ class Sequencer
     }
 
     void ScheduleStep() { step_pos_ = StepStart(next_step_); }
+
+    /** Step i of the pattern as it plays (quantized or not). */
+    Step At(int i) const { return pat_->PlayedStep(i, quant_grid_); }
 
     void StartStep(uint32_t off, Event* ev, int& count)
     {
@@ -219,7 +224,7 @@ class Sequencer
         pat_length_ticks_ = pat_->length * kTicksPerStep;
         next_step_        = step_ + 1 < pat_->length ? step_ + 1 : 0;
         // The next step's start, in this pattern's ticks (a wrap counts on).
-        step_pos_ = NextGridStart() + pat_->steps[next_step_].nudge;
+        step_pos_ = NextGridStart() + At(next_step_).nudge;
 
         {
             Event e{Event::STEP, off};
@@ -227,7 +232,7 @@ class Sequencer
             ev[count++] = e;
         }
 
-        const Step& s       = pat_->steps[step_];
+        const Step  s       = At(step_);
         const bool  held_in = hold_ && playing_ >= 0;
         hold_               = false;
         if(s.on && !s.tie)
@@ -265,7 +270,7 @@ class Sequencer
 
         // Keep the gate open into the next step if it's tied to this one, or
         // this step slides into it.
-        const Step& next = pat_->steps[next_step_];
+        const Step next  = At(next_step_);
         hold_            = playing_ >= 0 && next.on && (next.tie || s.slide);
         // Half a step, but never past the next step's start (a late step
         // leaves less room).
@@ -288,6 +293,7 @@ class Sequencer
     float          bpm_         = 120.f;
     double         swing_ticks_ = 0.0;
     int            transpose_   = 0;
+    int            quant_grid_  = 0;
     const Pattern* pat_         = nullptr;
     const Pattern* queued_      = nullptr;
 

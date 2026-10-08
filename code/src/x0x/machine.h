@@ -388,6 +388,7 @@ class Machine
         vp_.post_hp_hz    = post_hp_hz;
         FilterToVoice(settings.params[CUTOFF], settings.params[ENV_MOD], filter_fit, vp_);
         seq_.SetSwing(settings.params[SWING]);
+        seq_.SetQuantize(StepIndex(settings.params[QUANTIZE], 2) == 1 ? QuantGridSteps(settings.params[QUANT_GRID]) : 0);
         const bool ext = ExternalClock();
         seq_.SetTempo(ext ? ext_bpm_ : TempoBpm(settings.params[TEMPO]));
         const float* p = settings.params;

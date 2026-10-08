@@ -1186,6 +1186,57 @@ static void TestLiveQuantizeAndLights()
     CHECK(ch_hi > ch_lo + 0.5f);
 }
 
+static void TestQuantizedPlayback()
+{
+    printf("quantize on: recorded notes play on the grid, the timing kept\n");
+    auto note = [](int n, int nudge) {
+        Step s;
+        s.note = static_cast<uint8_t>(n), s.on = true, s.nudge = static_cast<uint8_t>(nudge);
+        return s;
+    };
+    Pattern p;
+    p.steps[0] = note(1, 0); // on its step: never moves
+    p.steps[2] = note(2, 2); // a little late: stays on step 3
+    p.steps[5] = note(3, 4); // most of a step late: plays on step 7
+    p.steps[6].on = p.steps[6].tie = true; // ...over the tie that followed it
+    p.steps[9] = note(4, 5); // nearly on step 11, which has its own note
+    p.steps[10] = note(5, 0);
+    p.steps[15] = note(6, 4); // wraps to step 1, where step 1's own note wins
+    CHECK(p.PlayedStep(0, 1).note == 1 && p.PlayedStep(0, 1).nudge == 0);
+    CHECK(p.PlayedStep(2, 1).note == 2 && p.PlayedStep(2, 1).nudge == 0);
+    CHECK(!p.PlayedStep(5, 1).on);
+    CHECK(p.PlayedStep(6, 1).note == 3 && !p.PlayedStep(6, 1).tie);
+    CHECK(!p.PlayedStep(9, 1).on && p.PlayedStep(10, 1).note == 5);
+    CHECK(!p.PlayedStep(15, 1).on);
+    CHECK(p.PlayedStep(5, 0).note == 3 && p.PlayedStep(5, 0).nudge == 4); // off: as recorded
+    // 1/8 (every 12 ticks): step 3 + 2 ticks (14) is nearest 12, step 3;
+    // step 6 + 4 ticks (34) is nearest 36, step 7.
+    CHECK(p.PlayedStep(2, 2).note == 2 && p.PlayedStep(6, 2).note == 3);
+    // Two late notes aiming at one step: the nearer wins.
+    Pattern q;
+    q.steps[3] = note(7, 4);  // 22 ticks: 2 from step 5 (24)
+    q.steps[4] = note(8, 1);  // 25 ticks: 1 from it
+    CHECK(q.PlayedStep(4, 1).note == 8 && !q.PlayedStep(3, 1).on);
+
+    // In the sequencer: the late note starts on the grid with quantize on,
+    // late without it.
+    Pattern r;
+    r.steps[1] = note(9, 2);
+    for(int quant : {0, 1})
+    {
+        Sequencer s;
+        s.Init(kSr);
+        s.SetTempo(120.f);
+        s.SetPattern(&r);
+        s.SetQuantize(quant);
+        s.Start();
+        auto ons = Of(RunInternal(s, 1.0), Sequencer::Event::NOTE_ON);
+        CHECK(!ons.empty());
+        const double want = 0.125 + (quant ? 0.0 : 2 * 0.125 / 6);
+        CHECK(fabs(ons[0].t - want) < 1e-4);
+    }
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1204,6 +1255,7 @@ int main()
     TestStepModeExtras();
     TestKnobColours();
     TestLiveQuantizeAndLights();
+    TestQuantizedPlayback();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

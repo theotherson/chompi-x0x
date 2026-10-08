@@ -7,7 +7,8 @@
  *    slide   holds the gate into the next note, which glides there
  *    tie     holds the note before through this step (its own note unused)
  *    nudge   0-5 MIDI clock ticks late: the timing of a note recorded with
- *            quantize off
+ *            quantize off. With quantize on these notes play on the grid
+ *            instead (PlayedStep); the timing is kept for when it's off
  *
  *  Patterns are stored as plain text, one pattern after another:
  *
@@ -48,10 +49,49 @@ struct Step
     }
 };
 
+constexpr int kStepTicks = 6; // MIDI clock ticks a step (nudge counts these)
+
 struct Pattern
 {
     Step    steps[kSteps];
     uint8_t length = kSteps;
+
+    /** Step i as it plays with quantize on, to a grid of `grid` steps.
+     *  Only notes with recorded timing (a nudge) move: each to the nearest
+     *  point of the grid, wrapping round the pattern, its nudge gone. Notes
+     *  right on their step stay put, so patterns entered step by step never
+     *  change. Where several land on one step the nearest wins, and a note
+     *  already there beats them all; a note that moves away leaves a rest. */
+    Step PlayedStep(int i, int grid) const
+    {
+        const Step& own = steps[i];
+        if(grid <= 0 || (own.on && !own.tie && own.nudge == 0))
+            return own;
+        const int gt   = grid * kStepTicks;
+        int       best = -1, best_d = 1 << 30;
+        for(int j = 0; j < length; j++)
+        {
+            const Step& s = steps[j];
+            if(!s.on || s.tie || s.nudge == 0)
+                continue;
+            const int tick   = j * kStepTicks + s.nudge;
+            const int target = (tick + gt / 2) / gt * gt; // nearest grid point, in ticks
+            if((target / kStepTicks) % length != i)
+                continue;
+            const int d = tick > target ? tick - target : target - tick;
+            if(d < best_d)
+                best = j, best_d = d;
+        }
+        if(best >= 0)
+        {
+            Step s  = steps[best];
+            s.nudge = 0;
+            return s;
+        }
+        if(own.on && !own.tie)
+            return Step{}; // its note moved to another step
+        return own;        // a rest or a tie
+    }
 
     void Clear()
     {
