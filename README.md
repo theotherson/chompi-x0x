@@ -4,7 +4,7 @@ A TB-303 / x0xb0x-style bass line machine for the CHOMPI: one 303-style voice an
 
 Built from scratch on top of CHOMPI Club's TEMPO firmware, whose hardware layer, libraries and startup it keeps.
 
-> Status: **complete first version, not yet tried on hardware.** The voice, sequencer and every panel behaviour are tested on the desktop (`host/`), and the firmware builds without warnings. Expect the feel (filter, accent, LEDs) to need tuning once played.
+> Status: **in use on a CHOMPI.** The filter and envelopes are fitted to recordings of a real TB-303. The voice, sequencer and every panel behaviour are tested on the desktop (`host/`), and the firmware builds without warnings. Recently added features (A/B patterns, MIDI import and export, write protect, the delay's free time) are tested on the desktop but have had less time on the hardware. The drums' side (CHOMPI double tap) is a placeholder for a TR-606 still to come.
 
 ## The toggle switch: two modes
 
