@@ -1378,13 +1378,20 @@ static void TestWriteProtect()
     Settings back;
     ReadSettings(buf, back);
     CHECK(back.protect);
-    // Hold again: off, flashing green.
+    // Hold again: off, flashing pink; the key pink after.
     r.ui.KeyDown(Ui::kKeyPattern, r.now);
     r.Run(2100);
     CHECK(!r.m.Protected());
     r.ui.Draw(f, r.now);
-    CHECK(f.key[0].g > 0.9f && f.key[0].r < 0.1f);
+    CHECK(f.key[0].r > 0.9f && f.key[0].b > 0.4f && f.key[0].g < 0.3f);
     r.ui.KeyUp(Ui::kKeyPattern, r.now);
+    r.Run(1000);
+    r.ui.Draw(f, r.now);
+    const Rgb pk = f.key[Ui::kKeyPattern];
+    CHECK(pk.r > 0.05f && pk.b > 0.3f * pk.r && pk.g < 0.5f * pk.r);
+    // CLEAR (A#4) is orange.
+    const Rgb cl = f.key[Ui::kKeyClear];
+    CHECK(cl.r > 0.05f && cl.g > 0.25f * cl.r && cl.b == 0.f);
 }
 
 static void TestPatternPageWhileRunning()
@@ -1408,7 +1415,7 @@ static void TestPatternPageWhileRunning()
         {
             const Rgb c = f.key[Ui::kWhite[w]];
             lo = std::min(lo, c.r), hi = std::max(hi, c.r);
-            white |= c.b > 0.5f;
+            white |= c.g > 0.5f; // the playhead is white; the pattern colours aren't green
         }
     }
     CHECK(!white && hi - lo < 0.01f);

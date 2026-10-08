@@ -32,8 +32,9 @@
  *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16.
  *                                  Running, it waits for the bar; the same key
  *                                  again switches at once. Held 2 s: write
- *                                  protect on/off (all LEDs flash red / green;
- *                                  the key is red while protected)
+ *                                  protect on/off (all LEDs flash red / pink;
+ *                                  the pattern key and page are red while
+ *                                  protected, pink otherwise)
  *    black key 9 (G#4)             COPY: hold it and press a step key to copy
  *                                  this pattern to that pattern number
  *    black key 10 (A#4)            CLEAR: tap clears the selected step, hold
@@ -536,7 +537,7 @@ class Ui
                                  Clamp(f.chompi.b * g + .15f, 0.f, 1.f)};
             }
         }
-        // Write protect switched: every light flashes red (on) or green (off).
+        // Write protect switched: every light flashes red (on) or pink (off).
         if(now - protect_flash_at_ < 600)
         {
             const Rgb c = m_->Protected() ? kProtectColour : kUnprotectColour;
@@ -599,7 +600,8 @@ class Ui
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
     static constexpr Rgb kProtectColour      = {1.f, 0.f, 0.f};   // write protect on
-    static constexpr Rgb kUnprotectColour    = {0.f, 1.f, .2f};   // write protect off
+    static constexpr Rgb kUnprotectColour    = {1.f, .15f, .55f}; // write protect off: pink
+    static constexpr Rgb kClearColour        = {1.f, .4f, 0.f};   // CLEAR (A#4): orange
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -631,7 +633,7 @@ class Ui
         {1.f, .35f, 0.f},  // ACCENT     orange
         {0.f, .3f, 1.f},   // SLIDE      blue
         {0.f, 1.f, .2f},   // TIE        green
-        {1.f, .85f, 0.f},  // PATTERN    yellow
+        {1.f, .15f, .55f}, // PATTERN    pink (red while write-protected: PatternColour)
     };
 
   private:
@@ -740,6 +742,9 @@ class Ui
     }
 
     void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
+
+    /** The pattern key and page: pink, red while write-protected. */
+    Rgb PatternColour() const { return m_->Protected() ? kProtectColour : kUnprotectColour; }
 
     /** Which of 8 / 9 middle C stands for now. On the pattern page that's
      *  the half you chose (the last key pressed, or D#4), never the
@@ -1023,7 +1028,7 @@ class Ui
     void DrawStepMode(LedFrame& f, uint32_t now, bool blink, int cur_step, bool step_lit) const
     {
         const Pattern& pat = m_->Current();
-        const Rgb      pc  = kPageColour[static_cast<int>(page_)];
+        const Rgb      pc  = page_ == Page::PATTERN ? PatternColour() : kPageColour[static_cast<int>(page_)];
 
         ForEachShownStep(
             [&](int step) {
@@ -1075,12 +1080,11 @@ class Ui
             f.key[kBlack[i]] = Scale(kPageColour[static_cast<int>(pages[i])], page_ == pages[i] ? 1.f : 0.1f);
         f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
         f.key[kKeyView]      = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
-        // The pattern key: yellow, or red while the patterns are write-protected.
-        f.key[kKeyPattern] = Scale(m_->Protected() ? kProtectColour : kPageColour[static_cast<int>(Page::PATTERN)],
-                                   page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
+        // The pattern key: pink, or red while the patterns are write-protected.
+        f.key[kKeyPattern] = Scale(PatternColour(), page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
         if(pattern_down_ && now - pattern_down_at_ > 300)
         {
-            // Held: fills towards the switch, red to protect, green to unprotect.
+            // Held: fills towards the switch, red to protect, pink to unprotect.
             const float b = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
             f.key[kKeyPattern] = Scale(m_->Protected() ? kUnprotectColour : kProtectColour, b);
         }
@@ -1088,10 +1092,10 @@ class Ui
         if(held_[kKeyClear] && !clear_done_)
         {
             const float b = 0.2f + 0.8f * Clamp((now - clear_down_) / static_cast<float>(kClearHoldMs), 0.f, 1.f);
-            f.key[kKeyClear] = {b, 0.f, 0.f};
+            f.key[kKeyClear] = Scale(kClearColour, b);
         }
         else
-            f.key[kKeyClear] = {.12f, 0.f, 0.f};
+            f.key[kKeyClear] = Scale(kClearColour, .12f);
     }
 
     /** Step mode with CHOMPI held: the keybed is a keyboard. The selected
@@ -1399,6 +1403,7 @@ constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
 constexpr Rgb Ui::kProtectColour;
+constexpr Rgb Ui::kClearColour;
 constexpr Rgb Ui::kUnprotectColour;
 constexpr Rgb Ui::kQuantizedColour;
 constexpr Rgb Ui::kDrumColour;
