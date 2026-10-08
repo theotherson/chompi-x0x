@@ -1436,66 +1436,45 @@ static void TestPatternPageWhileRunning()
 
 static void TestPatternSides()
 {
-    printf("patterns A / B: per number; the current number's key flips it\n");
+    printf("patterns A / B: the page shows A, and B while CHOMPI is held\n");
     Rig r;
     DemoPattern(r.m.patterns[0]);
     r.Key(Ui::kKeyPattern); // the page; F#4 again closes it
     LedFrame f;
     auto blue   = [](Rgb c) { return c.b > 0.9f && c.r < 0.4f && c.g > 0.4f; };  // side A
     auto yellow = [](Rgb c) { return c.r > 0.9f && c.g > 0.6f && c.b < 0.1f; };  // side B
-    // 1 again: 1A to 1B. Only key 1 changes colour.
-    r.White(0);
-    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
-    r.ui.Draw(f, r.now);
-    CHECK(yellow(f.key[Ui::kWhite[0]]) && yellow(f.key[Ui::kKeyPattern]));
-    r.m.patterns[PatternIndex(1, 0)].steps[0].on = true; // 2A in use: dim light blue
-    r.m.patterns[PatternIndex(0, 1)].steps[0].on = true; // 1B too
-    r.ui.Draw(f, r.now);
-    CHECK(f.key[Ui::kWhite[1]].b > 0.05f && f.key[Ui::kWhite[1]].r < 0.4f * f.key[Ui::kWhite[1]].b);
-    // Another number: its own side (A); 1 keeps showing B.
-    r.White(1);
-    CHECK(r.m.CurrentPattern() == PatternIndex(1, 0));
-    r.ui.Draw(f, r.now);
-    const Rgb k1 = f.key[Ui::kWhite[0]]; // dim yellow: 1 still shows B
-    CHECK(k1.r > 0.05f && k1.r < 0.5f && k1.g > 0.6f * k1.r && k1.b < 0.1f * k1.r);
-    r.White(0); // back to 1, on the side it showed: 1B
-    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
-    r.White(0); // and flip back: 1A
-    CHECK(r.m.CurrentPattern() == 0);
-    r.ui.Draw(f, r.now);
-    CHECK(blue(f.key[Ui::kWhite[0]]));
-    // Running: a flip waits for the bar; the key again switches at once.
-    r.ui.Play();
-    r.Run(100);
-    r.White(0);
-    CHECK(r.m.CurrentPattern() == 0 && r.m.QueuedPattern() == PatternIndex(0, 1));
-    r.White(0);
-    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
-    r.ui.Play();
-    r.White(0); // stopped: 1A at once
-    CHECK(r.m.CurrentPattern() == 0);
-    // CHOMPI + a number: its other side. Playing 1A: CHOMPI + 2 queues 2B
-    // without passing through 2A; 2 again switches at once.
+    auto dim_yellow = [](Rgb c) { return c.r > 0.05f && c.r < 0.5f && c.g > 0.6f * c.r && c.b < 0.1f * c.r; };
+    r.m.patterns[PatternIndex(1, 0)].steps[0].on = true; // 2A in use
     r.m.patterns[PatternIndex(1, 1)].steps[0].on = true; // 2B in use
+    r.ui.Draw(f, r.now);
+    CHECK(blue(f.key[Ui::kWhite[0]]));                      // 1A, current
+    CHECK(f.key[Ui::kWhite[1]].b > 0.05f && f.key[Ui::kWhite[1]].r < 0.4f * f.key[Ui::kWhite[1]].b); // 2A dim
+    r.ui.Chompi(true);
+    r.ui.Draw(f, r.now);
+    CHECK(dim_yellow(f.key[Ui::kWhite[1]]));               // 2B dim
+    CHECK(blue(f.key[Ui::kWhite[0]]));                      // the current (1A) still shows
+    r.White(1);                                             // CHOMPI + 2: 2B
+    r.ui.Chompi(false);
+    CHECK(r.m.CurrentPattern() == PatternIndex(1, 1));
+    r.ui.Draw(f, r.now);
+    CHECK(yellow(f.key[Ui::kWhite[1]]) && yellow(f.key[Ui::kKeyPattern])); // in the A view too
+    r.White(1);                                             // 2: 2A
+    CHECK(r.m.CurrentPattern() == PatternIndex(1, 0));
+    r.White(1);                                             // again: stays 2A (no flipping)
+    CHECK(r.m.CurrentPattern() == PatternIndex(1, 0));
+    r.White(0);
+    CHECK(r.m.CurrentPattern() == 0);
+    // Running: 1A to 2B straight; the same key again (CHOMPI held) switches now.
     r.ui.Play();
     r.Run(100);
-    r.ui.Chompi(true);
-    r.ui.Draw(f, r.now); // held: each number shows its other side; 2 yellow
-    CHECK(f.key[Ui::kWhite[1]].r > 0.05f && f.key[Ui::kWhite[1]].g > 0.6f * f.key[Ui::kWhite[1]].r
-          && f.key[Ui::kWhite[1]].b < 0.1f);
-    r.White(1);
-    r.ui.Chompi(false);
+    r.ui.Chompi(true), r.White(1), r.ui.Chompi(false);
     CHECK(r.m.CurrentPattern() == 0 && r.m.QueuedPattern() == PatternIndex(1, 1));
-    r.White(1);
+    r.ui.Chompi(true), r.White(1), r.ui.Chompi(false);
     CHECK(r.m.CurrentPattern() == PatternIndex(1, 1));
-    r.ui.Play();
-    // Stopped: CHOMPI + 3 is 3B at once; CHOMPI + 3 again, 3A.
-    r.ui.Chompi(true), r.White(2), r.ui.Chompi(false);
-    CHECK(r.m.CurrentPattern() == PatternIndex(2, 1));
-    r.ui.Chompi(true), r.White(2), r.ui.Chompi(false);
-    CHECK(r.m.CurrentPattern() == PatternIndex(2, 0));
-    r.White(0); // 1A again
+    r.White(0); // queue 1A, then switch now
+    r.White(0);
     CHECK(r.m.CurrentPattern() == 0);
+    r.ui.Play();
     CHECK(r.m.patterns[0] == [] { Pattern d; DemoPattern(d); return d; }()); // CHOMPI didn't set a note
     r.Key(Ui::kKeyPattern);
     CHECK(r.ui.GetPage() == Ui::Page::NOTES);
@@ -1511,7 +1490,7 @@ static void TestPatternSides()
     const Rgb lk = f.key[Ui::kKeyPattern];
     CHECK(lk.r > 0.05f && lk.b > 0.9f * lk.r && lk.g < 0.02f);
     r.Key(Ui::kKeyPattern);
-    r.White(0); // 1B
+    r.ui.Chompi(true), r.White(0), r.ui.Chompi(false); // 1B
     r.ui.Draw(f, r.now);
     CHECK(f.key[Ui::kWhite[0]].r > 0.9f && f.key[Ui::kWhite[0]].g > 0.2f && f.key[Ui::kWhite[0]].g < 0.5f
           && f.key[Ui::kWhite[0]].b < 0.05f);

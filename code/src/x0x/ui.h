@@ -32,14 +32,12 @@
  *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16
  *                                  (when let go). Running, it waits for the
  *                                  bar; the same key again switches at once.
- *                                  Each number has an A and a B side, shown
- *                                  in its own colour (A light blue, B yellow;
- *                                  magenta /
- *                                  orange when protected): the current
- *                                  number's key again flips it, 1A to 1B.
- *                                  CHOMPI + a number picks its other side
- *                                  (1A straight to 2B); held, CHOMPI shows
- *                                  each number's other side. On
+ *                                  Each number has an A and a B side: the
+ *                                  page shows the A patterns (light blue),
+ *                                  and while CHOMPI is held the B patterns
+ *                                  (yellow); a key picks that number on the
+ *                                  side shown (magenta / orange when
+ *                                  protected). On
  *                                  the page, a pattern key held 2 s exports
  *                                  every pattern as a MIDI file to /X0X/MIDI
  *                                  (keys flash white; red if it failed).
@@ -276,7 +274,7 @@ class Ui
             const int n   = pat_key_step_;
             pat_key_step_ = -1;
             if(page_ == Page::PATTERN)
-                PickPattern(n, pat_key_other_);
+                PickPattern(n, pat_key_side_);
         }
         if(k == kKeyView && quant_down_)
         {
@@ -770,8 +768,8 @@ class Ui
         }
         if(chompi_ && page_ == Page::PATTERN)
         {
-            // CHOMPI + a pattern key: that number's other side (from 1A
-            // straight to 2B). Picked when let go, as without CHOMPI.
+            // CHOMPI held: the page shows the B patterns, and a key picks
+            // that number's B. Picked when let go, as without CHOMPI.
             const int w = WhiteIndex(k);
             if(w >= 0)
             {
@@ -780,7 +778,7 @@ class Ui
                 pat_key_       = k;
                 pat_key_step_  = StepOfWhite(w);
                 pat_key_at_    = now;
-                pat_key_other_ = true;
+                pat_key_side_  = 1;
             }
             return;
         }
@@ -844,51 +842,16 @@ class Ui
         return m_->Protected() ? kProtectColour : kUnprotectColour;
     }
 
-    /** The side number n (0-15) shows on the pattern page: a queued
-     *  pattern's, the current pattern's, else the side it last showed. */
-    int SideOf(int n) const
-    {
-        const int q = m_->QueuedPattern(), cur = m_->CurrentPattern();
-        if(q >= 0 && PatternNumber(q) == n)
-            return PatternSide(q);
-        if(PatternNumber(cur) == n)
-            return PatternSide(cur);
-        return side_of_[n];
-    }
+    /** The side the pattern page shows: A, or B while CHOMPI is held. */
+    int ViewSide() const { return chompi_ ? 1 : 0; }
 
-    /** A pattern key let go on the pattern page (not held for the export).
-     *  Another number: pick it, on the side it shows. The current number:
-     *  flip it to its other side (1A to 1B). Running, the change waits for
-     *  the bar, and the queued number again switches at once. */
-    void PickPattern(int n, bool other)
+    /** A pattern key let go on the pattern page (not held for the export):
+     *  that number on the side shown when it was pressed. Running, it waits
+     *  for the bar, and the queued key again switches at once. */
+    void PickPattern(int n, int side)
     {
-        const int q = m_->QueuedPattern(), cur = m_->CurrentPattern();
-        int       i;
-        if(other)
-        {
-            // CHOMPI held: the side this number isn't showing. Already
-            // queued: switch now, as a second press does.
-            i = PatternIndex(n, 1 - SideOf(n));
-            if(i == q)
-            {
-                m_->SelectPattern(q, true);
-                return;
-            }
-            side_of_[n] = PatternSide(i);
-            m_->SelectPattern(i, false);
-            return;
-        }
-        if(q >= 0 && PatternNumber(q) == n)
-        {
-            m_->SelectPattern(q, true);
-            return;
-        }
-        if(PatternNumber(cur) == n)
-            i = PatternIndex(n, 1 - PatternSide(cur));
-        else
-            i = PatternIndex(n, side_of_[n]);
-        side_of_[n] = PatternSide(i);
-        m_->SelectPattern(i, false);
+        const int i = PatternIndex(n, side);
+        m_->SelectPattern(i, m_->QueuedPattern() == i);
     }
 
     /** Which of 8 / 9 middle C stands for now. On the pattern page that's
@@ -934,7 +897,7 @@ class Ui
         Pattern& pat = m_->Current();
         if(held_[kKeyCopy])
         {
-            const int side = page_ == Page::PATTERN ? SideOf(step) : PatternSide(m_->CurrentPattern());
+            const int side = page_ == Page::PATTERN ? ViewSide() : PatternSide(m_->CurrentPattern());
             const int to   = PatternIndex(step, side);
             if(to != m_->CurrentPattern())
             {
@@ -964,7 +927,7 @@ class Ui
                 // Picked when let go (KeyUp); held 2 s it exports instead.
                 pat_key_step_  = step;
                 pat_key_at_    = last_tick_;
-                pat_key_other_ = false;
+                pat_key_side_  = 0;
                 return;
         }
         m_->PatternEdited();
@@ -1193,22 +1156,20 @@ class Ui
                         break;
                     case Page::PATTERN:
                     {
-                        // Each number in its own side's colour; with CHOMPI
-                        // held, the other side's (what CHOMPI + it picks).
-                        const int  i   = PatternIndex(step, chompi_ ? 1 - SideOf(step) : SideOf(step));
-                        const Rgb  sc  = PatternColour(PatternSide(i));
-                        const int  cur = m_->CurrentPattern();
-                        if(i == m_->QueuedPattern())
-                        {
-                            // Waiting for the bar: blinks, against the
-                            // current side if it's this number's other side.
-                            const Rgb off = PatternNumber(cur) == step ? PatternColour(PatternSide(cur)) : Rgb{};
-                            c             = blink ? sc : off;
-                        }
-                        else if(i == cur)
-                            c = sc;
-                        else if(!m_->patterns[i].Empty())
-                            c = Scale(sc, 0.12f);
+                        // The side shown (A, or B with CHOMPI held): used
+                        // patterns dim. The current and queued patterns
+                        // show in their own side's colour in either view,
+                        // so you can always see where you are.
+                        const int i   = PatternIndex(step, ViewSide());
+                        const int cur = m_->CurrentPattern(), q = m_->QueuedPattern();
+                        if(!m_->patterns[i].Empty())
+                            c = Scale(PatternColour(ViewSide()), 0.12f);
+                        if(PatternNumber(cur) == step)
+                            c = PatternColour(PatternSide(cur));
+                        if(q >= 0 && PatternNumber(q) == step && blink)
+                            c = PatternColour(PatternSide(q)); // waiting for the bar
+                        else if(q >= 0 && PatternNumber(q) == step && PatternNumber(cur) != step)
+                            c = Rgb{};
                         // Held towards the export: fills white.
                         if(step == pat_key_step_ && now - pat_key_at_ > 300)
                             c = Scale(Rgb{1.f, 1.f, 1.f},
@@ -1525,10 +1486,9 @@ class Ui
     bool     drums_                 = false;
     bool     quant_down_            = false; // CHOMPI + D#4 down in live mode
     bool     pattern_down_          = false; // step mode: F#4 down (tap: page, hold: protect)
-    int      side_of_[kPatternNumbers] = {}; // the side each number last showed (0 = A)
     int      pat_key_               = -1;    // pattern page: the key down, its number,
     int      pat_key_step_          = -1;    // picked when let go or exporting at 2 s
-    bool     pat_key_other_         = false; // pressed with CHOMPI: the other side
+    int      pat_key_side_          = 0;     // the side shown when it was pressed (1 = B)
     uint32_t pat_key_at_            = 0;
     uint32_t copied_at_             = 0x80000000u;
     uint32_t last_export_seen_      = 0;
