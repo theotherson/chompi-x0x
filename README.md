@@ -21,16 +21,16 @@ Tap CHOMPI twice quickly (each tap short, nothing else touched in between) to sw
 
 Seven voices synthesised the way a TR-606 makes them (from Roland's block diagram), fitted to samples of real 606s: bass drum, snare, low and high tom, cymbal, open and closed hi-hat, plus accent. Every pattern holds a drum part alongside its bassline, so picking 3A changes both; the drum part has its own length, for polymeters. Accent is per step, as on the 606, and makes hits up to 3x as loud (the accent level sets how much). A closed hat chokes an open one.
 
-**Voices on the black keys** (both modes): C#3 BD · D#3 SD · F#3 LT / HT · G#3 CY · A#3 CH / OH. The toms' and hats' keys alternate press by press: in step mode the key again gives the other voice's page; in live mode the presses play low, high, low... (closed, open, closed...). Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH blue), the selected one bright, and flashes when it plays.
+**Voices on the black keys.** Step mode: C#3 BD · D#3 SD · F#3 LT / HT · G#3 CY · A#3 CH / OH; the toms' and hats' keys alternate press by press (the key again gives the other voice's page). Live mode: every voice its own key, C#3 BD · D#3 SD · F#3 LT · G#3 HT · A#3 CY · C#4 CH · D#4 OH. Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH blue), the selected one bright, and flashes when it plays.
 
 **Mute and solo** (both modes): CHOMPI + a voice key mutes that voice (it blinks slowly); again unmutes it. Holding a voice key 2 s solos it (it lights brighter, the others dim); again unsolos. Several can be soloed. They act on the drum part's playback: voices you play by hand always sound. They aren't saved.
 
 | | Step mode (toggle up) | Live mode (toggle down) |
 |---|---|---|
 | Voice keys | That voice's page | Play it |
-| C#4 | The ACCENT page | Hold: hits are accented |
+| C#4 / D#4 | The ACCENT page / view 1-8 / 9-16 | Closed / open hat. CHOMPI + LOOP: live hits accented on / off (LOOP white while CHOMPI is held) |
 | White keys | The page's steps on / off: the voice's hits in its colour, other voices' dim (or the accents, white) | The last voice played, pitched in C major from middle C (played, not recorded) |
-| D#4 / F#4 / G#4 | View 1-8 / 9-16, PATTERN, COPY: as on the bass side | The same |
+| F#4 / G#4 | PATTERN, COPY: as on the bass side | The same |
 | A#4 (CLEAR) | Tap: this voice's hits (or the accents); hold 1 s: the whole drum part | The same |
 | LOOP | Tap tempo | Record on/off (hits go to the nearest step while running); hold 2 s: clear the drum part |
 

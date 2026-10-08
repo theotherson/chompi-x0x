@@ -97,9 +97,11 @@
  *                                  by press). Step mode: that voice's page;
  *                                  live mode: play it. CHOMPI + a voice: mute
  *                                  it; held 2 s: solo it (again: undo)
- *    C#4                           step mode: the ACCENT page; live: held,
- *                                  hits are accented
- *    D#4, F#4, G#4, A#4            view 1-8 / 9-16, PATTERN, COPY, CLEAR
+ *    C#4                           step mode: the ACCENT page
+ *    live mode                     every voice its own key: BD SD LT HT CY on
+ *                                  C#3-A#3, CH and OH on C#4 and D#4;
+ *                                  CHOMPI + LOOP: hits accented on / off
+ *    D#4, F#4, G#4, A#4            (step) view 1-8 / 9-16; PATTERN, COPY, CLEAR
  *                                  (as the bass's; CLEAR tap: this voice's
  *                                  hits, held 1 s: the drum part)
  *    white keys                    step mode: the page's steps on / off;
@@ -332,7 +334,10 @@ class Ui
     {
         Touched();
         if(drums_ && chompi_)
+        {
+            live_accent_ = !live_accent_; // CHOMPI + LOOP: live hits accented, or not
             return;
+        }
         if(chompi_)
         {
             m_->SetArpLatch(!m_->ArpLatch()); // CHOMPI + LOOP: arpeggiator latch
@@ -788,7 +793,7 @@ class Ui
         bool soloing = false;
         for(int v = 0; v < kDrumVoices; v++)
             soloing |= m_->DrumSoloed(v);
-        for(int b = 0; b < 5; b++)
+        for(int b = 0; b < VoiceKeys(); b++)
         {
             const int v = VoiceOfKey(b);
             Rgb       c = Scale(kDrumCol[v], v == drum_sel_ ? 0.8f : 0.12f);
@@ -804,9 +809,11 @@ class Ui
         }
         if(now - solo_at_ < 300)
             f.key[kBlack[KeyOfVoice(voice_key_voice_)]] = {1.f, 1.f, 1.f};
-        const bool acc = mode_ == Mode::STEP ? drum_acc_page_ : held_[kKeyTranspose];
-        f.key[kBlack[5]] = Scale(Rgb{1.f, 1.f, 1.f}, acc ? 1.f : 0.12f);
-        f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
+        if(mode_ == Mode::STEP)
+        {
+            f.key[kBlack[5]] = Scale(Rgb{1.f, 1.f, 1.f}, drum_acc_page_ ? 1.f : 0.12f);
+            f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
+        }
         f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentPattern())),
                                    page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
         if(pattern_down_ && now - pattern_down_at_ > 300)
@@ -850,7 +857,10 @@ class Ui
         else
             f.loop = {};
         if(chompi_)
+        {
             f.chompi = {1.f, 1.f, 1.f};
+            f.loop   = Scale(Rgb{1.f, 1.f, 1.f}, live_accent_ ? 1.f : 0.12f); // CHOMPI + LOOP: live accent
+        }
         else
             f.chompi = Scale(kDrumColour, lit && ds % 4 == 0 ? 1.f : .45f);
     }
@@ -861,6 +871,12 @@ class Ui
      *  (the toms' and hats' keys alternate, press by press). */
     int VoiceOfKey(int b) const
     {
+        if(mode_ == Mode::PITCH)
+        {
+            // Live mode: every voice its own key, C#3 to D#4.
+            static constexpr int kLive[7] = {BD, SD, LT, HT, CY, CH, OH};
+            return b >= 0 && b < 7 ? kLive[b] : BD;
+        }
         switch(b)
         {
             case 0: return BD;
@@ -871,11 +887,16 @@ class Ui
         }
     }
 
-    static int KeyOfVoice(int v)
+    /** The black key showing voice v. */
+    int KeyOfVoice(int v) const
     {
-        static constexpr int kKey[kDrumVoices] = {0, 1, 2, 2, 3, 4, 4};
-        return kKey[v];
+        static constexpr int kStep[kDrumVoices] = {0, 1, 2, 2, 3, 4, 4};
+        static constexpr int kLive[kDrumVoices] = {0, 1, 2, 3, 4, 6, 5}; // BD SD LT HT CY OH CH
+        return mode_ == Mode::PITCH ? kLive[v] : kStep[v];
     }
+
+    /** How many black keys are voices: 5 in step mode, 7 live. */
+    int VoiceKeys() const { return mode_ == Mode::PITCH ? 7 : 5; }
 
     void FlipPair(int b)
     {
@@ -938,12 +959,12 @@ class Ui
             drum_clear_down_ = true;
             return;
         }
-        if(b == 6)
+        if(b == 6 && mode_ == Mode::STEP)
         {
             half_ = ShownSecondHalf() ? 0 : 1;
             return;
         }
-        if(b >= 0 && b < 5)
+        if(b >= 0 && b < VoiceKeys())
         {
             if(chompi_)
             {
@@ -952,7 +973,7 @@ class Ui
                 m_->SetDrumMute(v, !m_->DrumMuted(v));
                 return;
             }
-            const bool pair = b == 2 || b == 4;
+            const bool pair = mode_ == Mode::STEP && (b == 2 || b == 4);
             if(mode_ == Mode::STEP)
             {
                 // Its page; the toms' and hats' keys again: the other one.
@@ -965,9 +986,7 @@ class Ui
             {
                 // Play it; the toms' and hats' keys play the other one next.
                 drum_sel_ = VoiceOfKey(b);
-                m_->DrumHit(drum_sel_, held_[kKeyTranspose]);
-                if(pair)
-                    FlipPair(b);
+                m_->DrumHit(drum_sel_, live_accent_);
             }
             // Held 2 s: solo it (see Tick).
             voice_key_       = k;
@@ -977,16 +996,15 @@ class Ui
         }
         if(b == 5)
         {
-            if(mode_ == Mode::STEP)
-                drum_acc_page_ = !drum_acc_page_;
-            return; // live: held for accented hits
+            drum_acc_page_ = !drum_acc_page_; // step mode (live, it's a voice)
+            return;
         }
         if(w < 0)
             return;
         if(mode_ == Mode::PITCH)
         {
             // The last voice played, pitched: C major from middle C.
-            m_->DrumHit(drum_sel_, held_[kKeyTranspose], Diatonic(w), false);
+            m_->DrumHit(drum_sel_, live_accent_, Diatonic(w), false);
             return;
         }
         const int step = StepOfWhite(w);
@@ -1992,6 +2010,7 @@ class Ui
     int      drum_sel_              = 0;     // the drum voice the knobs and steps edit
     bool     toms_high_             = false; // F#3 on the high tom (it alternates)
     bool     hats_open_             = false; // A#3 on the open hat
+    bool     live_accent_           = false; // drums, live: CHOMPI + LOOP accents the hits
     int      voice_key_             = -1;    // a voice key down: held 2 s, it solos
     uint32_t voice_key_at_          = 0;
     int      voice_key_voice_       = 0;

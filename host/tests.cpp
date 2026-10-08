@@ -2044,9 +2044,9 @@ static void TestDrumPanel()
     r.ui.Loop(r.now); // record on
     r.ui.Play();
     r.Run(300);
-    r.ui.KeyDown(Ui::kKeyTranspose, r.now);
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.ui.Chompi(false); // CHOMPI + LOOP: live accent on
     r.Black(0); // an accented BD
-    r.ui.KeyUp(Ui::kKeyTranspose, r.now);
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.ui.Chompi(false); // and off
     r.White(10); // pitched: not recorded
     r.Run(2);
     int bd = -1, pitched = 0;
@@ -2073,11 +2073,14 @@ static void TestDrumMuteSoloMix()
     r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
     r.Run(500);
     r.ui.SetMode(Ui::Mode::PITCH);
-    // Live: the toms' key plays LT, HT, LT...
-    const uint32_t lt = r.m.DrumHitCount(LT), ht = r.m.DrumHitCount(HT);
-    for(int i = 0; i < 3; i++)
-        r.Black(2), r.Run(2);
-    CHECK(r.m.DrumHitCount(LT) == lt + 2 && r.m.DrumHitCount(HT) == ht + 1);
+    // Live: every voice its own key: LT HT CY on F#3-A#3, CH OH on C#4 D#4.
+    const int order[7] = {BD, SD, LT, HT, CY, CH, OH};
+    for(int b = 0; b < 7; b++)
+    {
+        const uint32_t c = r.m.DrumHitCount(order[b]);
+        r.Black(b), r.Run(2);
+        CHECK(r.m.DrumHitCount(order[b]) == c + 1);
+    }
     // A pattern: BD and SD on every step.
     Pattern& p = r.m.Current();
     p.ClearDrums();
