@@ -384,7 +384,7 @@ static void TestKnobPages()
     CHECK(fabsf(TempoBpm(p[TEMPO]) - 130.f) < 0.01f);
     r.ui.Chompi(true), r.ui.KnobTurn(5, 4, false), r.ui.Chompi(false); // swing
     CHECK(p[SWING] > 0.f);
-    r.ui.KnobClick(5, r.now);
+    r.ui.KnobClick(5, r.now), r.ui.KnobClick(5, r.now); // page 3 (the mix), then round
     CHECK(r.ui.KnobPage(5) == 0);
 
     r.ui.KnobTurn(3, 20, false); // delay
@@ -1985,9 +1985,13 @@ static void TestDrumPanel()
     r.Black(1); // SD
     r.White(4);
     CHECK(p.DrumHit(4, SD) && !p.DrumHit(0, SD));
-    r.ui.Chompi(true), r.Black(4), r.ui.Chompi(false); // CHOMPI + A#3: OH
+    r.Black(4), r.Black(4); // A#3: CH, again: OH
     r.White(2);
     CHECK(p.DrumHit(2, OH) && !p.DrumHit(2, CH));
+    r.Black(4); // and back to CH
+    r.White(2);
+    CHECK(p.DrumHit(2, CH));
+    r.White(2);
     r.Black(5); // C#4: the accent page
     r.White(0);
     CHECK(p.DrumAccent(0) && p.DrumHit(0, BD));
@@ -2061,6 +2065,71 @@ static void TestDrumPanel()
     CHECK(r.m.CurrentPattern() == 2);
 }
 
+static void TestDrumMuteSoloMix()
+{
+    printf("drums: toms / hats alternate live; mute, solo; the bass / drums mix\n");
+    Rig r;
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    r.Run(500);
+    r.ui.SetMode(Ui::Mode::PITCH);
+    // Live: the toms' key plays LT, HT, LT...
+    const uint32_t lt = r.m.DrumHitCount(LT), ht = r.m.DrumHitCount(HT);
+    for(int i = 0; i < 3; i++)
+        r.Black(2), r.Run(2);
+    CHECK(r.m.DrumHitCount(LT) == lt + 2 && r.m.DrumHitCount(HT) == ht + 1);
+    // A pattern: BD and SD on every step.
+    Pattern& p = r.m.Current();
+    p.ClearDrums();
+    for(int i = 0; i < kSteps; i++)
+        p.drums[i] = 1 << BD | 1 << SD;
+    // CHOMPI + SD: muted; the pattern's SD stops, BD carries on; a live SD
+    // still sounds.
+    r.ui.Chompi(true), r.Black(1), r.ui.Chompi(false);
+    CHECK(r.m.DrumMuted(SD));
+    r.m.Play();
+    uint32_t bd = r.m.DrumHitCount(BD), sd = r.m.DrumHitCount(SD);
+    r.Run(1000);
+    CHECK(r.m.DrumHitCount(BD) > bd + 5 && r.m.DrumHitCount(SD) == sd);
+    r.Black(1), r.Run(2);
+    CHECK(r.m.DrumHitCount(SD) == sd + 1);
+    r.ui.Chompi(true), r.Black(1), r.ui.Chompi(false);
+    CHECK(!r.m.DrumMuted(SD));
+    // Hold SD 2 s: soloed; BD stops.
+    r.ui.KeyDown(Ui::kBlack[1], r.now);
+    r.Run(2100);
+    r.ui.KeyUp(Ui::kBlack[1], r.now);
+    CHECK(r.m.DrumSoloed(SD));
+    bd = r.m.DrumHitCount(BD), sd = r.m.DrumHitCount(SD);
+    r.Run(1000);
+    CHECK(r.m.DrumHitCount(BD) == bd && r.m.DrumHitCount(SD) > sd + 5);
+    r.ui.KeyDown(Ui::kBlack[1], r.now), r.Run(2100), r.ui.KeyUp(Ui::kBlack[1], r.now);
+    CHECK(!r.m.DrumSoloed(SD));
+    r.m.Stop();
+
+    // The mix: centre both; left drums only; right bass only; CHOMPI layer mutes.
+    float b, d;
+    MixGains(0.5f, 0.5f, &b, &d);
+    CHECK(b == 1.f && d == 1.f);
+    MixGains(0.f, 0.5f, &b, &d);
+    CHECK(b < 0.01f && d == 1.f);
+    MixGains(1.f, 0.5f, &b, &d);
+    CHECK(b == 1.f && d < 0.01f);
+    MixGains(0.25f, 0.5f, &b, &d);
+    CHECK(b > 0.5f && b < 0.9f && d == 1.f);
+    MixGains(0.5f, 0.f, &b, &d);
+    CHECK(b == 0.f && d == 1.f);
+    MixGains(0.5f, 1.f, &b, &d);
+    CHECK(b == 1.f && d == 0.f);
+    // On the panel: volume knob page 3, turned and CHOMPI-turned.
+    r.ui.KnobClick(5, r.now), r.ui.KnobClick(5, r.now);
+    CHECK(r.ui.KnobPage(5) == 2);
+    r.ui.KnobTurn(5, -10, false);
+    CHECK(r.m.settings.params[MIX] < 0.5f);
+    r.ui.Chompi(true), r.ui.KnobTurn(5, 1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 3) == 2); // drums muted
+}
+
 int main()
 {
     TestDemoTiming();
@@ -2092,6 +2161,7 @@ int main()
     TestDrumVoices();
     TestDrumSequencing();
     TestDrumPanel();
+    TestDrumMuteSoloMix();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

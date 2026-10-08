@@ -21,7 +21,9 @@ Tap CHOMPI twice quickly (each tap short, nothing else touched in between) to sw
 
 Seven voices synthesised the way a TR-606 makes them (from Roland's block diagram), fitted to samples of real 606s: bass drum, snare, low and high tom, cymbal, open and closed hi-hat, plus accent. Every pattern holds a drum part alongside its bassline, so picking 3A changes both; the drum part has its own length, for polymeters. Accent is per step, as on the 606, and makes hits up to 3x as loud (the accent level sets how much). A closed hat chokes an open one.
 
-**Voices on the black keys** (both modes): C#3 BD · D#3 SD · F#3 LT (CHOMPI: HT) · G#3 CY · A#3 CH (CHOMPI: OH). Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH blue), the selected one bright, and flashes when it plays.
+**Voices on the black keys** (both modes): C#3 BD · D#3 SD · F#3 LT / HT · G#3 CY · A#3 CH / OH. The toms' and hats' keys alternate press by press: in step mode the key again gives the other voice's page; in live mode the presses play low, high, low... (closed, open, closed...). Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH blue), the selected one bright, and flashes when it plays.
+
+**Mute and solo** (both modes): CHOMPI + a voice key mutes that voice (it blinks slowly); again unmutes it. Holding a voice key 2 s solos it (it lights brighter, the others dim); again unsolos. Several can be soloed. They act on the drum part's playback: voices you play by hand always sound. They aren't saved.
 
 | | Step mode (toggle up) | Live mode (toggle down) |
 |---|---|---|
@@ -111,10 +113,11 @@ Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has 
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction (red) | | |
 | Big purple | Cutoff (purple) | Resonance (red) | | |
 | Volume | Volume (white) | Drive (light orange to red) | Tempo, 60-200 (1 BPM a click turned slowly; yellow, flashing the beat) | Swing (pink) |
+| Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through white to red (bass) | Mute the bass / neither / mute the drums |
 
 The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, alternating sides, on steps 1, 5, 9 and 13; the side of the current beat flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
 
-Big purple knob click: tap tempo. Volume knob click: flips between volume / drive and tempo / swing, and stops any stuck live notes.
+Big purple knob click: tap tempo. Volume knob click: steps through volume / drive, tempo / swing and the bass / drums mix, and stops any stuck live notes.
 
 ## The voice
 

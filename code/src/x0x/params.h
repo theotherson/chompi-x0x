@@ -49,6 +49,8 @@ enum Param : uint8_t
     // (BD SD LT HT CY OH CH), then the accent level.
     DRUM_PARAMS,
     DRUM_ACCENT = DRUM_PARAMS + 3 * 7,
+    MIX,             // bass / drums balance: centre both, left drums only, right bass only
+    MIX_MUTE,        // CHOMPI + the mix: mute the bass / neither / mute the drums
     NUM_PARAMS
 };
 
@@ -113,6 +115,8 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"ch_attack", .5f,       0, 0},
     {"ch_decay", .5f,       0, 0},
     {"drum_accent", .5f,     0, 0},   // accent: up to 3x as loud
+    {"mix",         .5f,      0, 0},   // bass / drums
+    {"mix_mute",    .5f,      3, 0},   // mute bass / none / mute drums
 };
 // clang-format on
 
@@ -137,14 +141,14 @@ constexpr uint8_t kKnobNone   = 255;
  *  (knob 1: 2, knob 4: 4, volume: 2); the big knob's click is tap tempo.
  *  Quantize and its grid are on the keys (live mode, CHOMPI + D#4). */
 constexpr int     kMaxKnobPages       = 4;
-constexpr int     kKnobPages[6]       = {2, 1, 1, 4, 1, 2};
+constexpr int     kKnobPages[6]       = {2, 1, 1, 4, 1, 3};
 constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{WAVE, PULSE_WIDTH}, {kKnobLength, TUNING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{ENV_MOD, ACCENT}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{DECAY, SLIDE_TIME}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{DELAY, DELAY_TIME}, {DELAY_FB, DELAY_TONE}, {MOD, MOD_WIDTH}, {CRUSH, CRUSH_RATE}},
     {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{VOLUME, DRIVE}, {TEMPO, SWING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
+    {{VOLUME, DRIVE}, {TEMPO, SWING}, {MIX, MIX_MUTE}, {kKnobNone, kKnobNone}},
 };
 
 /** How far one click of a knob moves a continuous parameter, by how long
@@ -167,6 +171,21 @@ inline float KnobSpeed(Param p)
 /** The free delay time's knob value to ms (30 ms .. 1.9 s), and back. */
 inline float DelayFreeMs(float v) { return 30.f * FastExp2(v * 5.985f); } // log2(1900 / 30)
 inline float DelayFreeKnob(float ms) { return Clamp(log2f(ms / 30.f) / 5.985f, 0.f, 1.f); }
+
+/** The bass's and the drums' gains for the mix knob (0 drums only, 0.5
+ *  both, 1 bass only) and its CHOMPI layer (0 mute the bass, 0.5 neither,
+ *  1 mute the drums). Each fades out over its half of the knob. */
+inline void MixGains(float mix, float mute, float* bass, float* drums)
+{
+    const float m = Clamp(mix, 0.f, 1.f);
+    *bass         = m < 0.5f ? sinf(kPi * m) : 1.f;          // 0 at the left end
+    *drums        = m > 0.5f ? sinf(kPi * (1.f - m)) : 1.f;  // 0 at the right end
+    const int mu  = StepIndex(mute, 3);
+    if(mu == 0)
+        *bass = 0.f;
+    else if(mu == 2)
+        *drums = 0.f;
+}
 
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
 inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }

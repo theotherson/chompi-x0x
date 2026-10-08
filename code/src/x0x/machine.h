@@ -190,6 +190,15 @@ class Machine
         pattern_changes++;
     }
 
+    /** Mute and solo, per voice (bits), for the drum part's playback: a
+     *  muted voice is silent; while any voice is soloed only soloed ones
+     *  play. Live hits always sound. Not saved. */
+    void SetDrumMute(int v, bool on) { drum_mute_ = Bit(drum_mute_, v, on); }
+    void SetDrumSolo(int v, bool on) { drum_solo_ = Bit(drum_solo_, v, on); }
+    bool DrumMuted(int v) const { return (drum_mute_ >> v) & 1; }
+    bool DrumSoloed(int v) const { return (drum_solo_ >> v) & 1; }
+    bool DrumAudible(int v) const { return !DrumMuted(v) && (!drum_solo_ || DrumSoloed(v)); }
+
     /** Counts drum hits as they play (pattern or live), for the LEDs. */
     uint32_t DrumHitCount(int voice) const { return drum_hit_count_[voice]; }
 
@@ -566,12 +575,17 @@ class Machine
             arp_clock_ -= n;
 
         fx_.Process(mono, left, right, n);
-        // The drums join after the bass's effects (their own come later).
+        // The drums join after the bass's effects (their own come later),
+        // balanced by the mix knob.
+        float gb, gd;
+        MixGains(p[MIX], p[MIX_MUTE], &gb, &gd);
+        mix_bass_ += (gb - mix_bass_) * 0.2f; // a little smoothing, per block
+        mix_drums_ += (gd - mix_drums_) * 0.2f;
         const float vol = settings.params[VOLUME] * settings.params[VOLUME] * 1.5f;
         for(size_t i = 0; i < n; i++)
         {
-            left[i]  = SoftLimit((left[i] + drum[i]) * vol);
-            right[i] = SoftLimit((right[i] + drum[i]) * vol);
+            left[i]  = SoftLimit((left[i] * mix_bass_ + drum[i] * mix_drums_) * vol);
+            right[i] = SoftLimit((right[i] * mix_bass_ + drum[i] * mix_drums_) * vol);
         }
     }
 
@@ -600,8 +614,13 @@ class Machine
         drum_pos_          = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
         const uint8_t s    = pat.drums[drum_pos_];
         for(int v = 0; v < kDrumVoices; v++)
-            if((s >> v) & 1)
+            if(((s >> v) & 1) && DrumAudible(v))
                 PlayDrum(v, (s & kDrumAccent) != 0);
+    }
+
+    static uint8_t Bit(uint8_t bits, int v, bool on)
+    {
+        return static_cast<uint8_t>(on ? bits | (1 << v) : bits & ~(1 << v));
     }
 
     /** A live hit into the drum part: the step playing, or the next one if
@@ -817,6 +836,8 @@ class Machine
     bool        hit_rec_[kHitQueue] = {};
     volatile int hit_head_ = 0, hit_tail_ = 0;
     uint32_t    drum_hit_count_[kDrumVoices] = {};
+    uint8_t     drum_mute_ = 0, drum_solo_ = 0;
+    float       mix_bass_ = 1.f, mix_drums_ = 1.f;
     VoiceParams vp_;
     Fx          fx_;
     Arp         arp_;

@@ -92,9 +92,11 @@
  *  between the bass and the drums (a TR-606). Both always play; this only
  *  picks which the keys and knobs edit. The drums' side:
  *
- *    black keys 1-5                the voices: BD, SD, LT (CHOMPI: HT), CY,
- *                                  CH (CHOMPI: OH). Step mode: that voice's
- *                                  page; live mode: play it
+ *    black keys 1-5                the voices: BD, SD, LT / HT, CY, CH / OH
+ *                                  (the toms' and hats' keys alternate, press
+ *                                  by press). Step mode: that voice's page;
+ *                                  live mode: play it. CHOMPI + a voice: mute
+ *                                  it; held 2 s: solo it (again: undo)
  *    C#4                           step mode: the ACCENT page; live: held,
  *                                  hits are accented
  *    D#4, F#4, G#4, A#4            view 1-8 / 9-16, PATTERN, COPY, CLEAR
@@ -184,6 +186,7 @@ class Ui
     static constexpr uint32_t kQuantizeHoldMs = 2000;
     static constexpr uint32_t kProtectHoldMs  = 2000;
     static constexpr uint32_t kExportHoldMs   = 2000;
+    static constexpr uint32_t kSoloHoldMs     = 2000;
     static constexpr uint32_t kCurrentFlashMs = 400; // the current pattern's slow flash (queued: fast)
 
     void Init(Machine* m) { m_ = m; }
@@ -544,6 +547,13 @@ class Ui
             cleared_at_   = now;
             cursor_       = 0;
         }
+        if(drums_ && voice_key_ >= 0 && held_[voice_key_] && now - voice_key_at_ >= kSoloHoldMs)
+        {
+            // A voice key held 2 s: solo that voice (again: unsolo).
+            m_->SetDrumSolo(voice_key_voice_, !m_->DrumSoloed(voice_key_voice_));
+            voice_key_ = -1;
+            solo_at_   = now;
+        }
         if(drums_ && drum_clear_down_ && held_[kKeyClear] && !clear_done_ && now - clear_down_ >= kClearHoldMs)
         {
             m_->Current().ClearDrums(); // CLEAR held: the drum part
@@ -775,14 +785,25 @@ class Ui
         }
 
         // The black keys.
+        bool soloing = false;
+        for(int v = 0; v < kDrumVoices; v++)
+            soloing |= m_->DrumSoloed(v);
         for(int b = 0; b < 5; b++)
         {
             const int v = VoiceOfKey(b);
             Rgb       c = Scale(kDrumCol[v], v == drum_sel_ ? 0.8f : 0.12f);
+            if(m_->DrumMuted(v))
+                c = Scale(kDrumCol[v], (now / 400) % 2 ? 0.25f : 0.f); // muted: blinks slowly
+            else if(m_->DrumSoloed(v))
+                c = Whiten(kDrumCol[v], 0.2f);                       // soloed: bright
+            else if(soloing)
+                c = Scale(kDrumCol[v], 0.03f);                       // not heard while soloing
             if(now - drum_hit_at_[v] < 90)
                 c = Whiten(kDrumCol[v], 0.35f); // it just played
             f.key[kBlack[b]] = c;
         }
+        if(now - solo_at_ < 300)
+            f.key[kBlack[KeyOfVoice(voice_key_voice_)]] = {1.f, 1.f, 1.f};
         const bool acc = mode_ == Mode::STEP ? drum_acc_page_ : held_[kKeyTranspose];
         f.key[kBlack[5]] = Scale(Rgb{1.f, 1.f, 1.f}, acc ? 1.f : 0.12f);
         f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
@@ -836,18 +857,32 @@ class Ui
 
     // ------------------------------------------------------------ drums
 
-    /** The voice black key b (0-4) plays: BD, SD, LT (CHOMPI: HT), CY, CH
-     *  (CHOMPI: OH). */
+    /** The voice black key b (0-4) is on: BD, SD, LT or HT, CY, CH or OH
+     *  (the toms' and hats' keys alternate, press by press). */
     int VoiceOfKey(int b) const
     {
         switch(b)
         {
             case 0: return BD;
             case 1: return SD;
-            case 2: return chompi_ ? HT : LT;
+            case 2: return toms_high_ ? HT : LT;
             case 3: return CY;
-            default: return chompi_ ? OH : CH;
+            default: return hats_open_ ? OH : CH;
         }
+    }
+
+    static int KeyOfVoice(int v)
+    {
+        static constexpr int kKey[kDrumVoices] = {0, 1, 2, 2, 3, 4, 4};
+        return kKey[v];
+    }
+
+    void FlipPair(int b)
+    {
+        if(b == 2)
+            toms_high_ = !toms_high_;
+        else if(b == 4)
+            hats_open_ = !hats_open_;
     }
 
     /** Semitones from middle C for white key w, in C major. */
@@ -910,11 +945,34 @@ class Ui
         }
         if(b >= 0 && b < 5)
         {
-            drum_sel_ = VoiceOfKey(b);
+            if(chompi_)
+            {
+                // CHOMPI + a voice: mute it (again: unmute).
+                const int v = VoiceOfKey(b);
+                m_->SetDrumMute(v, !m_->DrumMuted(v));
+                return;
+            }
+            const bool pair = b == 2 || b == 4;
             if(mode_ == Mode::STEP)
+            {
+                // Its page; the toms' and hats' keys again: the other one.
+                if(pair && drum_sel_ == VoiceOfKey(b) && !drum_acc_page_)
+                    FlipPair(b);
+                drum_sel_      = VoiceOfKey(b);
                 drum_acc_page_ = false;
+            }
             else
+            {
+                // Play it; the toms' and hats' keys play the other one next.
+                drum_sel_ = VoiceOfKey(b);
                 m_->DrumHit(drum_sel_, held_[kKeyTranspose]);
+                if(pair)
+                    FlipPair(b);
+            }
+            // Held 2 s: solo it (see Tick).
+            voice_key_       = k;
+            voice_key_at_    = now;
+            voice_key_voice_ = drum_sel_;
             return;
         }
         if(b == 5)
@@ -941,6 +999,8 @@ class Ui
 
     void DrumKeyUp(int k)
     {
+        if(k == voice_key_)
+            voice_key_ = -1;
         if(k == kKeyPattern && pattern_down_)
         {
             pattern_down_ = false; // a tap: the pattern page
@@ -1883,6 +1943,18 @@ class Ui
             }
             else if(sel == TEMPO)
                 v = TempoBeat(now, cur_step) ? 1.f : 0.f; // flashes the beat
+            else if(sel == MIX || sel == MIX_MUTE)
+            {
+                // The balance: amber (all drums) .. white .. red (all bass);
+                // CHOMPI: amber (bass muted) / white / red (drums muted).
+                const float m = sel == MIX ? m_->settings.params[MIX]
+                                           : 0.5f * StepIndex(m_->settings.params[MIX_MUTE], 3);
+                const Rgb drums = kDrumColour, bass = {1.f, 0.f, 0.f}, mid = {1.f, 1.f, 1.f};
+                const float k   = m < 0.5f ? m * 2.f : (m - 0.5f) * 2.f;
+                const Rgb   a   = m < 0.5f ? drums : mid, b = m < 0.5f ? mid : bass;
+                c = {a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k};
+                v = 1.f;
+            }
             else if(sel != kKnobNone)
                 v = m_->settings.params[sel];
             // Never below a fifth, so the page's colour always shows.
@@ -1918,6 +1990,12 @@ class Ui
     bool     export_flash_ok_       = false;
     bool     import_seen_           = false;
     int      drum_sel_              = 0;     // the drum voice the knobs and steps edit
+    bool     toms_high_             = false; // F#3 on the high tom (it alternates)
+    bool     hats_open_             = false; // A#3 on the open hat
+    int      voice_key_             = -1;    // a voice key down: held 2 s, it solos
+    uint32_t voice_key_at_          = 0;
+    int      voice_key_voice_       = 0;
+    uint32_t solo_at_               = 0x80000000u;
     bool     drum_acc_page_         = false; // step mode: the accent page
     int      drum_knob1_page_       = 0;
     bool     drum_clear_down_       = false;
