@@ -10,9 +10,11 @@
  *            quantize off. With quantize on these notes play on the grid
  *            instead (PlayedStep); the timing is kept for when it's off
  *
- *  Patterns are stored as plain text, one pattern after another:
+ *  There are 16 pattern numbers, each with an A and a B side, as on a
+ *  TB-303. Patterns are stored as plain text, one pattern after another
+ *  ("pattern 1" without a side, from earlier versions, is 1A):
  *
- *    pattern 1
+ *    pattern 1A
  *    length 16
  *    step 1 12 0 1 1 0 0 0     step, note 0-24, octave, on, accent, slide, tie, nudge
  *    ...
@@ -27,7 +29,25 @@ namespace x0x
 {
 
 constexpr int kSteps     = 16;
-constexpr int kPatterns  = 16;
+constexpr int kPatternNumbers = 16; // 1-16, each with an A and a B side
+constexpr int kPatterns       = 2 * kPatternNumbers; // index = number - 1 (+ 16 for B)
+
+inline int PatternIndex(int number0, int side) { return number0 + kPatternNumbers * side; }
+inline int PatternNumber(int index) { return index % kPatternNumbers; } // 0-15
+inline int PatternSide(int index) { return index / kPatternNumbers; }   // 0 = A, 1 = B
+
+/** "12B" (or "12", side A) -> index; -1 if it isn't one. */
+inline int ParsePatternName(const char* p)
+{
+    while(*p == ' ')
+        p++;
+    const int n = atoi(p);
+    if(n < 1 || n > kPatternNumbers)
+        return -1;
+    while(*p >= '0' && *p <= '9')
+        p++;
+    return PatternIndex(n - 1, (*p == 'B' || *p == 'b') ? 1 : 0);
+}
 constexpr int kKeyNotes  = 25; // the keybed as a keyboard: C3 to C5
 constexpr int kBaseNote  = 36; // MIDI note the lowest key plays (C2)
 
@@ -128,7 +148,8 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
     for(int p = 0; p < count; p++)
     {
         const Pattern& pat = pats[p];
-        int w = snprintf(buf + len, size - len, "pattern %d\nlength %d\n", p + 1, pat.length);
+        int w = snprintf(buf + len, size - len, "pattern %d%c\nlength %d\n", PatternNumber(p) + 1,
+                         PatternSide(p) ? 'B' : 'A', pat.length);
         if(w <= 0 || static_cast<size_t>(w) >= size - len)
             return 0;
         len += w;
@@ -161,8 +182,8 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
 
         if(strncmp(line, "pattern ", 8) == 0)
         {
-            const int n = atoi(line + 8);
-            pat         = n >= 1 && n <= count ? &pats[n - 1] : nullptr;
+            const int i = ParsePatternName(line + 8);
+            pat         = i >= 0 && i < count ? &pats[i] : nullptr;
             if(pat)
                 pat->Clear();
         }

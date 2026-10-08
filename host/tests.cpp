@@ -1,6 +1,7 @@
 // Desktop tests of the x0x core: sequencer timing, patterns, storage format.
 //   make -C host && host/tests
 #include "../code/src/x0x/ui.h"
+#include "../code/src/x0x/midifile.h"
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -323,7 +324,10 @@ static void TestPagesCopyClear()
     CHECK(r.m.CurrentPattern() == 2);
     r.ui.Play();
     r.White(0), r.White(0);
+    r.Black(7); // the page's other side (B)
+    CHECK(r.ui.GetPage() == Ui::Page::PATTERN);
     r.Black(7); // back to notes
+    CHECK(r.ui.GetPage() == Ui::Page::NOTES);
 
     // CLEAR: a tap clears the selected step, holding clears the pattern.
     r.White(1);
@@ -1367,7 +1371,7 @@ static void TestWriteProtect()
     // A tap still opens the pattern page, and edits still work.
     r.Key(Ui::kKeyPattern);
     CHECK(r.ui.GetPage() == Ui::Page::PATTERN);
-    r.Key(Ui::kKeyPattern);
+    r.Key(Ui::kKeyPattern), r.Key(Ui::kKeyPattern); // side B, then closed
     const bool was_on = r.S(2).on;
     r.White(2), r.White(2); // select step 3, then turn it on / off
     CHECK(r.S(2).on != was_on);
@@ -1426,10 +1430,149 @@ static void TestPatternPageWhileRunning()
         r.White(7);
         CHECK(r.m.QueuedPattern() == 7);
         r.White(7); // switch at once
-        r.Key(Ui::kKeyPattern);
+        CHECK(r.m.CurrentPattern() == 7);
         r.m.SelectPattern(0, true);
-        r.Key(Ui::kKeyPattern);
     }
+}
+
+static void TestPatternSides()
+{
+    printf("patterns A / B: the pattern key's three taps, picking, copying, files\n");
+    Rig r;
+    DemoPattern(r.m.patterns[0]);
+    // Tap 1: the page on the current pattern's side (A); tap 2: B; tap 3: closed.
+    r.Key(Ui::kKeyPattern);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    const Rgb a = f.key[Ui::kKeyPattern];
+    CHECK(r.ui.GetPage() == Ui::Page::PATTERN && a.b > 0.3f); // pink
+    r.Key(Ui::kKeyPattern);
+    r.ui.Draw(f, r.now);
+    const Rgb b = f.key[Ui::kKeyPattern];
+    CHECK(r.ui.GetPage() == Ui::Page::PATTERN && b.g > 0.4f && b.b < 0.4f); // peach
+    r.White(4); // 5B
+    CHECK(r.m.CurrentPattern() == PatternIndex(4, 1));
+    r.Key(Ui::kKeyPattern);
+    CHECK(r.ui.GetPage() == Ui::Page::NOTES);
+    // Opening again starts on B now (the current pattern's side).
+    r.Key(Ui::kKeyPattern);
+    r.White(0); // 1B
+    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
+    r.Key(Ui::kKeyPattern); // A
+    r.White(0);             // 1A
+    CHECK(r.m.CurrentPattern() == 0);
+    r.Key(Ui::kKeyPattern); // closed
+    // COPY + PATTERN: 1A to 1B.
+    r.ui.KeyDown(Ui::kKeyCopy, r.now);
+    r.Key(Ui::kKeyPattern);
+    r.ui.KeyUp(Ui::kKeyCopy, r.now);
+    CHECK(r.m.patterns[PatternIndex(0, 1)] == r.m.patterns[0] && r.ui.GetPage() == Ui::Page::NOTES);
+    // Locked: A red, B orange.
+    r.m.SetProtected(true);
+    r.Run(1000);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyPattern].g < 0.02f && f.key[Ui::kKeyPattern].b < 0.02f);
+    r.m.SetProtected(false);
+
+    // Files: 32 patterns round trip; "pattern 3" from earlier versions is 3A.
+    static char buf[24576];
+    r.m.patterns[PatternIndex(15, 1)].steps[3].on = true;
+    const size_t n = WritePatterns(r.m.patterns, kPatterns, buf, sizeof buf);
+    CHECK(n > 0 && strstr(buf, "pattern 16B"));
+    static Pattern back[kPatterns];
+    ReadPatterns(buf, back, kPatterns);
+    for(int i = 0; i < kPatterns; i++)
+        CHECK(back[i] == r.m.patterns[i]);
+    char old[] = "pattern 3\nlength 8\nstep 1 5 0 1 0 0 0\n";
+    ReadPatterns(old, back, kPatterns);
+    CHECK(back[2].length == 8 && back[2].steps[0].note == 5 && back[PatternIndex(2, 1)] == r.m.patterns[PatternIndex(2, 1)]);
+    Settings st;
+    st.pattern = PatternIndex(4, 1);
+    char sb[2048];
+    CHECK(WriteSettings(st, sb, sizeof sb) > 0 && strstr(sb, "pattern 5B"));
+    Settings st2;
+    ReadSettings(sb, st2);
+    CHECK(st2.pattern == PatternIndex(4, 1));
+    char so[] = "pattern 7\n";
+    ReadSettings(so, st2);
+    CHECK(st2.pattern == 6);
+}
+
+static void TestMidiExport()
+{
+    printf("MIDI export: the hold, the flash, and the file\n");
+    Rig r;
+    DemoPattern(r.m.patterns[0]);
+    r.Key(Ui::kKeyPattern);
+    // A pattern key held 2 s asks for the export and doesn't pick it.
+    const uint32_t req = r.m.export_requests;
+    r.ui.KeyDown(Ui::kWhite[3], r.now);
+    r.Run(2100);
+    r.ui.KeyUp(Ui::kWhite[3], r.now);
+    CHECK(r.m.export_requests == req + 1 && r.m.CurrentPattern() == 0);
+    r.m.ExportDone(true);
+    r.ui.NoteStep(r.now);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[0].r > 0.9f && f.key[0].g > 0.9f && f.key[0].b > 0.9f);
+    // A short press still picks it.
+    r.Run(500);
+    r.White(3);
+    CHECK(r.m.CurrentPattern() == 3 && r.m.export_requests == req + 1);
+
+    // The file: parse it back.
+    static uint8_t mf[4096];
+    const size_t   n = WriteMidiFile(r.m.patterns[0], 120.f, 0, "x0x 1A", mf, sizeof mf);
+    CHECK(n > 30 && memcmp(mf, "MThd", 4) == 0 && memcmp(mf + 14, "MTrk", 4) == 0);
+    CHECK(mf[12] == 0 && mf[13] == 96); // 96 ticks a beat
+    const size_t trk = (mf[18] << 24) | (mf[19] << 16) | (mf[20] << 8) | mf[21];
+    CHECK(22 + trk == n);
+    struct N { uint32_t t; int st, note, vel; };
+    std::vector<N> ev;
+    uint32_t t = 0, tempo = 0, end = 0;
+    for(size_t i = 22; i < n;)
+    {
+        uint32_t d = 0;
+        while(mf[i] & 0x80)
+            d = (d << 7) | (mf[i++] & 0x7f);
+        d = (d << 7) | mf[i++];
+        t += d;
+        if(mf[i] == 0xff)
+        {
+            const int type = mf[i + 1], len = mf[i + 2];
+            if(type == 0x51)
+                tempo = (mf[i + 3] << 16) | (mf[i + 4] << 8) | mf[i + 5];
+            if(type == 0x2f)
+                end = t;
+            i += 3 + len;
+        }
+        else
+            ev.push_back({t, mf[i], mf[i + 1], mf[i + 2]}), i += 3;
+    }
+    CHECK(tempo == 500000 && end == 16 * 24);
+    auto on_at = [&](uint32_t at) { for(auto& e : ev) if(e.st == 0x90 && e.t == at) return e; return N{0, 0, 0, 0}; };
+    auto off_of = [&](int note, uint32_t after) {
+        for(auto& e : ev) if(e.st == 0x80 && e.note == note && e.t > after) return e.t;
+        return 0u;
+    };
+    CHECK(on_at(0).note == 36 && on_at(0).vel == 120);           // step 1: accent
+    CHECK(off_of(36, 0) == 12);                                  // half a step
+    CHECK(on_at(24).vel == 90);                                  // step 2: plain
+    CHECK(on_at(48).note == 48 && off_of(48, 48) == 72 + 2);     // step 3 slides into 4
+    CHECK(on_at(96).note == 36 && off_of(36, 96) == 5 * 24 + 12); // step 5 tied through 6
+    // Recorded timing kept, or on the grid with quantize.
+    Pattern late;
+    late.steps[1].on = true, late.steps[1].note = 2, late.steps[1].nudge = 2;
+    std::vector<uint8_t> v(1024);
+    WriteMidiFile(late, 120.f, 0, "", v.data(), v.size());
+    // ...the note on's delta: after the header (22), tempo (7), time sig (8), name (4)
+    CHECK(v[22 + 7 + 8 + 4] == 24 + 2 * 4);
+    WriteMidiFile(late, 120.f, 1, "", v.data(), v.size());
+    CHECK(v[22 + 7 + 8 + 4] == 24);
+
+    // For trying in a DAW: the demo pattern.
+    if(FILE* fp = fopen("out/demo_pattern.mid", "wb"))
+        fwrite(mf, 1, n, fp), fclose(fp);
 }
 
 int main()
@@ -1455,6 +1598,8 @@ int main()
     TestQuantizeHold();
     TestWriteProtect();
     TestPatternPageWhileRunning();
+    TestPatternSides();
+    TestMidiExport();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

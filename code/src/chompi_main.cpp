@@ -150,6 +150,7 @@ int main(void)
     uint32_t saved_patterns = machine.pattern_changes, saved_settings = machine.settings_changes;
     uint32_t pattern_seen = saved_patterns, settings_seen = saved_settings;
     uint32_t pattern_at = 0, settings_at = 0;
+    uint32_t export_seen = machine.export_requests;
     while(1)
     {
         const uint32_t now = System::GetNow();
@@ -177,6 +178,11 @@ int main(void)
         {
             saved_patterns = pattern_seen;
             storage.SavePatterns(machine);
+        }
+        if(machine.export_requests != export_seen)
+        {
+            export_seen = machine.export_requests;
+            machine.ExportDone(storage.ExportMidi(machine));
         }
         if(settings_seen != saved_settings && now - settings_at > 3000)
         {

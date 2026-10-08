@@ -4,6 +4,8 @@
  *    patterns.txt   the 16 patterns (format in x0x/pattern.h)
  *    current.txt    knobs, waveform, the selected pattern
  *    options.txt    MIDI options, written with the defaults if missing
+ *    MIDI/01A.mid   each pattern as a MIDI file, when exported (16B.mid the
+ *                   last); empty patterns' files are removed
  *
  *  Writes go to a temporary file renamed over the old one, so a power cut
  *  never leaves half a file. Main loop only: these block on the card.
@@ -11,6 +13,7 @@
 #pragma once
 #include "fatfs.h"
 #include "x0x/machine.h"
+#include "x0x/midifile.h"
 
 namespace chompi
 {
@@ -59,6 +62,47 @@ class Storage
         __enable_irq();
         const size_t n = x0x::WritePatterns(snapshot_, x0x::kPatterns, buf_, sizeof(buf_));
         return n > 0 && Write("patterns.txt", n);
+    }
+
+    /** Every pattern as a MIDI file in /X0X/MIDI, as it plays now (tempo,
+     *  quantize). @return false if the card failed */
+    bool ExportMidi(const x0x::Machine& m)
+    {
+        if(!ok_)
+            return false;
+        __disable_irq();
+        for(int i = 0; i < x0x::kPatterns; i++)
+            snapshot_[i] = m.patterns[i];
+        const float bpm   = m.TempoBpmNow();
+        const bool  quant = x0x::StepIndex(m.settings.params[x0x::QUANTIZE], 2) == 1;
+        const int   grid  = quant ? x0x::QuantGridSteps(m.settings.params[x0x::QUANT_GRID]) : 0;
+        __enable_irq();
+        f_mkdir("MIDI"); // fails harmlessly if it's there
+        bool ok = true;
+        for(int i = 0; i < x0x::kPatterns; i++)
+        {
+            char      path[16], name[16];
+            const int num = x0x::PatternNumber(i) + 1;
+            const char side = x0x::PatternSide(i) ? 'B' : 'A';
+            snprintf(path, sizeof path, "MIDI/%02d%c.mid", num, side);
+            if(snapshot_[i].Empty())
+            {
+                f_unlink(path);
+                continue;
+            }
+            snprintf(name, sizeof name, "x0x %d%c", num, side);
+            const size_t n = x0x::WriteMidiFile(snapshot_[i], bpm, grid, name,
+                                                reinterpret_cast<uint8_t*>(buf_), sizeof(buf_));
+            UINT wrote = 0;
+            if(n == 0 || f_open(&file_.fil, path, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+            {
+                ok = false;
+                continue;
+            }
+            f_write(&file_.fil, buf_, n, &wrote);
+            ok &= f_close(&file_.fil) == FR_OK && wrote == n;
+        }
+        return ok;
     }
 
     bool SaveSettings(const x0x::Machine& m)
@@ -112,7 +156,7 @@ class Storage
     {
         FIL fil;
     };
-    alignas(32) char buf_[16384];
+    alignas(32) char buf_[24576]; // 32 patterns are ~14 KB of text
     File             file_;
     x0x::Pattern     snapshot_[x0x::kPatterns];
     bool             ok_ = false;

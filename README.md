@@ -36,8 +36,8 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | Black F#3 / G#3 / A#3 (keys 3-5) | ACCENT / SLIDE / TIE page |
 | Black C#4 (key 6) | Transpose mode: every key sets the transpose (middle C = none; C#4 itself = +1), its key lit yellow; the white keys show only the playhead. Tap any key twice quickly to set that transpose and leave; or hold C#4 for 2 s to leave (the hold doesn't change the transpose) |
 | Black D#4 (key 7) | View steps 1-8 / 9-16 |
-| Black F#4 (key 8) | Tap: PATTERN page, the step keys pick pattern 1-16 (no playhead or dimmed half there, even while running; middle C is pattern 8 or 9 by the half you last chose). Hold 2 s: write protect on/off. While it's on you can edit freely, but nothing is saved to the card, so the next power-on loads your patterns as they were. Every light flashes red when it goes on (pink when it goes off). The pattern key and the pattern page are pink, and red while protected. Turning it off keeps what you have now, which then saves as usual. It stays on across restarts |
-| Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that pattern number |
+| Black F#4 (key 8) | PATTERN. Each pattern number 1-16 has an A and a B side, as on a TB-303. Tap once: the pattern page, on the current pattern's side; tap again: the other side; a third tap closes it. On the page the step keys pick a pattern when you let go (running, it waits for the bar; the same key again switches at once). Side A is pink and side B peach; the current pattern bright, a queued one blinking, used ones dim. No playhead or dimmed half there, even while running; middle C is pattern 8 or 9 by the half you last chose. **Hold a pattern key 2 s** on the page to export every pattern as a MIDI file (see below); the key fills white, then all keys flash white (red if the card failed). **Hold PATTERN 2 s**: write protect on/off. While it's on you can edit freely, but nothing is saved to the card, so the next power-on loads your patterns as they were. Every light flashes red when it goes on (pink when it goes off), and the pattern colours turn red (A) and orange (B). Turning it off keeps what you have now, which then saves as usual. It stays on across restarts |
+| Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that number (on the side the pattern page shows, else this pattern's side). COPY + PATTERN copies it to its own other side, A to B or B to A: the quick way to start a variation |
 | Black A#4 (key 10) | CLEAR (orange): tap clears the selected step; hold 1 s clears the whole pattern (the key fills orange as you hold) |
 | LOOP | Tap tempo |
 
@@ -124,7 +124,8 @@ Channels and on/off switches are in `/X0X/options.txt`.
 
 | File | Holds |
 |---|---|
-| `patterns.txt` | The 16 patterns, plain text: one `step` line per step (note, octave, on, accent, slide, tie, nudge) |
+| `patterns.txt` | The 32 patterns (1A-16B), plain text: one `step` line per step (note, octave, on, accent, slide, tie, nudge). Files from before A/B load as the A sides |
+| `MIDI/01A.mid` ... `16B.mid` | Each pattern as a Standard MIDI File, written when you export (hold a pattern key 2 s on the pattern page). One pass of the pattern at the current tempo, 96 ticks a beat: recorded timing kept (on the grid if quantize is on), accents at velocity 120 and others 90, ties as longer notes, slides overlapping the next note. Swing and transpose are left out. Empty patterns have no file |
 | `current.txt` | Every knob setting, the selected pattern and write protect, restored at power-on. Knob settings save even while the patterns are protected |
 | `options.txt` | MIDI channels (1-16) and which MIDI in/out is on; written with the defaults the first time |
 

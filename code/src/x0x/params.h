@@ -5,6 +5,7 @@
  */
 #pragma once
 #include "dsp.h"
+#include "pattern.h"
 #include "voice.h"
 #include <cstdio>
 #include <cstdlib>
@@ -209,7 +210,8 @@ inline size_t WriteSettings(const Settings& s, char* buf, size_t size)
             return 0;
         len += w;
     }
-    const int w = snprintf(buf + len, size - len, "pattern %d\nprotect %d\n", s.pattern + 1, s.protect ? 1 : 0);
+    const int w = snprintf(buf + len, size - len, "pattern %d%c\nprotect %d\n", PatternNumber(s.pattern) + 1,
+                           PatternSide(s.pattern) ? 'B' : 'A', s.protect ? 1 : 0);
     if(w <= 0 || static_cast<size_t>(w) >= size - len)
         return 0;
     return len + w;
@@ -256,7 +258,11 @@ inline void ReadSettings(char* text, Settings& s)
             if(strcmp(line, "square") == 0) // written by earlier versions
                 s.params[WAVE] = atoi(sp + 1) ? 1.f : 0.f;
             else if(strcmp(line, "pattern") == 0)
-                s.pattern = ClampInt(atoi(sp + 1), 1, 16) - 1;
+            {
+                const int i = ParsePatternName(sp + 1);
+                if(i >= 0)
+                    s.pattern = i;
+            }
             else if(strcmp(line, "protect") == 0)
                 s.protect = atoi(sp + 1) != 0;
             else

@@ -121,6 +121,18 @@ class Machine
 
     void PatternEdited() { pattern_changes++; }
 
+    /** MIDI file export: the panel asks, the main loop writes the files (the
+     *  card blocks) and reports back. */
+    volatile uint32_t export_requests = 0;
+    volatile uint32_t exports_done    = 0;
+    volatile bool     export_ok       = false;
+    void RequestExport() { export_requests++; }
+    void ExportDone(bool ok)
+    {
+        export_ok = ok;
+        exports_done++;
+    }
+
     /** Write protect: the patterns can still be edited, but the edits
      *  aren't saved to the card (the main loop checks this), so the next
      *  start-up loads them as they were. Turning it off keeps what's in
