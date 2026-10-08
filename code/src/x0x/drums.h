@@ -12,7 +12,8 @@
  *     through a bandpass at ~7.1 kHz (and, for the cymbal, a second at
  *     ~3.4 kHz), each through a VCA on an envelope, then high-passed. Open
  *     and closed hats share one VCA: a closed hat chokes an open one.
- *   - Accent hits every voice harder: louder, and the resonators ring on.
+ *   - Accent hits every voice harder: louder, the resonators ring on, and
+ *     the metal's envelopes (which start higher) ring ~3.5x as long.
  *
  *  Starting values fitted to clean single hits of a real TR-606.
  *
@@ -136,10 +137,13 @@ class Drums
         const float       hit = 1.f + 0.7f * Clamp(accent, 0.f, 1.f); // the trigger voltage
         const float       dk  = DecayScale(p.decay) * (1.f + 0.25f * (hit - 1.f)); // harder rings on
         const float       ck  = 2.f * p.attack;                                     // click: 0..2
+        // The metal's envelopes start higher on an accent and so take far
+        // longer to fall away: an accented closed hat rings ~3.5x as long.
+        const float       mk  = DecayScale(p.decay) * (1.f + 2.5f * Clamp(accent, 0.f, 1.f));
         switch(d)
         {
             case BD:
-                bd_body_.Set(62.f, 0.0347f * dk, sr_);
+                bd_body_.Set(62.f, 0.040f * dk, sr_);
                 bd_knock_.Set(128.f, 0.007f * dk, sr_);
                 bd_body_.Ping(hit);
                 bd_knock_.Ping(0.3f * hit);
@@ -168,19 +172,19 @@ class Drums
             case CY:
                 cy_env_fast_ = 0.85f * hit, cy_env_slow_ = 0.15f * hit;
                 cy_time_     = 0.f;
-                cy_tau_      = dk;
+                cy_tau_      = mk;
                 cy_click_    = 0.3f * ck * hit;
                 break;
             case OH:
                 oh_env_   = hit;
-                oh_tau_   = 0.19f * dk;
+                oh_tau_   = 0.19f * mk;
                 oh_time_  = 0.f;
                 hat_click_ = 0.3f * ck * hit;
                 break;
             case CH:
                 oh_env_    = 0.f; // the choke: a closed hat cuts the open one
                 ch_env_    = hit;
-                ch_tau_    = 0.015f * dk;
+                ch_tau_    = 0.015f * mk;
                 hat_click_ = 0.3f * ck * hit;
                 break;
             default: break;
