@@ -4,7 +4,7 @@ A TB-303 / x0xb0x-style bass line machine for the CHOMPI: one 303-style voice an
 
 Built from scratch on top of CHOMPI Club's TEMPO firmware, whose hardware layer, libraries and startup it keeps.
 
-> Status: **in use on a CHOMPI.** The filter and envelopes are fitted to recordings of a real TB-303. The voice, sequencer and every panel behaviour are tested on the desktop (`host/`), and the firmware builds without warnings. Recently added features (A/B patterns, MIDI import and export, write protect, the delay's free time) are tested on the desktop but have had less time on the hardware. The drums' side (CHOMPI double tap) is a placeholder for a TR-606 still to come.
+> Status: **in use on a CHOMPI.** The filter and envelopes are fitted to recordings of authentic TB-303 circuitry (from an RE-303 I built a few months ago). The voice, sequencer and every panel behaviour are tested on the desktop (`host/`), and the firmware builds without warnings. Recently added features (A/B patterns, MIDI import and export, write protect, the delay's free time) are tested on the desktop but have had less time on the hardware. The drums' side (CHOMPI double tap) is a placeholder for a TR-606 still to come.
 
 ## The toggle switch: two modes
 
@@ -193,3 +193,4 @@ The first commit is TEMPO v1.0 as released, so `git diff` against it shows every
 
 - Built on CHOMPI Club's open-source TEMPO firmware (MIT); see `LICENSE`, `THIRD_PARTY.md` and `TRADEMARKS.md`. The CHOMPI name belongs to CHOMPI Club, and this is a community firmware, not an official release.
 - Key, LED and knob tables, and fixes for SD card cache alignment, codec start-up and button edges, from hiwatts' POLY ([sfaber02/chompi-poly](https://github.com/sfaber02/chompi-poly), MIT). TEMPO's MidiManager is the model for the DMA MIDI out.
+- This was a total "vibe" job and majority of credit goes to Claude for doing the actual coding allowing me to put this together in three days. I may have given considerable direction when shaping GUI behaviour and mechanics and modelling the filter behaviour off my RE-303 (also consulting Tim Stinchcombe's page (https://www.timstinchcombe.co.uk/index.php?pge=diode2) about building a 303 diode filter) but translating this into useable and bug-free code was 100% done by Claude.
