@@ -131,9 +131,11 @@ class Drums
 
     DrumParams& Params(Drum d) { return params_[d]; }
 
-    /** A hit; accent 0 (none) .. 1 (full, at the accent knob's level). */
-    void Trigger(Drum d, float accent)
+    /** A hit; accent 0 (none) .. 1 (full, at the accent knob's level);
+     *  semitones: played pitched (the live keyboard), 0 = as the 606. */
+    void Trigger(Drum d, float accent, int semitones = 0)
     {
+        const float pr = semitones ? FastExp2(semitones / 12.f) : 1.f;
         const DrumParams& p = params_[d];
         // Accent raises the trigger voltage: up to 3x as loud (the service
         // notes: 2 Vp-p at accent minimum, 6 at maximum), the shape the same
@@ -145,45 +147,49 @@ class Drums
         switch(d)
         {
             case BD:
-                bd_body_.Set(60.f, 0.040f * dk, sr_);
-                bd_knock_.Set(124.f, 0.007f * dk, sr_);
+                bd_body_.Set(60.f * pr, 0.040f * dk, sr_);
+                bd_knock_.Set(124.f * pr, 0.007f * dk, sr_);
                 bd_body_.Ping(hit);
                 bd_knock_.Ping(0.3f * hit);
                 bd_click_ = 0.35f * ck * hit;
                 break;
             case SD:
-                sd_tone_.Set(212.f, 0.024f * dk, sr_);
+                sd_tone_.Set(212.f * pr, 0.024f * dk, sr_);
                 sd_tone_.Ping(0.55f * hit);
                 sd_noise_env_ = hit;
                 sd_noise_tau_ = 0.033f * dk;
                 sd_click_     = 0.4f * ck * hit;
                 break;
             case LT:
-                lt_.Set(176.f, 0.047f * dk, sr_);
+                lt_.Set(176.f * pr, 0.047f * dk, sr_);
                 lt_.Ping(hit);
                 lt_glide_ = 1.f;
+                lt_pitch_ = pr;
                 tom_click_ = 0.3f * ck * hit;
                 tom_noise_ = 0.06f * hit;
                 break;
             case HT:
-                ht_.Set(208.f, 0.035f * dk, sr_);
+                ht_.Set(208.f * pr, 0.035f * dk, sr_);
                 ht_.Ping(hit);
                 tom_click_ = 0.3f * ck * hit;
                 tom_noise_ = 0.06f * hit;
                 break;
             case CY:
+                metal_pitch_ = pr;
                 cy_env_fast_ = 0.78f * hit, cy_env_slow_ = 0.22f * hit;
                 cy_time_     = 0.f;
                 cy_tau_      = mk;
                 cy_click_    = 0.3f * ck * hit;
                 break;
             case OH:
+                metal_pitch_ = pr;
                 oh_env_   = hit;
                 oh_tau_   = 0.25f * mk;
                 oh_time_  = 0.f;
                 hat_click_ = 0.3f * ck * hit;
                 break;
             case CH:
+                metal_pitch_ = pr;
                 oh_env_    = 0.f; // the choke: a closed hat cuts the open one
                 ch_env_    = hit;
                 ch_tau_    = 0.017f * mk;
@@ -227,7 +233,7 @@ class Drums
             {
                 lt_glide_ -= lt_glide_ * glide_k;
                 if((i & 15) == 0)
-                    lt_.Retune(153.f + 23.f * lt_glide_, sr_);
+                    lt_.Retune((153.f + 23.f * lt_glide_) * lt_pitch_, sr_);
             }
             // The toms' shared noise: a short, low-passed burst.
             tom_lp_.Process(noise * tom_noise_);
@@ -240,7 +246,7 @@ class Drums
             float metal = 0.f;
             for(int k = 0; k < 6; k++)
             {
-                const float inc = kMetalHz[k] / sr_;
+                const float inc = kMetalHz[k] * metal_pitch_ / sr_;
                 float&      ph  = metal_ph_[k];
                 ph += inc;
                 if(ph >= 1.f)
@@ -320,7 +326,7 @@ class Drums
     Resonator bd_body_, bd_knock_, sd_tone_, lt_, ht_;
     float     bd_click_ = 0.f, sd_click_ = 0.f, tom_click_ = 0.f, hat_click_ = 0.f, cy_click_ = 0.f;
     float     sd_noise_env_ = 0.f, sd_noise_tau_ = 0.05f;
-    float     lt_glide_ = 0.f;
+    float     lt_glide_ = 0.f, lt_pitch_ = 1.f, metal_pitch_ = 1.f;
     float     tom_noise_ = 0.f;
     Svf       hat_hp2_, cy_hp_hi2_;
     Svf       sd_hp_, sd_lp_, tom_lp_, hat_bp_, hat_hp_, cy_bp_lo_, cy_bp_hi_, cy_hp_lo_, cy_hp_hi_;

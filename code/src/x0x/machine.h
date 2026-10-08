@@ -168,14 +168,17 @@ class Machine
 
     /** A drum hit from the panel (main loop): played at the start of the
      *  next audio block, and recorded into the drum part when recording
-     *  with the pattern running (to the nearest step). */
-    void DrumHit(int voice, bool accent)
+     *  with the pattern running (to the nearest step), unless `record` is
+     *  false (the pitched live keyboard: a step has no pitch). */
+    void DrumHit(int voice, bool accent, int semitones = 0, bool record = true)
     {
         const int next = (hit_head_ + 1) % kHitQueue;
         if(next == hit_tail_ || voice < 0 || voice >= kDrumVoices)
             return; // full: dropped
-        hits_[hit_head_] = static_cast<uint8_t>(voice | (accent ? kDrumAccent : 0));
-        hit_head_        = next;
+        hits_[hit_head_]     = static_cast<uint8_t>(voice | (accent ? kDrumAccent : 0));
+        hit_semis_[hit_head_] = static_cast<int8_t>(ClampInt(semitones, -36, 36));
+        hit_rec_[hit_head_]   = record;
+        hit_head_            = next;
     }
 
     /** The drum part's step playing now (its own length), -1 when stopped. */
@@ -492,11 +495,13 @@ class Machine
         // Live drum hits from the panel.
         while(hit_tail_ != hit_head_)
         {
-            const uint8_t h = hits_[hit_tail_];
-            hit_tail_       = (hit_tail_ + 1) % kHitQueue;
-            const int v     = h & 0x7f;
-            PlayDrum(v, (h & kDrumAccent) != 0);
-            if(Recording() && Running())
+            const uint8_t h     = hits_[hit_tail_];
+            const int     semis = hit_semis_[hit_tail_];
+            const bool    rec   = hit_rec_[hit_tail_];
+            hit_tail_           = (hit_tail_ + 1) % kHitQueue;
+            const int v         = h & 0x7f;
+            PlayDrum(v, (h & kDrumAccent) != 0, semis);
+            if(Recording() && Running() && rec)
                 RecordDrum(v, (h & kDrumAccent) != 0);
         }
 
@@ -577,9 +582,9 @@ class Machine
     /** GM drum notes, for MIDI out (channel 10). */
     static constexpr uint8_t kDrumMidi[kDrumVoices] = {36, 38, 45, 50, 49, 46, 42};
 
-    void PlayDrum(int v, bool accent)
+    void PlayDrum(int v, bool accent, int semitones = 0)
     {
-        drums_.Trigger(static_cast<Drum>(v), accent ? settings.params[DRUM_ACCENT] : 0.f);
+        drums_.Trigger(static_cast<Drum>(v), accent ? settings.params[DRUM_ACCENT] : 0.f, semitones);
         drum_hit_count_[v]++;
         if(options.notes_out)
         {
@@ -808,6 +813,8 @@ class Machine
     Drums       drums_;
     int         drum_pos_ = -1;
     uint8_t     hits_[kHitQueue] = {};
+    int8_t      hit_semis_[kHitQueue] = {};
+    bool        hit_rec_[kHitQueue] = {};
     volatile int hit_head_ = 0, hit_tail_ = 0;
     uint32_t    drum_hit_count_[kDrumVoices] = {};
     VoiceParams vp_;

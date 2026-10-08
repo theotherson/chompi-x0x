@@ -17,7 +17,31 @@ PLAY runs and stops the pattern in both.
 
 Tap CHOMPI twice quickly (each tap short, nothing else touched in between) to swap the panel between the bass and the drums. Both always play; the swap only picks which one the keys and knobs edit. The keybed flashes the new side's colour (red for the bass, amber for the drums), and the CHOMPI light stays amber while you're on the drums. A shift combination never counts, however fast: a press only counts as a tap if no key, knob or button was used during it.
 
-The drums (a TR-606) aren't built yet. On their side, for now, the keys, knobs 1-4 and LOOP do nothing, so the bass can't be changed by accident; PLAY, tap tempo and the volume knob (volume, drive, tempo, swing) are shared and work on both sides.
+## The drums (TR-606)
+
+Seven voices synthesised the way a TR-606 makes them (from Roland's block diagram), fitted to samples of real 606s: bass drum, snare, low and high tom, cymbal, open and closed hi-hat, plus accent. Every pattern holds a drum part alongside its bassline, so picking 3A changes both; the drum part has its own length, for polymeters. Accent is per step, as on the 606, and makes hits up to 3x as loud (the accent level sets how much). A closed hat chokes an open one.
+
+**Voices on the black keys** (both modes): C#3 BD · D#3 SD · F#3 LT (CHOMPI: HT) · G#3 CY · A#3 CH (CHOMPI: OH). Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH blue), the selected one bright, and flashes when it plays.
+
+| | Step mode (toggle up) | Live mode (toggle down) |
+|---|---|---|
+| Voice keys | That voice's page | Play it |
+| C#4 | The ACCENT page | Hold: hits are accented |
+| White keys | The page's steps on / off: the voice's hits in its colour, other voices' dim (or the accents, white) | The last voice played, pitched in C major from middle C (played, not recorded) |
+| D#4 / F#4 / G#4 | View 1-8 / 9-16, PATTERN, COPY: as on the bass side | The same |
+| A#4 (CLEAR) | Tap: this voice's hits (or the accents); hold 1 s: the whole drum part | The same |
+| LOOP | Tap tempo | Record on/off (hits go to the nearest step while running); hold 2 s: clear the drum part |
+
+| Knob | Turn | With CHOMPI |
+|---|---|---|
+| Knob 1 | The selected voice's level; page 2: the drum part's length | Accent level |
+| Knob 2 | Attack: the voice's click / snap | |
+| Knob 3 | Decay | |
+| Knob 4 | (the drums' effects, to come) | |
+| Purple | Tempo (flashing the beat) | Swing |
+| Volume | As on the bass side (shared) | |
+
+The drums mix in after the bass's effects for now. MIDI out sends them on channel 10 (GM notes: BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42), and MIDI files export and import the drum part on channel 10.
 
 ## The 16 steps on 15 white keys
 

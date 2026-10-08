@@ -89,10 +89,26 @@
  *      white key
  *
  *  CHOMPI double tap (two quick taps, nothing else touched): swap the panel
- *  between the bass and the drums. Both always play; this only picks which
- *  the keys and knobs edit. The drums aren't built yet: on their side the
- *  keys, knobs 1-4 and LOOP do nothing (PLAY, tap tempo and the volume
- *  knob, all shared, still work).
+ *  between the bass and the drums (a TR-606). Both always play; this only
+ *  picks which the keys and knobs edit. The drums' side:
+ *
+ *    black keys 1-5                the voices: BD, SD, LT (CHOMPI: HT), CY,
+ *                                  CH (CHOMPI: OH). Step mode: that voice's
+ *                                  page; live mode: play it
+ *    C#4                           step mode: the ACCENT page; live: held,
+ *                                  hits are accented
+ *    D#4, F#4, G#4, A#4            view 1-8 / 9-16, PATTERN, COPY, CLEAR
+ *                                  (as the bass's; CLEAR tap: this voice's
+ *                                  hits, held 1 s: the drum part)
+ *    white keys                    step mode: the page's steps on / off;
+ *                                  live: the last voice played, pitched in
+ *                                  C major from middle C (not recorded)
+ *    LOOP                          step: tap tempo; live: record on/off,
+ *                                  held 2 s: clear the drum part
+ *    knob 1                        level (CHOMPI: accent level); page 2:
+ *                                  the drum part's length
+ *    knob 2 / 3                    attack (the click) / decay
+ *    purple knob                   tempo (CHOMPI: swing)
  *
  *  Knobs: clicking knob 1, knob 4 or volume steps through its pages;
  *  CHOMPI + click resets both functions of the knob's page to their
@@ -247,7 +263,10 @@ class Ui
         Touched();
         held_[k] = true;
         if(drums_)
-            return; // not built yet
+        {
+            DrumKey(k, now);
+            return;
+        }
         if(mode_ == Mode::PITCH)
             PitchKey(k, now);
         else
@@ -264,7 +283,10 @@ class Ui
         if(sounding_[k])
             Sound(k, false);
         if(drums_)
+        {
+            DrumKeyUp(k);
             return;
+        }
         if(k == kKeyPattern && pattern_down_)
         {
             pattern_down_ = false; // let go before the 2 s: a tap
@@ -306,7 +328,7 @@ class Ui
     void LoopDown(uint32_t now)
     {
         Touched();
-        if(drums_)
+        if(drums_ && chompi_)
             return;
         if(chompi_)
         {
@@ -373,7 +395,10 @@ class Ui
         const float step = KnobStep(dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
         Touched();
         if(drums_ && knob != 5)
+        {
+            DrumKnobTurn(knob, inc, dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
             return; // the volume knob (volume, drive, tempo, swing) is shared
+        }
         if(knob_down_[knob])
             knob_turned_[knob] = true;
         if(knob == 3 && knob_down_[3] && KnobPage(3) == 0)
@@ -432,7 +457,15 @@ class Ui
     {
         Touched();
         if(drums_ && knob < 4)
+        {
+            DrumKnobClick(knob);
             return; // tap tempo and the volume knob are shared
+        }
+        if(drums_ && knob == 4 && chompi_)
+        {
+            m_->SetParam(SWING, kParams[SWING].def);
+            return;
+        }
         if(chompi_)
         {
             // Both functions of this knob's page back to their defaults;
@@ -499,13 +532,26 @@ class Ui
         }
         if(mode_ == Mode::PITCH && loop_down_ && !loop_cleared_ && now - loop_down_at_ >= kLoopClearMs)
         {
-            m_->ClearPattern();
+            if(drums_)
+            {
+                m_->Current().ClearDrums();
+                m_->PatternEdited();
+            }
+            else
+                m_->ClearPattern();
             m_->SetRecording(false);
             loop_cleared_ = true;
             cleared_at_   = now;
             cursor_       = 0;
         }
-        if(mode_ == Mode::STEP && !chompi_ && held_[kKeyClear] && !clear_done_
+        if(drums_ && drum_clear_down_ && held_[kKeyClear] && !clear_done_ && now - clear_down_ >= kClearHoldMs)
+        {
+            m_->Current().ClearDrums(); // CLEAR held: the drum part
+            m_->PatternEdited();
+            clear_done_ = true;
+            cleared_at_ = now;
+        }
+        if(!drums_ && mode_ == Mode::STEP && !chompi_ && held_[kKeyClear] && !clear_done_
            && now - clear_down_ >= kClearHoldMs)
         {
             m_->Current().ClearBass();
@@ -532,6 +578,18 @@ class Ui
         {
             last_record_count_ = rc;
             rec_flash_at_      = now;
+        }
+        for(int v = 0; v < kDrumVoices; v++)
+            if(m_->DrumHitCount(v) != drum_hits_seen_[v])
+            {
+                drum_hits_seen_[v] = m_->DrumHitCount(v);
+                drum_hit_at_[v]    = now;
+            }
+        const int ds = m_->CurrentDrumStep();
+        if(ds != drum_step_seen_)
+        {
+            drum_step_seen_ = ds;
+            drum_step_at_   = now;
         }
         if(!import_seen_)
         {
@@ -627,7 +685,7 @@ class Ui
         else
             f.chompi = m_->ArpOn() ? Rgb{0.f, .5f, .35f} : Rgb{0.f, .15f, .5f}; // teal = arp on
         if(drums_)
-            DrawDrums(f, now, cur_step, step_lit);
+            DrawDrums(f, now, blink, cur_step, step_lit);
         // While the pattern runs it flashes brighter on each step that plays
         // a note, brightest on the beat.
         else if(!chompi_ && step_lit)
@@ -677,38 +735,300 @@ class Ui
         }
     }
 
-    /** The drums' side, for now a stand-in: black keys 1-8 dim in the
-     *  colours the 606's seven instruments and accent will have, the
-     *  playhead dim white on the white keys while running. Knobs 1-4 dark;
-     *  the volume knob and the beat lights work as on the bass side. */
-    void DrawDrums(LedFrame& f, uint32_t now, int cur_step, bool step_lit) const
+    /** The drums' side. Step mode: the page's steps (the voice's hits in
+     *  its colour, the other voices' dim; or the accents, white), the drum
+     *  playhead white. Live: the drum playhead while running. The voice
+     *  keys in their colours, the selected one bright, each flashing as its
+     *  voice plays. Knobs 1-3 in the selected voice's colour. */
+    void DrawDrums(LedFrame& f, uint32_t now, bool blink, int cur_step, bool step_lit) const
     {
-        static constexpr Rgb kInst[8] = {
-            {1.f, 0.f, 0.f}, {1.f, .5f, 0.f}, {1.f, 1.f, 0.f}, {0.f, 1.f, .2f},
-            {0.f, .8f, 1.f}, {0.f, .2f, 1.f}, {.7f, 0.f, 1.f}, {1.f, 1.f, 1.f},
-        };
+        const Pattern& pat = m_->Current();
+        const float*   p   = m_->settings.params;
+        const int      ds  = m_->CurrentDrumStep();
+        const bool     lit = ds >= 0 && now - drum_step_at_ < 70;
         for(int i = 0; i < kKeyNotes; i++)
             f.key[i] = {};
-        for(int i = 0; i < 8; i++)
-            f.key[kBlack[i]] = Scale(kInst[i], 0.12f);
-        if(m_->Running() && cur_step >= 0)
+        if(page_ == Page::PATTERN)
+            DrawStepMode(f, now, blink, cur_step, step_lit); // the patterns, as the bass side
+        else if(mode_ == Mode::STEP)
+            ForEachShownStep(
+                [&](int step) {
+                    const uint8_t b    = pat.drums[step];
+                    const float   past = step >= pat.drum_length ? 0.3f : 1.f;
+                    Rgb           c;
+                    if(drum_acc_page_)
+                        c = (b & kDrumAccent) ? Scale(Rgb{1.f, 1.f, 1.f}, past) : (b & 0x7f) ? Rgb{.05f, .05f, .05f} : Rgb{};
+                    else if((b >> drum_sel_) & 1)
+                        c = (b & kDrumAccent) ? Whiten(Scale(kDrumCol[drum_sel_], past), 0.3f) : Scale(kDrumCol[drum_sel_], past);
+                    else if(b & 0x7f)
+                        c = {.05f, .05f, .05f};
+                    if(lit && ds == step)
+                        c = {1.f, 1.f, 1.f};
+                    return c;
+                },
+                f);
+        else if(lit)
         {
-            const int k = WhiteOfStep(cur_step);
+            const int k = WhiteOfStep(ds);
             if(k >= 0)
-                f.key[k] = Rgb{.35f, .35f, .35f};
+                f.key[k] = {.6f, .6f, .6f};
         }
-        for(int k = 0; k < 5; k++)
-            f.knob[k] = {};
-        DrawBeat(f, now, cur_step);
-        f.loop = {};
+
+        // The black keys.
+        for(int b = 0; b < 5; b++)
+        {
+            const int v = VoiceOfKey(b);
+            Rgb       c = Scale(kDrumCol[v], v == drum_sel_ ? 0.8f : 0.12f);
+            if(now - drum_hit_at_[v] < 90)
+                c = Whiten(kDrumCol[v], 0.35f); // it just played
+            f.key[kBlack[b]] = c;
+        }
+        const bool acc = mode_ == Mode::STEP ? drum_acc_page_ : held_[kKeyTranspose];
+        f.key[kBlack[5]] = Scale(Rgb{1.f, 1.f, 1.f}, acc ? 1.f : 0.12f);
+        f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
+        f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentPattern())),
+                                   page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
+        if(pattern_down_ && now - pattern_down_at_ > 300)
+        {
+            const float k = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
+            f.key[kKeyPattern] = Scale(m_->Protected() ? kUnprotectColour : kProtectColour, k);
+        }
+        f.key[kKeyCopy] = held_[kKeyCopy] ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
+        if(held_[kKeyClear] && drum_clear_down_ && !clear_done_)
+            f.key[kKeyClear] = Scale(kClearColour, 0.2f + 0.8f * Clamp((now - clear_down_) / static_cast<float>(kClearHoldMs), 0.f, 1.f));
+        else
+            f.key[kKeyClear] = Scale(kClearColour, .12f);
+        if(now - drum_len_shown_at_ < kShowLengthMs)
+            DrawLength(f, pat.drum_length);
+        if(now - cleared_at_ < 300)
+            for(int k = 0; k < kKeyNotes; k++)
+                f.key[k] = {1.f, 0.f, 0.f};
+
+        // Knobs: 1-3 the selected voice (or the accent, white); 4 nothing
+        // yet; the purple one tempo (flashing the beat) or swing.
+        const Rgb   vc = kDrumCol[drum_sel_];
+        const int   pv = DRUM_PARAMS + 3 * drum_sel_;
+        if(drum_knob1_page_ == 1)
+            f.knob[0] = chompi_ ? Rgb{} : Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * pat.drum_length / static_cast<float>(kSteps));
+        else
+            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_ACCENT]) : Scale(vc, 0.2f + 0.8f * p[pv]);
+        f.knob[1] = chompi_ ? Rgb{} : Scale(vc, 0.2f + 0.8f * p[pv + 1]);
+        f.knob[2] = chompi_ ? Rgb{} : Scale(vc, 0.2f + 0.8f * p[pv + 2]);
+        f.knob[3] = {};
+        f.knob[4] = chompi_ ? Scale(Rgb{1.f, .15f, .45f}, 0.2f + 0.8f * p[SWING])
+                            : Scale(Rgb{1.f, .85f, 0.f}, TempoBeat(now, cur_step) ? 1.f : 0.2f);
+        f.big_right = f.knob[4];
+
         f.play = m_->Running() ? Rgb{0.f, .7f, .1f} : Rgb{};
+        if(mode_ == Mode::STEP)
+            f.loop = now - tapped_at_ < 100 ? Rgb{1.f, 1.f, 1.f} : Rgb{}; // tap tempo
+        else if(loop_down_ && !loop_cleared_ && now - loop_down_at_ > 300)
+            f.loop = {Clamp((now - loop_down_at_) / static_cast<float>(kLoopClearMs), 0.f, 1.f), 0.f, 0.f};
+        else if(m_->Recording())
+            f.loop = m_->Running() && blink ? Rgb{1.f, 0.f, 0.f} : Rgb{.7f, 0.f, 0.f};
+        else
+            f.loop = {};
         if(chompi_)
             f.chompi = {1.f, 1.f, 1.f};
         else
+            f.chompi = Scale(kDrumColour, lit && ds % 4 == 0 ? 1.f : .45f);
+    }
+
+    // ------------------------------------------------------------ drums
+
+    /** The voice black key b (0-4) plays: BD, SD, LT (CHOMPI: HT), CY, CH
+     *  (CHOMPI: OH). */
+    int VoiceOfKey(int b) const
+    {
+        switch(b)
         {
-            const float b = step_lit && cur_step % 4 == 0 ? 1.f : .45f;
-            f.chompi      = Scale(kDrumColour, b);
+            case 0: return BD;
+            case 1: return SD;
+            case 2: return chompi_ ? HT : LT;
+            case 3: return CY;
+            default: return chompi_ ? OH : CH;
         }
+    }
+
+    /** Semitones from middle C for white key w, in C major. */
+    static int Diatonic(int w)
+    {
+        static constexpr int kMajor[7] = {0, 2, 4, 5, 7, 9, 11};
+        const int            d         = w - 7;
+        const int            oct       = d >= 0 ? d / 7 : -((6 - d) / 7);
+        return 12 * oct + kMajor[d - 7 * oct];
+    }
+
+    void DrumKey(int k, uint32_t now)
+    {
+        const int b = BlackIndex(k), w = WhiteIndex(k);
+        // The pattern page, PATTERN and COPY work as on the bass side.
+        if(b == 7)
+        {
+            if(held_[kKeyCopy])
+            {
+                const int cur = m_->CurrentPattern();
+                m_->patterns[PatternIndex(PatternNumber(cur), 1 - PatternSide(cur))] = m_->Current();
+                m_->PatternEdited();
+                copied_at_ = now;
+            }
+            else
+                pattern_down_ = true, pattern_down_at_ = now;
+            return;
+        }
+        if(b == 8)
+            return; // COPY: used while held
+        if(w >= 0 && (page_ == Page::PATTERN || held_[kKeyCopy]))
+        {
+            const int step = StepOfWhite(w);
+            if(w != 7)
+                half_ = w > 7 ? 1 : 0;
+            if(held_[kKeyCopy])
+            {
+                const int side = page_ == Page::PATTERN ? ViewSide() : PatternSide(m_->CurrentPattern());
+                const int to   = PatternIndex(step, side);
+                if(to != m_->CurrentPattern())
+                    m_->patterns[to] = m_->Current(), m_->PatternEdited();
+                return;
+            }
+            pat_key_      = k;
+            pat_key_step_ = step;
+            pat_key_at_   = now;
+            pat_key_side_ = chompi_ ? 1 : 0;
+            return;
+        }
+        if(b == 9)
+        {
+            clear_down_      = now, clear_done_ = false;
+            drum_clear_down_ = true;
+            return;
+        }
+        if(b == 6)
+        {
+            half_ = ShownSecondHalf() ? 0 : 1;
+            return;
+        }
+        if(b >= 0 && b < 5)
+        {
+            drum_sel_ = VoiceOfKey(b);
+            if(mode_ == Mode::STEP)
+                drum_acc_page_ = false;
+            else
+                m_->DrumHit(drum_sel_, held_[kKeyTranspose]);
+            return;
+        }
+        if(b == 5)
+        {
+            if(mode_ == Mode::STEP)
+                drum_acc_page_ = !drum_acc_page_;
+            return; // live: held for accented hits
+        }
+        if(w < 0)
+            return;
+        if(mode_ == Mode::PITCH)
+        {
+            // The last voice played, pitched: C major from middle C.
+            m_->DrumHit(drum_sel_, held_[kKeyTranspose], Diatonic(w), false);
+            return;
+        }
+        const int step = StepOfWhite(w);
+        if(w != 7)
+            half_ = w > 7 ? 1 : 0;
+        uint8_t& s = m_->Current().drums[step];
+        s ^= drum_acc_page_ ? kDrumAccent : static_cast<uint8_t>(1 << drum_sel_);
+        m_->PatternEdited();
+    }
+
+    void DrumKeyUp(int k)
+    {
+        if(k == kKeyPattern && pattern_down_)
+        {
+            pattern_down_ = false; // a tap: the pattern page
+            TogglePage(Page::PATTERN);
+        }
+        if(k == pat_key_ && pat_key_step_ >= 0)
+        {
+            const int n   = pat_key_step_;
+            pat_key_step_ = -1;
+            if(page_ == Page::PATTERN)
+                PickPattern(n, pat_key_side_);
+        }
+        if(k == kKeyClear && drum_clear_down_)
+        {
+            drum_clear_down_ = false;
+            if(!clear_done_)
+            {
+                // A tap: this voice's hits (or the accents, on their page).
+                Pattern&      p    = m_->Current();
+                const uint8_t mask = drum_acc_page_ && mode_ == Mode::STEP ? kDrumAccent : static_cast<uint8_t>(1 << drum_sel_);
+                for(int i = 0; i < kSteps; i++)
+                    p.drums[i] = static_cast<uint8_t>(p.drums[i] & ~mask);
+                m_->PatternEdited();
+            }
+        }
+    }
+
+    void DrumKnobTurn(int knob, int inc, uint32_t dt)
+    {
+        const float step = KnobStep(dt);
+        float*      p    = m_->settings.params;
+        const int   pv   = DRUM_PARAMS + 3 * drum_sel_;
+        int         param;
+        switch(knob)
+        {
+            case 0:
+                if(drum_knob1_page_ == 1)
+                {
+                    if(!chompi_)
+                    {
+                        m_->SetDrumLength(m_->Current().drum_length + (inc > 0 ? 1 : -1));
+                        drum_len_shown_at_ = last_tick_;
+                    }
+                    return;
+                }
+                param = chompi_ ? DRUM_ACCENT : pv;
+                break;
+            case 1: param = pv + 1; break;
+            case 2: param = pv + 2; break;
+            case 4:
+                if(chompi_)
+                    param = SWING;
+                else
+                {
+                    const int bpm = ClampInt(static_cast<int>(step * 72.f + 0.25f), 1, 5);
+                    m_->SetParam(TEMPO, p[TEMPO] + inc * bpm / 140.f);
+                    return;
+                }
+                break;
+            default: return; // knob 4: the drums' effects, to come
+        }
+        if(chompi_ && (knob == 1 || knob == 2))
+            return;
+        m_->SetParam(static_cast<Param>(param), p[param] + inc * step * 1.25f);
+    }
+
+    void DrumKnobClick(int knob)
+    {
+        const int pv = DRUM_PARAMS + 3 * drum_sel_;
+        if(!chompi_)
+        {
+            if(knob == 0)
+                drum_knob1_page_ ^= 1;
+            return;
+        }
+        // CHOMPI + click: back to defaults.
+        if(knob == 0 && drum_knob1_page_ == 1)
+        {
+            m_->SetDrumLength(kSteps);
+            drum_len_shown_at_ = last_tick_;
+        }
+        else if(knob == 0)
+        {
+            m_->SetParam(static_cast<Param>(pv), kParams[pv].def);
+            m_->SetParam(DRUM_ACCENT, kParams[DRUM_ACCENT].def);
+        }
+        else if(knob == 1 || knob == 2)
+            m_->SetParam(static_cast<Param>(pv + knob), kParams[pv + knob].def);
     }
 
     static constexpr Rgb kRed             = {1.f, 0.f, 0.f};
@@ -725,6 +1045,11 @@ class Ui
     static constexpr Rgb kSideBColour        = {1.f, .8f, 0.f};   // pattern side B: yellow
     static constexpr Rgb kProtectBColour     = {1.f, .3f, 0.f};   // side B, write-protected: orange
     static constexpr Rgb kImportColour       = {0.f, 1.f, .3f};   // MIDI files imported: green
+    // The drum voices' colours: BD SD LT HT CY OH CH.
+    static constexpr Rgb kDrumCol[kDrumVoices] = {
+        {1.f, .08f, .08f}, {1.f, .5f, 0.f}, {1.f, .85f, 0.f}, {.4f, 1.f, 0.f},
+        {0.f, .85f, 1.f},  {.6f, .3f, 1.f}, {.15f, .35f, 1.f},
+    };
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -922,8 +1247,20 @@ class Ui
      *  playhead: the keys there are patterns. */
     bool ShownSecondHalf() const
     {
-        if(mode_ == Mode::STEP && page_ == Page::PATTERN)
+        if(page_ == Page::PATTERN && (mode_ == Mode::STEP || drums_))
             return half_ == 1;
+        if(drums_)
+        {
+            // The drum part: follows its playhead once its second half has hits.
+            const Pattern& p   = m_->Current();
+            const int      cur = m_->CurrentDrumStep();
+            bool           second_used = false;
+            for(int i = 8; i < p.drum_length; i++)
+                second_used |= (p.drums[i] & 0x7f) != 0;
+            if(cur >= 0 && second_used)
+                return cur >= 8;
+            return half_ == 1;
+        }
         return SecondHalf();
     }
 
@@ -1429,9 +1766,10 @@ class Ui
      *  length dim white, the last one bright (white up to step 8, cyan from
      *  step 9), the rest dark. Middle C shows
      *  step 8 or 9, whichever keeps the last step in view. */
-    void DrawLength(LedFrame& f) const
+    void DrawLength(LedFrame& f) const { DrawLength(f, m_->Current().length); }
+
+    void DrawLength(LedFrame& f, int len) const
     {
-        const int len    = m_->Current().length;
         const bool second = len - 1 >= 8;
         for(int st = 0; st < kSteps; st++)
         {
@@ -1579,6 +1917,16 @@ class Ui
     uint32_t export_flash_at_       = 0x80000000u;
     bool     export_flash_ok_       = false;
     bool     import_seen_           = false;
+    int      drum_sel_              = 0;     // the drum voice the knobs and steps edit
+    bool     drum_acc_page_         = false; // step mode: the accent page
+    int      drum_knob1_page_       = 0;
+    bool     drum_clear_down_       = false;
+    uint32_t drum_len_shown_at_     = 0x80000000u;
+    uint32_t drum_hits_seen_[kDrumVoices] = {};
+    uint32_t drum_hit_at_[kDrumVoices]    = {0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u,
+                                             0x80000000u, 0x80000000u, 0x80000000u};
+    int      drum_step_seen_        = -1;
+    uint32_t drum_step_at_          = 0x80000000u;
     uint32_t import_flash_at_       = 0x80000000u;
     uint32_t pattern_down_at_       = 0;
     uint32_t protect_flash_at_      = 0x80000000u;
@@ -1626,6 +1974,7 @@ constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
 constexpr Rgb Ui::kProtectColour;
+constexpr Rgb Ui::kDrumCol[kDrumVoices];
 constexpr Rgb Ui::kImportColour;
 constexpr Rgb Ui::kSideBColour;
 constexpr Rgb Ui::kProtectBColour;

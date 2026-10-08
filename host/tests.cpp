@@ -1969,6 +1969,98 @@ static void TestDrumSequencing()
     CHECK(back[1].DrumsEmpty() && back[1].drum_length == kSteps);
 }
 
+static void TestDrumPanel()
+{
+    printf("drum side of the panel: steps, accent, clear, knobs, live, recording\n");
+    Rig r;
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.ui.OnDrums());
+    Pattern& p = r.m.Current();
+    p.ClearDrums();
+    // Step mode: a voice's page, its steps on and off.
+    r.Black(0); // BD
+    r.White(0), r.White(4), r.White(9), r.White(11); // steps 1 5 11 13 (white 10 = step 11)
+    CHECK(p.DrumHit(0, BD) && p.DrumHit(4, BD) && p.DrumHit(10, BD) && p.DrumHit(12, BD));
+    r.Black(1); // SD
+    r.White(4);
+    CHECK(p.DrumHit(4, SD) && !p.DrumHit(0, SD));
+    r.ui.Chompi(true), r.Black(4), r.ui.Chompi(false); // CHOMPI + A#3: OH
+    r.White(2);
+    CHECK(p.DrumHit(2, OH) && !p.DrumHit(2, CH));
+    r.Black(5); // C#4: the accent page
+    r.White(0);
+    CHECK(p.DrumAccent(0) && p.DrumHit(0, BD));
+    r.White(0);
+    CHECK(!p.DrumAccent(0));
+    // CLEAR tap: the selected voice's hits; held: the whole part.
+    r.Black(1); // SD
+    r.Key(Ui::kKeyClear);
+    CHECK(!p.DrumHit(4, SD) && p.DrumHit(4, BD));
+    // Knobs act on the selected voice; CHOMPI + knob 1: the accent level.
+    r.Black(0);
+    const float lv = r.m.settings.params[DRUM_PARAMS + 3 * BD];
+    r.ui.KnobTurn(0, -5, false);
+    CHECK(r.m.settings.params[DRUM_PARAMS + 3 * BD] < lv);
+    const float dk = r.m.settings.params[DRUM_PARAMS + 3 * BD + 2];
+    r.ui.KnobTurn(2, 5, false);
+    CHECK(r.m.settings.params[DRUM_PARAMS + 3 * BD + 2] > dk);
+    const float ac = r.m.settings.params[DRUM_ACCENT];
+    r.ui.Chompi(true), r.ui.KnobTurn(0, 5, false), r.ui.Chompi(false);
+    CHECK(r.m.settings.params[DRUM_ACCENT] > ac);
+    r.ui.KnobClick(0, r.now); // page 2: the drum part's length
+    for(int i = 0; i < 4; i++)
+        r.ui.KnobTurn(0, -1, false); // a step a click
+    CHECK(p.drum_length == 12 && p.length == 16);
+    r.ui.KnobClick(0, r.now);
+    const float tempo = r.m.settings.params[TEMPO];
+    r.ui.KnobTurn(4, 10, false); // the purple knob: tempo
+    CHECK(fabsf(TempoBpm(r.m.settings.params[TEMPO]) - TempoBpm(tempo) - 10.f) < 0.01f);
+    // The voice key lights in its colour.
+    LedFrame f;
+    r.Run(400); // past the swap's flash
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kBlack[0]].r > 0.5f && f.key[Ui::kBlack[1]].r < 0.3f);
+    // CLEAR held 1 s: the whole drum part.
+    r.ui.KeyDown(Ui::kKeyClear, r.now);
+    r.Run(1100);
+    r.ui.KeyUp(Ui::kKeyClear, r.now);
+    CHECK(p.DrumsEmpty());
+
+    // Live mode: black keys play; C#4 held: accented; recording writes them.
+    r.ui.SetMode(Ui::Mode::PITCH);
+    const uint32_t sd = r.m.DrumHitCount(SD);
+    r.Black(1);
+    r.Run(2);
+    CHECK(r.m.DrumHitCount(SD) == sd + 1);
+    // White keys: the last voice played, pitched; never recorded.
+    r.White(9);
+    r.Run(2);
+    CHECK(r.m.DrumHitCount(SD) == sd + 2);
+    r.ui.Loop(r.now); // record on
+    r.ui.Play();
+    r.Run(300);
+    r.ui.KeyDown(Ui::kKeyTranspose, r.now);
+    r.Black(0); // an accented BD
+    r.ui.KeyUp(Ui::kKeyTranspose, r.now);
+    r.White(10); // pitched: not recorded
+    r.Run(2);
+    int bd = -1, pitched = 0;
+    for(int i = 0; i < kSteps; i++)
+    {
+        if(p.DrumHit(i, BD))
+            bd = i;
+        pitched += p.DrumHit(i, SD);
+    }
+    CHECK(bd >= 0 && p.DrumAccent(bd) && pitched == 0);
+    r.ui.Play();
+    r.ui.Loop(r.now); // record off
+    // The pattern page works on the drums' side too.
+    r.Key(Ui::kKeyPattern);
+    r.White(2);
+    CHECK(r.m.CurrentPattern() == 2);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1999,6 +2091,7 @@ int main()
     TestDefaults();
     TestDrumVoices();
     TestDrumSequencing();
+    TestDrumPanel();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
