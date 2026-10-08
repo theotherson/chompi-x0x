@@ -323,9 +323,8 @@ static void TestPagesCopyClear()
     r.Run(2000);
     CHECK(r.m.CurrentPattern() == 2);
     r.ui.Play();
-    r.White(0), r.White(0);
-    r.Black(7); // the page's other side (B)
-    CHECK(r.ui.GetPage() == Ui::Page::PATTERN);
+    r.White(0); // pattern 1 (again would flip it to 1B)
+    CHECK(r.m.CurrentPattern() == 0);
     r.Black(7); // back to notes
     CHECK(r.ui.GetPage() == Ui::Page::NOTES);
 
@@ -1371,7 +1370,7 @@ static void TestWriteProtect()
     // A tap still opens the pattern page, and edits still work.
     r.Key(Ui::kKeyPattern);
     CHECK(r.ui.GetPage() == Ui::Page::PATTERN);
-    r.Key(Ui::kKeyPattern), r.Key(Ui::kKeyPattern); // side B, then closed
+    r.Key(Ui::kKeyPattern); // closed
     const bool was_on = r.S(2).on;
     r.White(2), r.White(2); // select step 3, then turn it on / off
     CHECK(r.S(2).on != was_on);
@@ -1437,37 +1436,52 @@ static void TestPatternPageWhileRunning()
 
 static void TestPatternSides()
 {
-    printf("patterns A / B: the pattern key's three taps, picking, copying, files\n");
+    printf("patterns A / B: per number; the current number's key flips it\n");
     Rig r;
     DemoPattern(r.m.patterns[0]);
-    // Tap 1: the page on the current pattern's side (A); tap 2: B; tap 3: closed.
-    r.Key(Ui::kKeyPattern);
+    r.Key(Ui::kKeyPattern); // the page; F#4 again closes it
     LedFrame f;
+    auto pink  = [](Rgb c) { return c.r > 0.9f && c.b > 0.4f && c.g < 0.3f; };
+    auto peach = [](Rgb c) { return c.r > 0.9f && c.g > 0.4f && c.b < 0.4f; };
+    // 1 again: 1A to 1B. Only key 1 changes colour.
+    r.White(0);
+    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
     r.ui.Draw(f, r.now);
-    const Rgb a = f.key[Ui::kKeyPattern];
-    CHECK(r.ui.GetPage() == Ui::Page::PATTERN && a.b > 0.3f); // pink
-    r.Key(Ui::kKeyPattern);
+    CHECK(peach(f.key[Ui::kWhite[0]]) && peach(f.key[Ui::kKeyPattern]));
+    r.m.patterns[PatternIndex(1, 0)].steps[0].on = true; // 2A in use: dim pink
+    r.m.patterns[PatternIndex(0, 1)].steps[0].on = true; // 1B too
     r.ui.Draw(f, r.now);
-    const Rgb b = f.key[Ui::kKeyPattern];
-    CHECK(r.ui.GetPage() == Ui::Page::PATTERN && b.g > 0.4f && b.b < 0.4f); // peach
-    r.White(4); // 5B
-    CHECK(r.m.CurrentPattern() == PatternIndex(4, 1));
+    CHECK(f.key[Ui::kWhite[1]].r > 0.05f && f.key[Ui::kWhite[1]].b > 0.3f * f.key[Ui::kWhite[1]].r);
+    // Another number: its own side (A); 1 keeps showing B.
+    r.White(1);
+    CHECK(r.m.CurrentPattern() == PatternIndex(1, 0));
+    r.ui.Draw(f, r.now);
+    const Rgb k1 = f.key[Ui::kWhite[0]]; // dim peach: 1 still shows B
+    CHECK(k1.r > 0.05f && k1.r < 0.5f && k1.g > 0.3f * k1.r && k1.b < 0.4f * k1.r);
+    r.White(0); // back to 1, on the side it showed: 1B
+    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
+    r.White(0); // and flip back: 1A
+    CHECK(r.m.CurrentPattern() == 0);
+    r.ui.Draw(f, r.now);
+    CHECK(pink(f.key[Ui::kWhite[0]]));
+    // Running: a flip waits for the bar; the key again switches at once.
+    r.ui.Play();
+    r.Run(100);
+    r.White(0);
+    CHECK(r.m.CurrentPattern() == 0 && r.m.QueuedPattern() == PatternIndex(0, 1));
+    r.White(0);
+    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
+    r.ui.Play();
+    r.White(0); // stopped: 1A at once
+    CHECK(r.m.CurrentPattern() == 0);
     r.Key(Ui::kKeyPattern);
     CHECK(r.ui.GetPage() == Ui::Page::NOTES);
-    // Opening again starts on B now (the current pattern's side).
-    r.Key(Ui::kKeyPattern);
-    r.White(0); // 1B
-    CHECK(r.m.CurrentPattern() == PatternIndex(0, 1));
-    r.Key(Ui::kKeyPattern); // A
-    r.White(0);             // 1A
-    CHECK(r.m.CurrentPattern() == 0);
-    r.Key(Ui::kKeyPattern); // closed
     // COPY + PATTERN: 1A to 1B.
     r.ui.KeyDown(Ui::kKeyCopy, r.now);
     r.Key(Ui::kKeyPattern);
     r.ui.KeyUp(Ui::kKeyCopy, r.now);
     CHECK(r.m.patterns[PatternIndex(0, 1)] == r.m.patterns[0] && r.ui.GetPage() == Ui::Page::NOTES);
-    // Locked: A red, B orange.
+    // Locked: A red.
     r.m.SetProtected(true);
     r.Run(1000);
     r.ui.Draw(f, r.now);

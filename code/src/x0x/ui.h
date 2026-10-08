@@ -32,11 +32,10 @@
  *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16
  *                                  (when let go). Running, it waits for the
  *                                  bar; the same key again switches at once.
- *                                  Each number has an A and a B side: the
- *                                  first tap opens the page on the current
- *                                  pattern's side, the second flips to the
- *                                  other, the third closes it (A pink, B
- *                                  peach; red / orange when protected). On
+ *                                  Each number has an A and a B side, shown
+ *                                  in its own colour (A pink, B peach; red /
+ *                                  orange when protected): the current
+ *                                  number's key again flips it, 1A to 1B. On
  *                                  the page, a pattern key held 2 s exports
  *                                  every pattern as a MIDI file to /X0X/MIDI
  *                                  (keys flash white; red if it failed).
@@ -265,16 +264,14 @@ class Ui
         if(k == kKeyPattern && pattern_down_)
         {
             pattern_down_ = false; // let go before the 2 s: a tap
-            PatternKeyTap();
+            TogglePage(Page::PATTERN);
         }
         if(k == pat_key_ && pat_key_step_ >= 0)
         {
-            // A pattern key let go before the 2 s export: pick that pattern.
-            // Running, the first press queues it, a second switches now.
-            const int i = PatternIndex(pat_key_step_, pattern_side_);
+            const int n   = pat_key_step_;
             pat_key_step_ = -1;
             if(page_ == Page::PATTERN)
-                m_->SelectPattern(i, m_->QueuedPattern() == i);
+                PickPattern(n);
         }
         if(k == kKeyView && quant_down_)
         {
@@ -810,26 +807,37 @@ class Ui
         return m_->Protected() ? kProtectColour : kUnprotectColour;
     }
 
-    /** The side the pattern key shows: the page's, else the pattern's. */
-    int ShownSide() const { return page_ == Page::PATTERN ? pattern_side_ : PatternSide(m_->CurrentPattern()); }
-
-    /** A tap of the pattern key: open the page on the current pattern's
-     *  side, then flip to the other side, then close. */
-    void PatternKeyTap()
+    /** The side number n (0-15) shows on the pattern page: a queued
+     *  pattern's, the current pattern's, else the side it last showed. */
+    int SideOf(int n) const
     {
-        if(page_ != Page::PATTERN)
+        const int q = m_->QueuedPattern(), cur = m_->CurrentPattern();
+        if(q >= 0 && PatternNumber(q) == n)
+            return PatternSide(q);
+        if(PatternNumber(cur) == n)
+            return PatternSide(cur);
+        return side_of_[n];
+    }
+
+    /** A pattern key let go on the pattern page (not held for the export).
+     *  Another number: pick it, on the side it shows. The current number:
+     *  flip it to its other side (1A to 1B). Running, the change waits for
+     *  the bar, and the queued number again switches at once. */
+    void PickPattern(int n)
+    {
+        const int q = m_->QueuedPattern(), cur = m_->CurrentPattern();
+        int       i;
+        if(q >= 0 && PatternNumber(q) == n)
         {
-            page_            = Page::PATTERN;
-            pattern_side_    = PatternSide(m_->CurrentPattern());
-            pattern_flipped_ = false;
+            m_->SelectPattern(q, true);
+            return;
         }
-        else if(!pattern_flipped_)
-        {
-            pattern_side_    = 1 - pattern_side_;
-            pattern_flipped_ = true;
-        }
+        if(PatternNumber(cur) == n)
+            i = PatternIndex(n, 1 - PatternSide(cur));
         else
-            page_ = Page::NOTES;
+            i = PatternIndex(n, side_of_[n]);
+        side_of_[n] = PatternSide(i);
+        m_->SelectPattern(i, false);
     }
 
     /** Which of 8 / 9 middle C stands for now. On the pattern page that's
@@ -875,7 +883,7 @@ class Ui
         Pattern& pat = m_->Current();
         if(held_[kKeyCopy])
         {
-            const int side = page_ == Page::PATTERN ? pattern_side_ : PatternSide(m_->CurrentPattern());
+            const int side = page_ == Page::PATTERN ? SideOf(step) : PatternSide(m_->CurrentPattern());
             const int to   = PatternIndex(step, side);
             if(to != m_->CurrentPattern())
             {
@@ -1117,7 +1125,7 @@ class Ui
     void DrawStepMode(LedFrame& f, uint32_t now, bool blink, int cur_step, bool step_lit) const
     {
         const Pattern& pat = m_->Current();
-        const Rgb      pc  = page_ == Page::PATTERN ? PatternColour(pattern_side_) : kPageColour[static_cast<int>(page_)];
+        const Rgb      pc  = kPageColour[static_cast<int>(page_)];
 
         ForEachShownStep(
             [&](int step) {
@@ -1133,13 +1141,21 @@ class Ui
                         break;
                     case Page::PATTERN:
                     {
-                        const int i = PatternIndex(step, pattern_side_);
-                        if(i == m_->CurrentPattern())
-                            c = pc;
-                        else if(i == m_->QueuedPattern())
-                            c = blink ? pc : Rgb{};
+                        // Each number in its own side's colour.
+                        const int  i   = PatternIndex(step, SideOf(step));
+                        const Rgb  sc  = PatternColour(PatternSide(i));
+                        const int  cur = m_->CurrentPattern();
+                        if(i == m_->QueuedPattern())
+                        {
+                            // Waiting for the bar: blinks, against the
+                            // current side if it's this number's other side.
+                            const Rgb off = PatternNumber(cur) == step ? PatternColour(PatternSide(cur)) : Rgb{};
+                            c             = blink ? sc : off;
+                        }
+                        else if(i == cur)
+                            c = sc;
                         else if(!m_->patterns[i].Empty())
-                            c = Scale(pc, 0.12f);
+                            c = Scale(sc, 0.12f);
                         // Held towards the export: fills white.
                         if(step == pat_key_step_ && now - pat_key_at_ > 300)
                             c = Scale(Rgb{1.f, 1.f, 1.f},
@@ -1177,7 +1193,8 @@ class Ui
         f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
         f.key[kKeyView]      = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         // The pattern key: pink, or red while the patterns are write-protected.
-        f.key[kKeyPattern] = Scale(PatternColour(ShownSide()), page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
+        f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentPattern())),
+                                   page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
         if(now - copied_at_ < 300)
             f.key[kKeyPattern] = PatternColour(1 - PatternSide(m_->CurrentPattern())); // copied to the other side
         if(pattern_down_ && now - pattern_down_at_ > 300)
@@ -1455,8 +1472,7 @@ class Ui
     bool     drums_                 = false;
     bool     quant_down_            = false; // CHOMPI + D#4 down in live mode
     bool     pattern_down_          = false; // step mode: F#4 down (tap: page, hold: protect)
-    int      pattern_side_          = 0;     // the side the pattern page shows
-    bool     pattern_flipped_       = false; // the page has flipped side since it opened
+    int      side_of_[kPatternNumbers] = {}; // the side each number last showed (0 = A)
     int      pat_key_               = -1;    // pattern page: the key down, its number,
     int      pat_key_step_          = -1;    // picked when let go or exporting at 2 s
     uint32_t pat_key_at_            = 0;
