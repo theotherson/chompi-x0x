@@ -1658,6 +1658,17 @@ static void TestMidiImport()
     late.steps[5].on = true, late.steps[5].note = 24, late.steps[5].octave = 1, late.steps[5].accent = true;
     n = WriteMidiFile(late, 133.f, 0, "x", buf, sizeof buf);
     CHECK(ReadMidiFile(buf, n, back) && back == late);
+    // Drums round-trip too (channel 10), with the bassline.
+    Pattern both;
+    DemoPattern(both);
+    both.drums[0] = 1 << BD | kDrumAccent, both.drums[4] = 1 << SD | 1 << CH, both.drums[14] = 1 << OH;
+    n = WriteMidiFile(both, 120.f, 0, "x", buf, sizeof buf);
+    CHECK(ReadMidiFile(buf, n, back) && back == both);
+    // A drums-only file reads as a drum part.
+    Pattern drums_only;
+    drums_only.drums[2] = 1 << LT;
+    n = WriteMidiFile(drums_only, 120.f, 0, "x", buf, sizeof buf);
+    CHECK(ReadMidiFile(buf, n, back) && back.BassEmpty() && back.DrumHit(2, LT));
 
     // A DAW-style file: format 1, 480 ticks a beat, two tracks, a chord, a
     // note out of range, two bars long (only the first is kept).
@@ -1902,6 +1913,62 @@ static void TestDrumVoices()
     CHECK(rms_db(choked, 0.25, 0.35) < rms_db(open, 0.25, 0.35) - 30.0);
 }
 
+static void TestDrumSequencing()
+{
+    printf("drum part: plays on its steps, own length, live hits, recording, files\n");
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ClearBass();
+    p.drums[0] = 1 << BD | kDrumAccent;
+    p.drums[4] = 1 << SD;
+    p.drum_length = 6; // a polymeter against the bass's 16
+    r.m.Play();
+    std::vector<int> bd_steps;
+    uint32_t last = r.m.DrumHitCount(BD);
+    for(int t = 0; t < 4000; t++)
+    {
+        r.Run(1);
+        if(r.m.DrumHitCount(BD) != last)
+            last = r.m.DrumHitCount(BD), bd_steps.push_back(static_cast<int>(r.m.StepCount()));
+    }
+    // 120 BPM sixteenths: 4 s is 32 steps; a BD every 6 steps from the first.
+    CHECK(bd_steps.size() >= 5);
+    for(size_t i = 1; i < bd_steps.size(); i++)
+        CHECK(bd_steps[i] - bd_steps[i - 1] == 6);
+    CHECK(r.m.DrumHitCount(SD) == bd_steps.size() || r.m.DrumHitCount(SD) + 1 == bd_steps.size());
+    // Live hits play, and record (to the nearest step) only when recording.
+    const uint32_t ch = r.m.DrumHitCount(CH);
+    r.m.DrumHit(CH, false);
+    r.Run(2);
+    CHECK(r.m.DrumHitCount(CH) == ch + 1);
+    bool any = false;
+    for(int i = 0; i < kSteps; i++)
+        any |= p.DrumHit(i, CH);
+    CHECK(!any);
+    r.m.SetRecording(true);
+    r.m.DrumHit(CH, true);
+    r.Run(2);
+    r.m.SetRecording(false);
+    int recorded = -1;
+    for(int i = 0; i < kSteps; i++)
+        if(p.DrumHit(i, CH))
+            recorded = i;
+    CHECK(recorded >= 0 && recorded < 6 && p.DrumAccent(recorded));
+    r.m.Stop();
+    // Clearing the bassline keeps the drums; files keep both.
+    r.m.ClearPattern();
+    CHECK(!p.DrumsEmpty() && p.drum_length == 6);
+    static char buf[24576];
+    CHECK(WritePatterns(r.m.patterns, kPatterns, buf, sizeof buf) > 0 && strstr(buf, "drums 6 81"));
+    static Pattern back[kPatterns];
+    ReadPatterns(buf, back, kPatterns);
+    CHECK(back[r.m.CurrentPattern()] == p);
+    char old[] = "pattern 2\nlength 16\nstep 1 0 0 1 0 0 0 0\n"; // no drums line: none
+    back[1].drums[3] = 0xff;
+    ReadPatterns(old, back, kPatterns);
+    CHECK(back[1].DrumsEmpty() && back[1].drum_length == kSteps);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1931,6 +1998,7 @@ int main()
     TestDelayTime();
     TestDefaults();
     TestDrumVoices();
+    TestDrumSequencing();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

@@ -18,6 +18,9 @@
  *    length 16
  *    step 1 12 0 1 1 0 0 0     step, note 0-24, octave, on, accent, slide, tie, nudge
  *    ...
+ *    drums 16 81 00 40 ...     the drum part: its length, then each step as
+ *                              hex: bits 0-6 the voices (BD SD LT HT CY OH
+ *                              CH), bit 7 the accent (absent: no drums)
  */
 #pragma once
 #include "dsp.h"
@@ -71,10 +74,27 @@ struct Step
 
 constexpr int kStepTicks = 6; // MIDI clock ticks a step (nudge counts these)
 
+constexpr int     kDrumVoices = 7;    // BD SD LT HT CY OH CH, as x0x::Drum
+constexpr uint8_t kDrumAccent = 0x80; // a drum step's accent bit
+
 struct Pattern
 {
     Step    steps[kSteps];
     uint8_t length = kSteps;
+    /** The drum part, linked to the bassline: per step, a bit for each
+     *  voice and one for the accent; its own length (polymeters). */
+    uint8_t drums[kSteps] = {};
+    uint8_t drum_length   = kSteps;
+
+    bool DrumHit(int step, int voice) const { return (drums[step] >> voice) & 1; }
+    bool DrumAccent(int step) const { return (drums[step] & kDrumAccent) != 0; }
+    bool DrumsEmpty() const
+    {
+        for(int i = 0; i < kSteps; i++)
+            if(drums[i] & 0x7f)
+                return false;
+        return true;
+    }
 
     /** Step i as it plays with quantize on, to a grid of `grid` steps.
      *  Only notes with recorded timing (a nudge) move: each to the nearest
@@ -115,25 +135,38 @@ struct Pattern
 
     void Clear()
     {
+        ClearBass();
+        ClearDrums();
+    }
+    void ClearBass()
+    {
         for(int i = 0; i < kSteps; i++)
             steps[i] = Step{};
         length = kSteps;
     }
+    void ClearDrums()
+    {
+        for(int i = 0; i < kSteps; i++)
+            drums[i] = 0;
+        drum_length = kSteps;
+    }
 
-    bool Empty() const
+    bool BassEmpty() const
     {
         for(int i = 0; i < kSteps; i++)
             if(steps[i].on)
                 return false;
         return true;
     }
+    /** Nothing in it: no bass notes and no drum hits. */
+    bool Empty() const { return BassEmpty() && DrumsEmpty(); }
 
     bool operator==(const Pattern& o) const
     {
-        if(length != o.length)
+        if(length != o.length || drum_length != o.drum_length)
             return false;
         for(int i = 0; i < kSteps; i++)
-            if(!(steps[i] == o.steps[i]))
+            if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i])
                 return false;
         return true;
     }
@@ -163,6 +196,24 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
                 return 0;
             len += w;
         }
+        if(!pat.DrumsEmpty() || pat.drum_length != kSteps)
+        {
+            w = snprintf(buf + len, size - len, "drums %d", pat.drum_length);
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+            for(int i = 0; i < kSteps; i++)
+            {
+                w = snprintf(buf + len, size - len, " %02x", pat.drums[i]);
+                if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                    return 0;
+                len += w;
+            }
+            if(len + 1 >= size)
+                return 0;
+            buf[len++] = '\n';
+            buf[len]   = '\0';
+        }
     }
     return len;
 }
@@ -186,6 +237,25 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
             pat         = i >= 0 && i < count ? &pats[i] : nullptr;
             if(pat)
                 pat->Clear();
+        }
+        else if(pat && strncmp(line, "drums ", 6) == 0)
+        {
+            char* p = line + 6;
+            char* end;
+            const long l = strtol(p, &end, 10);
+            if(end != p)
+            {
+                pat->drum_length = static_cast<uint8_t>(ClampInt(static_cast<int>(l), 1, kSteps));
+                p = end;
+                for(int i = 0; i < kSteps; i++)
+                {
+                    const long v = strtol(p, &end, 16);
+                    if(end == p)
+                        break;
+                    pat->drums[i] = static_cast<uint8_t>(v & 0xff);
+                    p = end;
+                }
+            }
         }
         else if(pat && strncmp(line, "length ", 7) == 0)
             pat->length = static_cast<uint8_t>(ClampInt(atoi(line + 7), 1, kSteps));

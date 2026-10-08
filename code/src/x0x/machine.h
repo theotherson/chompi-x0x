@@ -10,6 +10,7 @@
  */
 #pragma once
 #include "arp.h"
+#include "drums.h"
 #include "fx.h"
 #include "params.h"
 #include "pattern.h"
@@ -47,6 +48,7 @@ class Machine
     {
         sr_ = sample_rate;
         voice_.Init(sample_rate);
+        drums_.Init(sample_rate);
         fx_.Init(sample_rate, delay_mem, delay_frames);
         seq_.Init(sample_rate);
         for(int i = 0; i < kPatterns; i++)
@@ -72,7 +74,8 @@ class Machine
         if(Running())
             return;
         seq_.SetPattern(&patterns[settings.pattern]);
-        queued_ = -1;
+        queued_   = -1;
+        drum_pos_ = -1; // the first step is the drums' first
         seq_.Start();
         if(options.transport_out && !ExternalClock())
             PushMidi(0xFA);
@@ -161,9 +164,36 @@ class Machine
         PatternEdited();
     }
 
+    // ------------------------------------------------------------ drums
+
+    /** A drum hit from the panel (main loop): played at the start of the
+     *  next audio block, and recorded into the drum part when recording
+     *  with the pattern running (to the nearest step). */
+    void DrumHit(int voice, bool accent)
+    {
+        const int next = (hit_head_ + 1) % kHitQueue;
+        if(next == hit_tail_ || voice < 0 || voice >= kDrumVoices)
+            return; // full: dropped
+        hits_[hit_head_] = static_cast<uint8_t>(voice | (accent ? kDrumAccent : 0));
+        hit_head_        = next;
+    }
+
+    /** The drum part's step playing now (its own length), -1 when stopped. */
+    int CurrentDrumStep() const { return Running() ? drum_pos_ : -1; }
+
+    void SetDrumLength(int len)
+    {
+        Current().drum_length = static_cast<uint8_t>(ClampInt(len, 1, kSteps));
+        pattern_changes++;
+    }
+
+    /** Counts drum hits as they play (pattern or live), for the LEDs. */
+    uint32_t DrumHitCount(int voice) const { return drum_hit_count_[voice]; }
+
+    /** Clears this pattern's bassline (its drum part stays). */
     void ClearPattern()
     {
-        Current().Clear();
+        Current().ClearBass();
         pattern_changes++;
     }
 
@@ -356,7 +386,8 @@ class Machine
         if(!options.transport_in)
             return;
         seq_.SetPattern(&patterns[settings.pattern]);
-        queued_ = -1;
+        queued_   = -1;
+        drum_pos_ = -1; // the first step is the drums' first
         seq_.Start();
     }
 
@@ -448,6 +479,26 @@ class Machine
         fx_.Set(fs);
         if(!seq_.Queued())
             queued_ = -1;
+        for(int v = 0; v < kDrumVoices; v++)
+        {
+            DrumParams& dp = drums_.Params(static_cast<Drum>(v));
+            dp.level       = p[DRUM_PARAMS + 3 * v];
+            dp.attack      = p[DRUM_PARAMS + 3 * v + 1];
+            dp.decay       = p[DRUM_PARAMS + 3 * v + 2];
+        }
+        float drum[64];
+        for(size_t i = 0; i < n; i++)
+            drum[i] = 0.f;
+        // Live drum hits from the panel.
+        while(hit_tail_ != hit_head_)
+        {
+            const uint8_t h = hits_[hit_tail_];
+            hit_tail_       = (hit_tail_ + 1) % kHitQueue;
+            const int v     = h & 0x7f;
+            PlayDrum(v, (h & kDrumAccent) != 0);
+            if(Recording() && Running())
+                RecordDrum(v, (h & kDrumAccent) != 0);
+        }
 
         Sequencer::Event ev[Sequencer::kMaxEvents + 4];
         int              count = 0;
@@ -494,28 +545,75 @@ class Machine
             if(at > pos)
             {
                 voice_.Process(vp_, mono + pos, at - pos);
+                drums_.Process(drum + pos, at - pos);
                 pos = at;
             }
             Handle(ev[i]);
         }
         if(pos < n)
+        {
             voice_.Process(vp_, mono + pos, n - pos);
+            drums_.Process(drum + pos, n - pos);
+        }
         if(arp_gate_left_ >= 0.0)
             arp_gate_left_ -= n;
         if(arp_clock_ > 0.0)
             arp_clock_ -= n;
 
         fx_.Process(mono, left, right, n);
+        // The drums join after the bass's effects (their own come later).
         const float vol = settings.params[VOLUME] * settings.params[VOLUME] * 1.5f;
         for(size_t i = 0; i < n; i++)
         {
-            left[i]  = SoftLimit(left[i] * vol);
-            right[i] = SoftLimit(right[i] * vol);
+            left[i]  = SoftLimit((left[i] + drum[i]) * vol);
+            right[i] = SoftLimit((right[i] + drum[i]) * vol);
         }
     }
 
   private:
     static constexpr int kArpEvent = -2; // Event::step of an arpeggiator event
+    static constexpr int kHitQueue = 16;
+
+    /** GM drum notes, for MIDI out (channel 10). */
+    static constexpr uint8_t kDrumMidi[kDrumVoices] = {36, 38, 45, 50, 49, 46, 42};
+
+    void PlayDrum(int v, bool accent)
+    {
+        drums_.Trigger(static_cast<Drum>(v), accent ? settings.params[DRUM_ACCENT] : 0.f);
+        drum_hit_count_[v]++;
+        if(options.notes_out)
+        {
+            PushMidi(0x99, kDrumMidi[v], accent ? 127 : 100);
+            PushMidi(0x89, kDrumMidi[v], 0);
+        }
+    }
+
+    /** A step of the pattern: the drum part's next step (its own length). */
+    void DrumStep()
+    {
+        const Pattern& pat = Current();
+        drum_pos_          = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
+        const uint8_t s    = pat.drums[drum_pos_];
+        for(int v = 0; v < kDrumVoices; v++)
+            if((s >> v) & 1)
+                PlayDrum(v, (s & kDrumAccent) != 0);
+    }
+
+    /** A live hit into the drum part: the step playing, or the next one if
+     *  it's more than halfway through. */
+    void RecordDrum(int v, bool accent)
+    {
+        if(drum_pos_ < 0)
+            return;
+        Pattern&  pat  = Current();
+        const int len  = ClampInt(pat.drum_length, 1, kSteps);
+        int       step = drum_pos_;
+        if(seq_.StepPhase() > 0.5f)
+            step = (step + 1) % len;
+        pat.drums[step] = static_cast<uint8_t>(pat.drums[step] | (1 << v) | (accent ? kDrumAccent : 0));
+        pattern_changes++;
+        record_count_++;
+    }
 
     Sequencer::Event ArpEvent(Sequencer::Event::Type type, double offset) const
     {
@@ -601,6 +699,7 @@ class Machine
                 break;
             case Sequencer::Event::STEP:
                 step_count_++;
+                DrumStep();
                 if(ArpEngaged() && (arp_.Active() || arp_note_ >= 0))
                     ArpStep(e.offset, e.step);
                 // A key held while recording ties through the steps it covers.
@@ -620,7 +719,8 @@ class Machine
             case Sequencer::Event::PATTERN_CHANGE:
                 if(queued_ >= 0)
                     settings.pattern = queued_;
-                queued_ = -1;
+                queued_   = -1;
+                drum_pos_ = -1; // the new pattern's drums from their top
                 settings_changes++;
                 break;
         }
@@ -705,6 +805,11 @@ class Machine
 
     float       sr_ = 48000.f;
     Voice       voice_;
+    Drums       drums_;
+    int         drum_pos_ = -1;
+    uint8_t     hits_[kHitQueue] = {};
+    volatile int hit_head_ = 0, hit_tail_ = 0;
+    uint32_t    drum_hit_count_[kDrumVoices] = {};
     VoiceParams vp_;
     Fx          fx_;
     Arp         arp_;
@@ -744,5 +849,7 @@ class Machine
     };
     OutQueue out_[2];
 };
+
+constexpr uint8_t Machine::kDrumMidi[kDrumVoices];
 
 } // namespace x0x

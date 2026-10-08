@@ -45,6 +45,10 @@ enum Param : uint8_t
     ARP_ON,
     DELAY_FREE,      // the free delay time (push knob 4 and turn)
     DELAY_FREE_ON,   // the delay on its free time, not synced
+    // The drums: each voice's level, attack (click) and decay, as x0x::Drum
+    // (BD SD LT HT CY OH CH), then the accent level.
+    DRUM_PARAMS,
+    DRUM_ACCENT = DRUM_PARAMS + 3 * 7,
     NUM_PARAMS
 };
 
@@ -87,6 +91,28 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"arp_on",      0.f,      2, 0},   // CHOMPI + F#4 in live mode
     {"delay_free",  .55f,     0, 0},   // 30 ms .. 1.9 s, exponential (~300 ms)
     {"delay_free_on", 0.f,    2, 0},   // synced (0) or free (1)
+    {"bd_level", .75f,      0, 0},
+    {"bd_attack", .5f,       0, 0},
+    {"bd_decay", .5f,       0, 0},
+    {"sd_level", .75f,      0, 0},
+    {"sd_attack", .5f,       0, 0},
+    {"sd_decay", .5f,       0, 0},
+    {"lt_level", .75f,      0, 0},
+    {"lt_attack", .5f,       0, 0},
+    {"lt_decay", .5f,       0, 0},
+    {"ht_level", .75f,      0, 0},
+    {"ht_attack", .5f,       0, 0},
+    {"ht_decay", .5f,       0, 0},
+    {"cy_level", .75f,      0, 0},
+    {"cy_attack", .5f,       0, 0},
+    {"cy_decay", .5f,       0, 0},
+    {"oh_level", .75f,      0, 0},
+    {"oh_attack", .5f,       0, 0},
+    {"oh_decay", .5f,       0, 0},
+    {"ch_level", .75f,      0, 0},
+    {"ch_attack", .5f,       0, 0},
+    {"ch_decay", .5f,       0, 0},
+    {"drum_accent", .5f,     0, 0},   // accent: up to 3x as loud
 };
 // clang-format on
 

@@ -9,6 +9,8 @@
  *  file played back into the x0x accents the same notes), ties as longer
  *  notes, and slides as notes overlapping the next one. Gates are half a
  *  step, as the sequencer plays them. Swing and transpose are left out.
+ *  The drum part goes on channel 10 as GM drum notes (BD 36, SD 38, LT 45,
+ *  HT 50, CY 49, OH 46, CH 42), accents at velocity 120.
  */
 #pragma once
 #include "pattern.h"
@@ -23,6 +25,23 @@ constexpr int kMidiTicksPerStep  = kMidiFilePpq / 4;               // a sixteent
 constexpr int kMidiTicksPerNudge = kMidiTicksPerStep / kStepTicks; // a MIDI clock tick
 constexpr int kMidiAccentVel     = 120;
 constexpr int kMidiNormalVel     = 90;
+constexpr uint8_t kGmDrum[7]     = {36, 38, 45, 50, 49, 46, 42}; // BD SD LT HT CY OH CH
+
+/** A GM drum note to the 606 voice that plays it, -1 for none. */
+inline int GmToDrum(int note)
+{
+    switch(note)
+    {
+        case 35: case 36: return 0;                           // kicks
+        case 37: case 38: case 39: case 40: return 1;         // snares, rim, clap
+        case 41: case 43: case 45: case 47: return 2;         // low toms
+        case 48: case 50: return 3;                           // high toms
+        case 49: case 51: case 52: case 53: case 55: case 57: case 59: return 4; // cymbals
+        case 46: return 5;                                    // open hat
+        case 42: case 44: return 6;                           // closed, pedal hat
+        default: return -1;
+    }
+}
 
 namespace detail
 {
@@ -71,7 +90,7 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
         e[i] = pat.PlayedStep(i, grid);
     auto start = [&](int i) { return static_cast<uint32_t>(i * kMidiTicksPerStep + e[i].nudge * kMidiTicksPerNudge); };
 
-    detail::MidiEvent ev[2 * kSteps];
+    detail::MidiEvent ev[2 * kSteps * (1 + 7)];
     int               n = 0;
     for(int i = 0; i < len; i++)
     {
@@ -94,12 +113,23 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
                           static_cast<uint8_t>(e[i].accent ? kMidiAccentVel : kMidiNormalVel)};
         ev[n++]        = {end, 0x80, static_cast<uint8_t>(note), 0};
     }
+    // The drum part, channel 10: each hit an eighth of a beat long.
+    const bool drums = !pat.DrumsEmpty();
+    for(int i = 0; drums && i < pat.drum_length; i++)
+        for(int v = 0; v < 7; v++)
+            if(pat.DrumHit(i, v))
+            {
+                const uint32_t t = static_cast<uint32_t>(i * kMidiTicksPerStep);
+                const uint8_t  vel = static_cast<uint8_t>(pat.DrumAccent(i) ? kMidiAccentVel : kMidiNormalVel);
+                ev[n++] = {t, 0x99, kGmDrum[v], vel};
+                ev[n++] = {t + kMidiTicksPerStep / 2, 0x89, kGmDrum[v], 0};
+            }
     // In time order; at the same tick, offs before ons.
     for(int a = 1; a < n; a++)
         for(int b = a; b > 0; b--)
         {
             const detail::MidiEvent &x = ev[b - 1], &y = ev[b];
-            if(x.t < y.t || (x.t == y.t && !(x.status == 0x90 && y.status == 0x80)))
+            if(x.t < y.t || (x.t == y.t && !((x.status & 0xf0) == 0x90 && (y.status & 0xf0) == 0x80)))
                 break;
             const detail::MidiEvent t = ev[b - 1];
             ev[b - 1]                 = ev[b];
@@ -131,7 +161,8 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
         t = ev[i].t;
     }
     // The end of the track: the end of the pattern (or the last note off).
-    const uint32_t end = static_cast<uint32_t>(len * kMidiTicksPerStep);
+    const int      bars_len = drums && pat.drum_length > len ? pat.drum_length : len;
+    const uint32_t end      = static_cast<uint32_t>(bars_len * kMidiTicksPerStep);
     w.Var(end > t ? end - t : 0), w.Byte(0xff), w.Byte(0x2f), w.Byte(0);
 
     if(!w.ok)
@@ -224,6 +255,8 @@ inline bool ReadMidiFile(const uint8_t* d, size_t size, Pattern& out)
     static constexpr int kMaxNotes = 256;
     Note                 notes[kMaxNotes];
     int                  count    = 0;
+    Note                 dhits[kMaxNotes]; // drum hits: voice in `pitch`
+    int                  dcount   = 0;
     uint32_t             file_end = 0;
     const uint32_t       horizon  = static_cast<uint32_t>(kSteps * tps);
 
@@ -295,6 +328,14 @@ inline bool ReadMidiFile(const uint8_t* d, size_t size, Pattern& out)
                 data2 = t.U8();
             if(!t.ok || data > 0x7f || data2 > 0x7f)
                 return false;
+            if((status & 0x0f) == 9)
+            {
+                // Channel 10: drum hits, by GM note (lengths don't matter).
+                const int v = GmToDrum(data);
+                if(hi == 0x90 && data2 > 0 && v >= 0 && now < horizon && dcount < kMaxNotes)
+                    dhits[dcount++] = {now, now, static_cast<uint8_t>(v), static_cast<uint8_t>(data2)};
+                continue;
+            }
             if(hi == 0x90 && data2 > 0)
             {
                 close(data, now); // the same pitch again: the old one ends
@@ -312,7 +353,7 @@ inline bool ReadMidiFile(const uint8_t* d, size_t size, Pattern& out)
         if(now > file_end)
             file_end = now;
     }
-    if(!r.ok || count == 0)
+    if(!r.ok || (count == 0 && dcount == 0))
         return false;
     for(int i = 0; i < count; i++)
         if(notes[i].off > file_end)
@@ -383,6 +424,16 @@ inline bool ReadMidiFile(const uint8_t* d, size_t size, Pattern& out)
         }
         if(next < p.length && next == last + 1 && n.off > notes[at[next]].on)
             p.steps[last].slide = true;
+    }
+    // The drums: each hit on its nearest step; 112 and up an accent.
+    p.drum_length = dcount ? p.length : static_cast<uint8_t>(kSteps);
+    for(int i = 0; i < dcount; i++)
+    {
+        const int step = static_cast<int>(dhits[i].on / tps + 0.5f);
+        if(step >= p.drum_length)
+            continue;
+        p.drums[step] = static_cast<uint8_t>(p.drums[step] | (1 << dhits[i].pitch) | (dhits[i].vel >= 112 ? kDrumAccent : 0));
+        any           = true;
     }
     if(!any)
         return false;

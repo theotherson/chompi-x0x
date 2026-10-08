@@ -508,7 +508,7 @@ class Ui
         if(mode_ == Mode::STEP && !chompi_ && held_[kKeyClear] && !clear_done_
            && now - clear_down_ >= kClearHoldMs)
         {
-            m_->Current().Clear();
+            m_->Current().ClearBass();
             m_->PatternEdited();
             clear_done_ = true;
             cleared_at_ = now;
