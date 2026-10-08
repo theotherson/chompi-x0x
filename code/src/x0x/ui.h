@@ -24,8 +24,10 @@
  *                                  ACCENT, SLIDE, TIE. On a page the step keys
  *                                  toggle that flag; the page key again goes
  *                                  back to notes
- *    black key 6 (C#4)             transpose mode on/off: while on, any key
- *                                  sets the transpose (middle C = none)
+ *    black key 6 (C#4)             transpose mode on: while on, any key sets
+ *                                  the transpose (middle C = none); tap a key
+ *                                  twice quickly to set it and leave (or hold
+ *                                  C#4 2 s)
  *    black key 7 (D#4)             view steps 1-8 / 9-16
  *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16.
  *                                  Running, it waits for the bar; the same key
@@ -50,7 +52,8 @@
  *                                  and slide on the last step, A#3 adds a tie
  *    CHOMPI + C#4                  transpose mode on/off: transposes the
  *                                  arpeggio while the arpeggiator is on, the
- *                                  pattern otherwise
+ *                                  pattern otherwise; a key tapped twice
+ *                                  quickly also sets it and leaves
  *    CHOMPI + D#4                  view steps 1-8 / 9-16
  *    CHOMPI + PLAY                 arpeggiator on/off
  *    CHOMPI + LOOP                 arpeggiator latch: latched, each key adds
@@ -122,6 +125,7 @@ class Ui
 
     static constexpr uint32_t kClearHoldMs  = 1000;
     static constexpr uint32_t kTransposeExitMs = 2000;
+    static constexpr uint32_t kDoubleTapMs     = 350;
     static constexpr uint32_t kShowLengthMs = 1200;
     static constexpr uint32_t kLoopClearMs = 2000;
 
@@ -172,7 +176,7 @@ class Ui
             return;
         held_[k] = true;
         if(mode_ == Mode::PITCH)
-            PitchKey(k);
+            PitchKey(k, now);
         else
             StepModeKey(k, now);
     }
@@ -265,7 +269,7 @@ class Ui
         else if(p == TEMPO)
             m_->SetParam(p, v + inc / 140.f); // 1 BPM a click
         else
-            m_->SetParam(p, v + inc * (fast ? 0.024f : 0.008f));
+            m_->SetParam(p, v + inc * (fast ? 0.024f : 0.008f) * KnobSpeed(p));
     }
 
     void KnobClick(int knob, uint32_t now)
@@ -431,16 +435,26 @@ class Ui
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
     static constexpr Rgb kArpColour       = {0.f, 1.f, .7f};
-    // Knob colours, page 1 and page 2.
-    // Knob colours, by page.
-    static constexpr Rgb kKnobColour[6][kMaxKnobPages] = {
-        {{1.f, .55f, 0.f}, {1.f, 1.f, 1.f}, {}, {}},               // wave (amber) / length (white)
-        {{0.f, 1.f, .4f}, {1.f, .3f, 0.f}, {}, {}},                // env mod (green) / accent (orange)
-        {{1.f, .85f, 0.f}, {0.f, .5f, 1.f}, {0.f, .7f, .5f}, {}},  // tempo (yellow) / quantize (blue) / arp (teal)
-        {{0.f, .9f, 1.f}, {1.f, .6f, .1f}, {1.f, 0.f, .6f}, {.3f, 1.f, 0.f}}, // delay (cyan) / tape (amber) / mod (pink) / crush (green)
-        {{.7f, .2f, 1.f}, {}, {}, {}},                             // cutoff (purple)
-        {{1.f, 1.f, 1.f}, {}, {}, {}},                             // volume (white); drive orange to red
+    // Knob colours: [knob][page][CHOMPI held], so each function has its own.
+    // clang-format off
+    static constexpr Rgb kKnobColour[6][kMaxKnobPages][2] = {
+        {{{1.f, .55f, 0.f}, {1.f, 0.f, .8f}},     // wave (amber, cyan for square) | pulse width (magenta)
+         {{1.f, 1.f, 1.f},  {.3f, .6f, 1.f}},     // length (white) | tuning (sky blue)
+         {}, {}},
+        {{{0.f, 1.f, .4f},  {.55f, 0.f, 1.f}},    // env mod (green) | decay (violet)
+         {{1.f, .3f, 0.f},  {0.f, .3f, 1.f}},     // accent (orange) | slide time (blue), as their step pages
+         {}, {}},
+        {{{1.f, .85f, 0.f}, {1.f, .15f, .45f}},   // tempo (yellow) | swing (pink)
+         {{0.f, .5f, 1.f},  {.6f, 1.f, 0.f}},     // quantize (blue) | grid (lime)
+         {}, {}},
+        {{{0.f, .9f, 1.f},  {1.f, 1.f, 1.f}},     // delay (cyan) | delay time (white)
+         {{1.f, .6f, .1f},  {.6f, .4f, 1.f}},     // tape feedback (amber) | tone (lavender)
+         {{1.f, 0.f, .6f},  {0.f, .8f, .8f}},     // mod (pink) | width (teal)
+         {{.3f, 1.f, 0.f},  {1.f, .15f, 0.f}}},   // crush (green) | rate (red)
+        {{{.7f, .2f, 1.f},  {1.f, 0.f, .2f}}, {}, {}, {}},  // cutoff (purple) | resonance (red)
+        {{{1.f, 1.f, 1.f},  {}}, {}, {}, {}},     // volume (white) | drive: orange to red
     };
+    // clang-format on
     static constexpr Rgb kPageColour[7] = {
         {1.f, 0.f, 0.f},   // notes      red
         {.6f, 0.f, 1.f},   // DOWN       purple
@@ -506,15 +520,19 @@ class Ui
     {
         if(transpose_mode_ && !chompi_)
         {
-            // Every key sets the transpose, C#4 included (+1). Holding C#4
-            // for 2 s ends transpose mode (see Tick), undoing that +1.
+            // Every key sets the transpose, C#4 included (+1). A key tapped
+            // twice quickly ends transpose mode, keeping its transpose;
+            // holding C#4 for 2 s does too (see Tick), undoing its +1.
+            const int before = m_->Transpose();
+            m_->SetTranspose(k - kMiddleC);
+            if(TransposeDoubleTap(k, now))
+                return;
             if(k == kKeyTranspose)
             {
-                transpose_before_hold_ = m_->Transpose();
+                transpose_before_hold_ = before;
                 c4_down_at_            = now;
                 c4_held_               = true;
             }
-            m_->SetTranspose(k - kMiddleC);
             return;
         }
         if(chompi_)
@@ -544,7 +562,7 @@ class Ui
             case 2: TogglePage(Page::ACCENT); break;
             case 3: TogglePage(Page::SLIDE); break;
             case 4: TogglePage(Page::TIE); break;
-            case 5: transpose_mode_ = true; break;
+            case 5: transpose_mode_ = true, tap_key_ = -1; break;
             case 6: half_ = SecondHalf() ? 0 : 1; break;
             case 7: TogglePage(Page::PATTERN); break;
             case 9: clear_down_ = now, clear_done_ = false; break;
@@ -553,6 +571,17 @@ class Ui
     }
 
     void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
+
+    /** In transpose mode: the same key twice within kDoubleTapMs ends it. */
+    bool TransposeDoubleTap(int k, uint32_t now)
+    {
+        const bool twice = k == tap_key_ && now - tap_at_ <= kDoubleTapMs;
+        tap_key_         = twice ? -1 : k;
+        tap_at_          = now;
+        if(twice)
+            transpose_mode_ = c4_held_ = false;
+        return twice;
+    }
 
     void StepKey(int step)
     {
@@ -591,7 +620,7 @@ class Ui
         m_->PatternEdited();
     }
 
-    void PitchKey(int k)
+    void PitchKey(int k, uint32_t now)
     {
         if(chompi_)
         {
@@ -607,7 +636,7 @@ class Ui
                     else if(m_->Recording() && m_->Running())
                         LiveFlag(BlackIndex(k));
                     break;
-                case 5: transpose_mode_ = !transpose_mode_; break;
+                case 5: transpose_mode_ = !transpose_mode_, tap_key_ = -1; break;
                 case 6: half_ = SecondHalf() ? 0 : 1; break;
                 case 7: CycleParam(ARP_OCT_DOWN, 3), arp_shown_ = kShowOctaves; break;
                 case 8: CycleParam(ARP_MODE, 5), arp_shown_ = kShowPattern; break;
@@ -629,6 +658,7 @@ class Ui
                 m_->SetArpTranspose(k - kMiddleC);
             else
                 m_->SetTranspose(k - kMiddleC);
+            TransposeDoubleTap(k, now);
             return;
         }
         Sound(k, true);
@@ -1042,7 +1072,7 @@ class Ui
         {
             const int     page = KnobPage(k);
             const uint8_t sel  = kKnobMap[k][page][chompi_ ? 1 : 0];
-            Rgb           c    = kKnobColour[k][page];
+            Rgb           c    = kKnobColour[k][page][chompi_ ? 1 : 0];
             float         v    = 0.f;
             if(sel == kKnobLength)
                 v = m_->Current().length / static_cast<float>(kSteps);
@@ -1072,6 +1102,8 @@ class Ui
     bool     c4_held_               = false; // step mode, transpose mode: C#4 down
     uint32_t c4_down_at_            = 0;
     int      transpose_before_hold_ = 0;
+    int      tap_key_               = -1; // transpose mode: the last key, for double taps
+    uint32_t tap_at_                = 0;
     int      knob_page_[4] = {};
     int      kbd_octave_   = 0; // pitch mode's live keyboard: -1, 0, +1
     int      sounding_note_[kKeyNotes] = {};
@@ -1109,7 +1141,7 @@ constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
 constexpr Rgb Ui::kLatchColour;
 constexpr Rgb Ui::kArpColour;
-constexpr Rgb Ui::kKnobColour[6][kMaxKnobPages];
+constexpr Rgb Ui::kKnobColour[6][kMaxKnobPages][2];
 constexpr Rgb Ui::kPageColour[7];
 
 } // namespace x0x

@@ -755,16 +755,22 @@ static void TestTransposeC()
     printf("transpose mode: C#4 as the amount, exits, brightness\n");
     Rig r;
     // Step mode: enter; C#4 is a note like any other (+1), as often as you
-    // like; only holding it 2 s exits, and the hold doesn't change the amount.
+    // like (unless tapped twice quickly); holding it 2 s exits, and the hold
+    // doesn't change the amount.
     r.Key(Ui::kKeyTranspose);
     r.Key(Ui::kKeyTranspose);
     CHECK(r.ui.TransposeMode() && r.m.Transpose() == 1);
     LedFrame f;
     r.ui.Draw(f, r.now);
     CHECK(f.key[Ui::kKeyTranspose].r > 0.9f);
+    r.Run(400);
     r.Key(16);
-    r.Key(Ui::kKeyTranspose), r.Key(Ui::kKeyTranspose);
+    r.Run(400);
+    r.Key(Ui::kKeyTranspose);
+    r.Run(400);
+    r.Key(Ui::kKeyTranspose);
     CHECK(r.ui.TransposeMode() && r.m.Transpose() == 1);
+    r.Run(400);
     r.Key(16);
     CHECK(r.m.Transpose() == 4);
     r.ui.Draw(f, r.now);
@@ -775,6 +781,28 @@ static void TestTransposeC()
     r.Run(600);
     r.ui.KeyUp(Ui::kKeyTranspose, r.now);
     CHECK(!r.ui.TransposeMode() && r.m.Transpose() == 4);
+
+    // A key tapped twice quickly sets its transpose and ends transpose mode,
+    // in step mode (C#4 included) and in pitch mode; slower taps don't.
+    r.Key(Ui::kKeyTranspose);
+    r.Run(400);
+    r.Key(7), r.Run(100), r.Key(7);
+    CHECK(!r.ui.TransposeMode() && r.m.Transpose() == -5);
+    r.Key(Ui::kKeyTranspose);
+    r.Run(400);
+    r.Key(Ui::kKeyTranspose), r.Run(100), r.Key(Ui::kKeyTranspose);
+    CHECK(!r.ui.TransposeMode() && r.m.Transpose() == 1);
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.Chompi(true), r.Key(Ui::kKeyTranspose), r.ui.Chompi(false);
+    r.Key(14), r.Run(500), r.Key(14);
+    CHECK(r.ui.TransposeMode() && r.m.Transpose() == 2);
+    r.Run(100), r.Key(14);
+    CHECK(!r.ui.TransposeMode() && r.m.Transpose() == 2);
+    r.ui.SetMode(Ui::Mode::STEP);
+    r.Key(Ui::kKeyTranspose);
+    r.Run(400);
+    r.Key(16);
+    r.Run(400);
 
     // In transpose mode the white keys show only the playhead.
     DemoPattern(r.m.patterns[0]);
@@ -1064,6 +1092,34 @@ static void TestMidiClock()
     CHECK(!r.m.Running());
 }
 
+static void TestKnobColours()
+{
+    printf("knob LEDs: each CHOMPI function its own colour; faster envelope knobs\n");
+    Rig r;
+    for(int k = 0; k < 6; k++)
+        for(int page = 0; page < kKnobPages[k]; page++)
+        {
+            LedFrame a, b;
+            r.ui.Draw(a, r.now);
+            r.ui.Chompi(true), r.ui.Draw(b, r.now), r.ui.Chompi(false);
+            // Compare hues: normalise out the brightness (the value).
+            auto norm = [](Rgb c) {
+                const float m = std::max(c.r, std::max(c.g, c.b)) + 1e-6f;
+                return Rgb{c.r / m, c.g / m, c.b / m};
+            };
+            const Rgb   x = norm(a.knob[k]), y = norm(b.knob[k]);
+            const float d = fabsf(x.r - y.r) + fabsf(x.g - y.g) + fabsf(x.b - y.b);
+            if(kKnobMap[k][page][1] != kKnobNone)
+                CHECK(d > 0.3f);
+            if(k < 4)
+                r.ui.KnobClick(k, r.now);
+        }
+    // Env mod covers its range in fewer clicks than cutoff.
+    const float e0 = r.m.settings.params[ENV_MOD], c0 = r.m.settings.params[CUTOFF];
+    r.ui.KnobTurn(1, 5, false), r.ui.KnobTurn(4, 5, false);
+    CHECK(r.m.settings.params[ENV_MOD] - e0 > 1.5f * (r.m.settings.params[CUTOFF] - c0));
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1080,6 +1136,7 @@ int main()
     TestRealtimeRecording();
     TestNoteEntry();
     TestStepModeExtras();
+    TestKnobColours();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

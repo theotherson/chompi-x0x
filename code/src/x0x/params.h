@@ -115,6 +115,13 @@ constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{VOLUME, DRIVE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
+/** How fast a knob turns a continuous parameter, relative to the rest:
+ *  the envelope, accent and slide knobs cover their range in fewer turns. */
+inline float KnobSpeed(Param p)
+{
+    return (p == ENV_MOD || p == DECAY || p == ACCENT || p == SLIDE_TIME) ? 1.6f : 1.f;
+}
+
 inline float TempoBpm(float v) { return 60.f + 140.f * v; }
 inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }
 
