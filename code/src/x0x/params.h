@@ -121,11 +121,21 @@ constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{VOLUME, DRIVE}, {TEMPO, SWING}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
 };
 
+/** How far one click of a knob moves a continuous parameter, by how long
+ *  since that knob's last click (ms): slow single clicks ~1 % (fine
+ *  control), a normal turn 2-4 % (the range in a turn or two of a 20-24
+ *  detent encoder), a fast spin ~7 %. */
+inline float KnobStep(uint32_t dt_ms)
+{
+    const float dt = dt_ms < 1 ? 1.f : static_cast<float>(dt_ms);
+    return Clamp((1.f / 96.f) * powf(250.f / dt, 0.9f), 1.f / 96.f, 1.f / 14.f);
+}
+
 /** How fast a knob turns a continuous parameter, relative to the rest:
- *  the envelope, accent and slide knobs cover their range in fewer turns. */
+ *  the envelope, accent and slide knobs cover their range a little sooner. */
 inline float KnobSpeed(Param p)
 {
-    return (p == ENV_MOD || p == DECAY || p == ACCENT || p == SLIDE_TIME) ? 1.6f : 1.f;
+    return (p == ENV_MOD || p == DECAY || p == ACCENT || p == SLIDE_TIME) ? 1.25f : 1.f;
 }
 
 /** The free delay time's knob value to ms (30 ms .. 1.9 s), and back. */

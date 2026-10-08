@@ -365,8 +365,12 @@ class Ui
             KnobClick(knob, now);
     }
 
-    void KnobTurn(int knob, int inc, bool fast)
+    /** A knob turned `inc` clicks. dt_ms: since this knob's last click,
+     *  for the acceleration (KnobStep); without it, `fast` picks a fast or
+     *  a slow turn. */
+    void KnobTurn(int knob, int inc, bool fast, int dt_ms = -1)
     {
+        const float step = KnobStep(dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
         Touched();
         if(drums_ && knob != 5)
             return; // the volume knob (volume, drive, tempo, swing) is shared
@@ -384,7 +388,7 @@ class Ui
                 m_->SetParam(DELAY_FREE, DelayFreeKnob(beats * 60000.f / m_->TempoBpmNow()));
                 m_->SetParam(DELAY_FREE_ON, 1.f);
             }
-            m_->SetParam(DELAY_FREE, p[DELAY_FREE] + inc * (fast ? 0.02f : 0.005f));
+            m_->SetParam(DELAY_FREE, p[DELAY_FREE] + inc * step);
             return;
         }
         const uint8_t sel = kKnobMap[knob][KnobPage(knob)][chompi_ ? 1 : 0];
@@ -415,9 +419,13 @@ class Ui
         else if(steps)
             m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
         else if(p == TEMPO)
-            m_->SetParam(p, v + inc / 140.f); // 1 BPM a click
+        {
+            // 1 BPM a click turned slowly, up to 5 spun fast.
+            const int bpm = ClampInt(static_cast<int>(step * 72.f + 0.25f), 1, 5);
+            m_->SetParam(p, v + inc * bpm / 140.f);
+        }
         else
-            m_->SetParam(p, v + inc * (fast ? 0.024f : 0.008f) * KnobSpeed(p));
+            m_->SetParam(p, v + inc * step * KnobSpeed(p));
     }
 
     void KnobClick(int knob, uint32_t now)

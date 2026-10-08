@@ -1134,7 +1134,30 @@ static void TestKnobColours()
     // Env mod covers its range in fewer clicks than cutoff.
     const float e0 = r.m.settings.params[ENV_MOD], c0 = r.m.settings.params[CUTOFF];
     r.ui.KnobTurn(1, 5, false), r.ui.KnobTurn(4, 5, false);
-    CHECK(r.m.settings.params[ENV_MOD] - e0 > 1.5f * (r.m.settings.params[CUTOFF] - c0));
+    CHECK(r.m.settings.params[ENV_MOD] - e0 > 1.2f * (r.m.settings.params[CUTOFF] - c0));
+
+    // Acceleration: slow clicks fine, a normal turn the range in a turn or
+    // two, a spin in under one; never slower when turned faster.
+    float prev = 1.f;
+    for(int dt = 15; dt <= 400; dt += 5)
+    {
+        CHECK(KnobStep(dt) <= prev + 1e-6f);
+        prev = KnobStep(dt);
+    }
+    CHECK(1.f / KnobStep(400) >= 90.f);                                // fine: ~1 %
+    CHECK(1.f / KnobStep(100) <= 48.f && 1.f / KnobStep(50) <= 25.f); // 10 / 20 clicks a second
+    CHECK(1.f / KnobStep(20) <= 15.f);
+    Rig q;
+    const float cut = q.m.settings.params[CUTOFF];
+    for(int i = 0; i < 20; i++)
+        q.ui.KnobTurn(4, 1, false, 50); // 20 clicks at 20 a second
+    CHECK(q.m.settings.params[CUTOFF] - cut > 0.6f || q.m.settings.params[CUTOFF] == 1.f);
+    const float t0 = q.m.settings.params[TEMPO];
+    q.ui.KnobClick(5, q.now);          // volume page 2: tempo
+    q.ui.KnobTurn(5, 1, false, 400);   // slow: 1 BPM
+    CHECK(fabsf(TempoBpm(q.m.settings.params[TEMPO]) - TempoBpm(t0) - 1.f) < 0.01f);
+    q.ui.KnobTurn(5, 1, false, 20);    // spun: 5
+    CHECK(fabsf(TempoBpm(q.m.settings.params[TEMPO]) - TempoBpm(t0) - 6.f) < 0.01f);
 }
 
 static void TestLiveQuantizeAndLights()

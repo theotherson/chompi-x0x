@@ -75,7 +75,7 @@ The step lights only show while the pattern plays or you're recording; otherwise
 
 Turning the pattern length (knob 1, page 2), in either mode, shows it on the white keys for a moment: every step within the length dim white, the last one bright: white for steps 1-8, cyan from step 9 (middle C shows step 8 or 9, so the colour tells them apart).
 
-Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has four). The click comes when you let go, and not at all if you turned the knob while it was pushed; each page has its own colour, and so does each CHOMPI function (the light changes colour while CHOMPI is held). A knob never goes darker than a fifth, so you can always see which page it's on. Env mod, decay, accent and slide time turn 1.6 times faster than the other knobs, so their whole range takes about a turn and a quarter. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page.
+Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has four). The click comes when you let go, and not at all if you turned the knob while it was pushed; each page has its own colour, and so does each CHOMPI function (the light changes colour while CHOMPI is held). A knob never goes darker than a fifth, so you can always see which page it's on. The knobs accelerate: clicked slowly, each click moves a setting about 1 % (fine control); turned at a normal pace, the whole range takes a turn or two; spun, under a turn. Env mod, decay, accent and slide time go a quarter faster still. Stepped settings move one position a click, and tempo 1 BPM a click turned slowly, up to 5 spun. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page.
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
@@ -86,7 +86,7 @@ Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has 
 | Knob 4, page 3 | Chorus into flanger (pink) | Stereo width / depth (teal) | | |
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction (red) | | |
 | Big purple | Cutoff (purple) | Resonance (red) | | |
-| Volume | Volume (white) | Drive (light orange to red) | Tempo, 1 BPM a click, 60-200 (yellow, flashing the beat) | Swing (pink) |
+| Volume | Volume (white) | Drive (light orange to red) | Tempo, 60-200 (1 BPM a click turned slowly; yellow, flashing the beat) | Swing (pink) |
 
 The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, alternating sides, on steps 1, 5, 9 and 13; the side of the current beat flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
 

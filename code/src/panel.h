@@ -113,9 +113,9 @@ class Panel
             if(inc)
             {
                 const int knob  = kEncoderKnob[e];
-                const bool fast = now - last_turn_[knob] < 25;
-                last_turn_[knob] = now;
-                ui_->KnobTurn(knob, inc, fast);
+                const uint32_t dt = now - last_turn_[knob];
+                last_turn_[knob]  = now;
+                ui_->KnobTurn(knob, inc, dt < 25, static_cast<int>(dt > 100000 ? 100000 : dt));
             }
         }
         ui_->Tick(now);
