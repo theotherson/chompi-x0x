@@ -1299,6 +1299,44 @@ static void TestChompiDoubleTap()
     CHECK(!r.ui.OnDrums());
 }
 
+static void TestQuantizeHold()
+{
+    printf("CHOMPI + D#4 held 2 s: quantizes the pattern for good\n");
+    Rig r;
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.m.SetParam(QUANTIZE, 0.f);
+    r.m.SetParam(QUANT_GRID, 0.f); // 1/16
+    Pattern& p = r.m.Current();
+    p.Clear();
+    p.steps[2].on = true, p.steps[2].note = 3, p.steps[2].nudge = 1; // stays on step 3
+    p.steps[5].on = true, p.steps[5].note = 4, p.steps[5].nudge = 4; // to step 7
+    r.ui.Chompi(true);
+    r.ui.KeyDown(Ui::kKeyView, r.now);
+    r.Run(1000);
+    LedFrame f;
+    r.ui.Draw(f, r.now); // filling light blue
+    CHECK(f.key[Ui::kKeyView].b > 0.3f && f.key[Ui::kKeyView].b < 0.8f);
+    CHECK(p.steps[5].on); // not yet
+    r.Run(1100);
+    CHECK(p.steps[2].on && p.steps[2].nudge == 0 && p.steps[2].note == 3);
+    CHECK(!p.steps[5].on && p.steps[6].on && p.steps[6].note == 4 && p.steps[6].nudge == 0);
+    r.ui.Draw(f, r.now);
+    for(int k = 0; k < kKeyNotes; k++)
+        CHECK(f.key[k].b > 0.9f && f.key[k].r < 0.5f);
+    r.ui.KeyUp(Ui::kKeyView, r.now);
+    r.ui.Chompi(false);
+    CHECK(StepIndex(r.m.settings.params[QUANTIZE], 2) == 0); // the hold doesn't toggle it
+    // A tap still toggles, when let go.
+    r.Run(500);
+    r.ui.Chompi(true);
+    r.ui.KeyDown(Ui::kKeyView, r.now);
+    CHECK(StepIndex(r.m.settings.params[QUANTIZE], 2) == 0);
+    r.Run(200);
+    r.ui.KeyUp(Ui::kKeyView, r.now);
+    r.ui.Chompi(false);
+    CHECK(StepIndex(r.m.settings.params[QUANTIZE], 2) == 1);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -1319,6 +1357,7 @@ int main()
     TestLiveQuantizeAndLights();
     TestQuantizedPlayback();
     TestChompiDoubleTap();
+    TestQuantizeHold();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

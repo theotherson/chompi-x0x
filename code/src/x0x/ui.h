@@ -54,9 +54,12 @@
  *                                  arpeggio while the arpeggiator is on, the
  *                                  pattern otherwise; a key tapped twice
  *                                  quickly also sets it and leaves
- *    CHOMPI + D#4                  quantize on/off for recording; while it's
+ *    CHOMPI + D#4                  quantize on/off (when let go); while it's
  *                                  on, CHOMPI + white keys 1-3 pick its grid
- *                                  (1/16, 1/8, 1/4), shown on those keys. In
+ *                                  (1/16, 1/8, 1/4), shown on those keys.
+ *                                  Held 2 s: quantizes the pattern for good
+ *                                  to that grid (the recorded timing is
+ *                                  gone), all keys flashing light blue. In
  *                                  note entry: view steps 1-8 / 9-16
  *    CHOMPI + PLAY                 arpeggiator on/off
  *    CHOMPI + LOOP                 arpeggiator latch: latched, each key adds
@@ -144,6 +147,7 @@ class Ui
     static constexpr uint32_t kSwapFlashMs     = 350;
     static constexpr uint32_t kShowLengthMs = 1200;
     static constexpr uint32_t kLoopClearMs = 2000;
+    static constexpr uint32_t kQuantizeHoldMs = 2000;
 
     void Init(Machine* m) { m_ = m; }
 
@@ -175,6 +179,7 @@ class Ui
             return;
         Touched();
         ReleaseAll();
+        quant_down_     = false;
         mode_           = mode;
         page_           = Page::NOTES;
         transpose_mode_ = false;
@@ -237,6 +242,11 @@ class Ui
             Sound(k, false);
         if(drums_)
             return;
+        if(k == kKeyView && quant_down_)
+        {
+            quant_down_ = false; // let go before the 2 s: a tap
+            m_->SetParam(QUANTIZE, Quantizing() ? 0.f : 1.f);
+        }
         if(mode_ == Mode::STEP && !chompi_ && k == kKeyClear && !clear_done_)
         {
             m_->Current().steps[selected_] = Step{}; // a tap clears the selected step
@@ -375,6 +385,12 @@ class Ui
             c4_held_        = false;
             m_->SetTranspose(transpose_before_hold_);
         }
+        if(quant_down_ && now - quant_down_at_ >= kQuantizeHoldMs)
+        {
+            quant_down_ = false;
+            m_->QuantizePattern(QuantGridSteps(m_->settings.params[QUANT_GRID]));
+            quantized_at_ = now;
+        }
         if(mode_ == Mode::PITCH && loop_down_ && !loop_cleared_ && now - loop_down_at_ >= kLoopClearMs)
         {
             m_->ClearPattern();
@@ -448,6 +464,15 @@ class Ui
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
                 f.key[k] = {1.f, 0.f, 0.f};
+        if(quant_down_ && now - quant_down_at_ > 300)
+        {
+            // Held: D#4 fills light blue towards quantizing the pattern.
+            const float b = Clamp((now - quant_down_at_) / static_cast<float>(kQuantizeHoldMs), 0.f, 1.f);
+            f.key[kKeyView] = Scale(kQuantizedColour, b);
+        }
+        if(now - quantized_at_ < 400)
+            for(int k = 0; k < kKeyNotes; k++)
+                f.key[k] = kQuantizedColour;
 
         DrawKnobs(f, now, cur_step);
         DrawBeat(f, now, cur_step);
@@ -545,6 +570,7 @@ class Ui
     static constexpr Rgb kLatchColour        = {1.f, .45f, 0.f};  // orange
     static constexpr Rgb kQuantizeColour     = {0.f, .5f, 1.f};   // blue
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
+    static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -772,7 +798,7 @@ class Ui
                     if(NoteEntry())
                         half_ = SecondHalf() ? 0 : 1;
                     else
-                        m_->SetParam(QUANTIZE, Quantizing() ? 0.f : 1.f);
+                        quant_down_ = true, quant_down_at_ = now; // a tap or a 2 s hold: see KeyUp, Tick
                     break;
                 case 7: CycleParam(ARP_OCT_DOWN, 3), arp_shown_ = kShowOctaves; break;
                 case 8: CycleParam(ARP_MODE, 5), arp_shown_ = kShowPattern; break;
@@ -1274,6 +1300,9 @@ class Ui
     int      transpose_before_hold_ = 0;
     int      tap_key_               = -1; // transpose mode: the last key, for double taps
     bool     drums_                 = false;
+    bool     quant_down_            = false; // CHOMPI + D#4 down in live mode
+    uint32_t quant_down_at_         = 0;
+    uint32_t quantized_at_          = 0x80000000u;
     bool     chompi_clean_          = false; // CHOMPI down and nothing else touched
     int      chompi_taps_           = 0;
     uint32_t chompi_down_at_        = 0;
@@ -1315,6 +1344,7 @@ constexpr Rgb Ui::kRed;
 constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
+constexpr Rgb Ui::kQuantizedColour;
 constexpr Rgb Ui::kDrumColour;
 constexpr Rgb Ui::kQuantizeColour;
 constexpr Rgb Ui::kLatchColour;

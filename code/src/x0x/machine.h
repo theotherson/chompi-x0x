@@ -121,6 +121,17 @@ class Machine
 
     void PatternEdited() { pattern_changes++; }
 
+    /** Quantize for good: every recorded note moves to where it plays with
+     *  quantize on at this grid (Pattern::PlayedStep), its timing dropped. */
+    void QuantizePattern(int grid_steps)
+    {
+        Pattern&      p   = Current();
+        const Pattern was = p;
+        for(int i = 0; i < p.length; i++)
+            p.steps[i] = was.PlayedStep(i, grid_steps);
+        PatternEdited();
+    }
+
     void ClearPattern()
     {
         Current().Clear();
