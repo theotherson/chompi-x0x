@@ -2078,7 +2078,8 @@ static void TestDrumPanel()
     r.Black(1);
     r.Run(2);
     CHECK(r.m.DrumHitCount(SD) == sd + 1);
-    // White keys: the last voice played, pitched; never recorded.
+    // White keys: the last voice played, pitched (recorded too: see
+    // TestDrumPitchRecording).
     r.White(9);
     r.Run(2);
     CHECK(r.m.DrumHitCount(SD) == sd + 2);
@@ -2088,16 +2089,12 @@ static void TestDrumPanel()
     r.ui.Chompi(true), r.ui.Loop(r.now), r.ui.Chompi(false); // CHOMPI + LOOP: live accent on
     r.Black(0); // an accented BD
     r.ui.Chompi(true), r.ui.Loop(r.now), r.ui.Chompi(false); // and off
-    r.White(10); // pitched: not recorded
     r.Run(2);
-    int bd = -1, pitched = 0;
+    int bd = -1;
     for(int i = 0; i < kSteps; i++)
-    {
         if(p.DrumHit(i, BD))
             bd = i;
-        pitched += p.DrumHit(i, SD);
-    }
-    CHECK(bd >= 0 && p.DrumAccent(bd) && pitched == 0);
+    CHECK(bd >= 0 && p.DrumAccent(bd));
     r.ui.Play();
     r.ui.Loop(r.now); // record off
     // Live, F#4 is quantize: no pattern page.
@@ -3465,6 +3462,96 @@ static void TestDrumLfoTargets()
     CHECK(prm[DRUM_REVERB] > 0.f);
 }
 
+static void TestDrumPitchRecording()
+{
+    printf("drums, live: the white keys record the last voice at their pitch, and it plays back so\n");
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    r.ui.Loop(r.now); // the drums
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.Run(500);
+    r.Black(2); // LT, the last voice played
+    p.ClearDrums();
+    r.m.Play();
+    r.ui.Loop(r.now); // record on
+    // On steps 1, 3 and 5: middle C, the E above, the C below.
+    auto at_step = [&](int step) {
+        while(r.m.CurrentDrumStep() != step)
+            r.Run(1);
+        r.Run(5);
+    };
+    at_step(0), r.White(7), r.Run(5);
+    at_step(2), r.White(9), r.Run(5);
+    at_step(4), r.White(0), r.Run(5);
+    r.ui.Loop(r.now); // record off
+    CHECK(p.DrumHit(0, LT) && p.DrumHit(2, LT) && p.DrumHit(4, LT));
+    CHECK(p.drum_pitch[0][LT] == 0 && p.drum_pitch[2][LT] == 4 && p.drum_pitch[4][LT] == -12);
+    // The voice key records it at its own pitch again.
+    r.ui.Loop(r.now);
+    at_step(2), r.Black(2), r.Run(5);
+    r.ui.Loop(r.now);
+    CHECK(p.DrumHit(2, LT) && p.drum_pitch[2][LT] == 0);
+    p.drum_pitch[2][LT] = 7;
+    r.m.Stop();
+    // Played back at those pitches: the tom's zero crossings in each hit,
+    // against a hit played live at the same pitch.
+    auto crossings = [&](int step_ms) {
+        r.m.Stop(), r.Run(300);
+        for(int i = 0; i < kSteps; i++)
+            for(int v = 0; v < kDrumVoices; v++)
+                if(v != LT)
+                    p.SetDrumHit(i, v, false);
+        r.m.Play();
+        float L[48], R[48];
+        int   z = 0;
+        float prev = 0.f;
+        for(int ms = 0; ms < step_ms + 60; ms++)
+        {
+            r.m.Process(L, R, 48);
+            if(ms >= step_ms + 5)
+                for(int i = 0; i < 48; i++)
+                    z += (prev < 0.f) != (L[i] < 0.f), prev = L[i];
+        }
+        return z;
+    };
+    const int z0 = crossings(0), z7 = crossings(250), zlow = crossings(500);
+    CHECK(z7 > z0 * 1.3 && zlow < z0 * 0.7);
+    // Late and pitched (quantize off): scheduled hits keep their pitch.
+    r.m.settings.params[DRUM_QUANTIZE] = 0.f;
+    p.drum_nudge[2][LT]                = 3;
+    const int z7_late                  = crossings(250 + 62);
+    CHECK(abs(z7_late - z7) <= 2);
+    // Step mode: a hit set by hand is at the voice's own pitch.
+    p.SetDrumHit(2, LT, false), p.SetDrumHit(2, LT, true);
+    CHECK(p.drum_pitch[2][LT] == 0);
+    // The files: the pitches round-trip; a full set still fits the card's buffer.
+    p.drum_pitch[4][LT] = -12, p.drum_pitch[0][CH] = 12;
+    char txt[4096];
+    CHECK(WritePatterns(&p, 1, txt, sizeof txt) > 0 && strstr(txt, "drum_pitch mmmmmmy"));
+    Pattern back[1];
+    ReadPatterns(txt, back, 1);
+    CHECK(back[0] == p);
+    static Pattern full[kPatterns];
+    for(int i = 0; i < kPatterns; i++)
+    {
+        full[i].Clear();
+        for(int st = 0; st < kSteps; st++)
+        {
+            full[i].steps[st].on = true, full[i].steps[st].note = 24, full[i].steps[st].octave = -1;
+            full[i].steps[st].accent = full[i].steps[st].slide = full[i].steps[st].tie = true;
+            full[i].steps[st].nudge = 5;
+            full[i].drums[st]       = 0xff;
+            for(int v = 0; v < kDrumVoices; v++)
+                full[i].drum_nudge[st][v] = 5, full[i].drum_pitch[st][v] = -11;
+        }
+    }
+    static char big[32768]; // as the card's buffer (storage.h)
+    const size_t n = WritePatterns(full, kPatterns, big, sizeof big);
+    printf("  (every pattern full: %zu bytes of %zu)\n", n, sizeof big);
+    CHECK(n > 0);
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3697,6 +3784,7 @@ int main()
     TestDrumPan();
     TestIndependentPatterns();
     TestDrumLfoTargets();
+    TestDrumPitchRecording();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

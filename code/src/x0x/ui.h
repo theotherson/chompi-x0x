@@ -1259,7 +1259,7 @@ class Ui
         if(mode_ == Mode::PITCH)
         {
             // The last voice played, pitched: C major from middle C.
-            m_->DrumHit(drum_sel_, live_accent_, Diatonic(w), false);
+            m_->DrumHit(drum_sel_, live_accent_, Diatonic(w)); // recorded too, at its pitch
             return;
         }
         const int step = StepOfWhite(w);
@@ -1324,7 +1324,7 @@ class Ui
                 {
                     p.drums[i] = static_cast<uint8_t>(p.drums[i] & ~mask);
                     if(mask != kDrumAccent)
-                        p.drum_nudge[i][drum_sel_] = 0;
+                        p.drum_nudge[i][drum_sel_] = 0, p.drum_pitch[i][drum_sel_] = 0;
                 }
                 m_->PatternEdited();
             }

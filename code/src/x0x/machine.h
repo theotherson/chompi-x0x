@@ -642,7 +642,7 @@ class Machine
             const int v         = h & 0x7f;
             PlayDrum(v, (h & kDrumAccent) != 0, semis);
             if(Recording() && Running() && rec)
-                RecordDrum(v, (h & kDrumAccent) != 0);
+                RecordDrum(v, (h & kDrumAccent) != 0, false, semis);
         }
         // Rolls: a voice's first hit came with its key (above); then on the
         // roll's grid while running, or every roll step from the key when
@@ -898,10 +898,11 @@ class Machine
             {
                 const bool acc   = (s & kDrumAccent) != 0;
                 const int  nudge = quant ? 0 : pat.drum_nudge[drum_pos_][v];
+                const int  semis = pat.drum_pitch[drum_pos_][v];
                 if(nudge == 0)
-                    PlayDrum(v, acc);
+                    PlayDrum(v, acc, semis);
                 else
-                    seq_.ScheduleDrum(nudge, v | (acc ? kDrumAccent : 0));
+                    seq_.ScheduleDrum(nudge, v | (acc ? kDrumAccent : 0) | ((semis + 64) << 8));
             }
     }
 
@@ -914,7 +915,7 @@ class Machine
      *  the grid (every 1, 2 or 4 steps). Off: to the step it falls in, late
      *  by as many ticks as it was played (or the next step, on time). A roll
      *  keeps the first of its hits in a step. */
-    void RecordDrum(int v, bool accent, bool roll = false)
+    void RecordDrum(int v, bool accent, bool roll = false, int semis = 0)
     {
         if(drum_pos_ < 0)
             return;
@@ -939,6 +940,7 @@ class Machine
         roll_rec_step_[v] = static_cast<int8_t>(step); // (a roll's key hit counts as its first)
         pat.drums[step]   = static_cast<uint8_t>(pat.drums[step] | (1 << v) | (accent ? kDrumAccent : 0));
         pat.drum_nudge[step][v] = static_cast<uint8_t>(nudge);
+        pat.drum_pitch[step][v] = static_cast<int8_t>(ClampInt(semis, -12, 12)); // played on the keys
         if(step != drum_pos_)
             rec_skip_ = static_cast<uint8_t>(rec_skip_ | (1 << v)); // played just now: not again at its step
         pattern_changes++;
@@ -1042,7 +1044,7 @@ class Machine
             {
                 const int v = e.step & 0x7f;
                 if(DrumAudible(v) && !((erase_mask_ >> v) & 1))
-                    PlayDrum(v, (e.step & kDrumAccent) != 0);
+                    PlayDrum(v, (e.step & kDrumAccent) != 0, ((e.step >> 8) & 0xff) - 64);
                 break;
             }
             case Sequencer::Event::ROLL:

@@ -25,6 +25,10 @@
  *                              each step's hits' timing, a digit a voice:
  *                              0-5 ticks late, as a step's nudge (absent:
  *                              all on the grid)
+ *    drum_pitch mmmmmmm mmmmmqm ...
+ *                              each hit's pitch, played on the keys in live
+ *                              mode, a letter a voice: a-y = -12..+12
+ *                              semitones, m none (absent: none)
  */
 #pragma once
 #include "dsp.h"
@@ -91,6 +95,8 @@ struct Pattern
     uint8_t drum_length   = kSteps;
     /** Each hit's timing, recorded with quantize off: 0-5 ticks late. */
     uint8_t drum_nudge[kSteps][kDrumVoices] = {};
+    /** Each hit's pitch, -12..12 semitones (recorded from the keys, live). */
+    int8_t drum_pitch[kSteps][kDrumVoices] = {};
 
     /** Sets or clears a hit (on the grid). */
     void SetDrumHit(int step, int voice, bool on)
@@ -98,6 +104,15 @@ struct Pattern
         const uint8_t bit = static_cast<uint8_t>(1 << voice);
         drums[step]       = static_cast<uint8_t>(on ? drums[step] | bit : drums[step] & ~bit);
         drum_nudge[step][voice] = 0;
+        drum_pitch[step][voice] = 0;
+    }
+    bool DrumPitched() const
+    {
+        for(int i = 0; i < kSteps; i++)
+            for(int v = 0; v < kDrumVoices; v++)
+                if(drum_pitch[i][v])
+                    return true;
+        return false;
     }
     bool DrumNudged() const
     {
@@ -171,6 +186,7 @@ struct Pattern
     {
         memcpy(drums, o.drums, sizeof drums);
         memcpy(drum_nudge, o.drum_nudge, sizeof drum_nudge);
+        memcpy(drum_pitch, o.drum_pitch, sizeof drum_pitch);
         drum_length = o.drum_length;
     }
 
@@ -180,7 +196,7 @@ struct Pattern
         {
             drums[i] = 0;
             for(int v = 0; v < kDrumVoices; v++)
-                drum_nudge[i][v] = 0;
+                drum_nudge[i][v] = 0, drum_pitch[i][v] = 0;
         }
         drum_length = kSteps;
     }
@@ -201,7 +217,8 @@ struct Pattern
             return false;
         for(int i = 0; i < kSteps; i++)
             if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i]
-               || memcmp(drum_nudge[i], o.drum_nudge[i], kDrumVoices) != 0)
+               || memcmp(drum_nudge[i], o.drum_nudge[i], kDrumVoices) != 0
+               || memcmp(drum_pitch[i], o.drum_pitch[i], kDrumVoices) != 0)
                 return false;
         return true;
     }
@@ -272,6 +289,29 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
             buf[len++] = '\n';
             buf[len]   = '\0';
         }
+        if(pat.DrumPitched())
+        {
+            w = snprintf(buf + len, size - len, "drum_pitch");
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+            for(int i = 0; i < kSteps; i++)
+            {
+                char d[kDrumVoices + 2];
+                d[0] = ' ';
+                for(int v = 0; v < kDrumVoices; v++)
+                    d[1 + v] = static_cast<char>('m' + ClampInt(pat.drum_pitch[i][v], -12, 12));
+                d[kDrumVoices + 1] = '\0';
+                w = snprintf(buf + len, size - len, "%s", d);
+                if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                    return 0;
+                len += w;
+            }
+            if(len + 1 >= size)
+                return 0;
+            buf[len++] = '\n';
+            buf[len]   = '\0';
+        }
     }
     return len;
 }
@@ -331,6 +371,24 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                 }
                 while(*p && *p != ' ')
                     p++; // anything more in this step's group: skipped
+            }
+        }
+        else if(pat && strncmp(line, "drum_pitch ", 11) == 0)
+        {
+            const char* p = line + 11;
+            for(int i = 0; i < kSteps; i++)
+            {
+                while(*p == ' ')
+                    p++;
+                for(int v = 0; v < kDrumVoices; v++)
+                {
+                    if(*p < 'a' || *p > 'y')
+                        break;
+                    pat->drum_pitch[i][v] = static_cast<int8_t>(*p - 'm');
+                    p++;
+                }
+                while(*p && *p != ' ')
+                    p++;
             }
         }
         else if(pat && strncmp(line, "length ", 7) == 0)

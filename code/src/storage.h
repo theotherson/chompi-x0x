@@ -257,7 +257,7 @@ class Storage
     {
         FIL fil;
     };
-    alignas(32) char buf_[24576]; // 32 patterns are ~14 KB of text
+    alignas(32) char buf_[32768]; // 32 patterns: ~14 KB of text, ~23 KB with every hit late and pitched
     File             file_;
     x0x::Pattern     snapshot_[x0x::kPatterns];
     bool             ok_ = false;
