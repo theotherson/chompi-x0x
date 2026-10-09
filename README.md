@@ -116,7 +116,7 @@ Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has 
 | Knob 4, page 3 | Chorus into flanger (pink) | Stereo width / depth (teal) | | |
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction (red) | | |
 | Big purple | Cutoff (purple) | Resonance (red) | | |
-| Volume | Volume (white) | Drive (light orange to red) | Tempo, 60-200 (1 BPM a click turned slowly; yellow, flashing the beat) | Swing (pink) |
+| Volume | Volume (white) | Drive (light orange to red) | Tempo, 40-240 (1 BPM a click turned slowly; yellow, flashing the beat) | Swing (pink) |
 | Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through white to red (bass) | Mute the bass / neither / mute the drums |
 | Volume, page 4 | **Compressor** on the whole mix, after every effect: off to heavy (threshold down and ratio up together, about 1.5:1 to 8:1, soft knee, automatic make-up gain; about 8 ms attack, 120 ms release). Teal, dimming as it compresses | **Sidechain** from the kick: each BD hit ducks the bass, the delay echoes and the reverb (not the drums) by up to about 20 dB, recovering by the next beat. Red, pulsing with each duck |
 

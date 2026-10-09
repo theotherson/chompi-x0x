@@ -2408,6 +2408,33 @@ static void TestDrumBeatLights()
     r.m.Stop();
 }
 
+static void TestTempoRange()
+{
+    printf("tempo: 40-240 BPM; old saved tempos keep their BPM\n");
+    CHECK(TempoBpm(0.f) == 40.f && TempoBpm(1.f) == 240.f);
+    CHECK(fabsf(TempoBpm(kParams[TEMPO].def) - 120.f) < 0.01f);
+    // A setting saved with the old 60-200 range: 0.4929 was 129 BPM.
+    char old[] = "tempo 0.4929\n";
+    Settings st;
+    ReadSettings(old, st);
+    CHECK(fabsf(TempoBpm(st.params[TEMPO]) - (60.f + 140.f * 0.4929f)) < 0.05f);
+    // And the new name round-trips.
+    char buf[4096];
+    CHECK(WriteSettings(st, buf, sizeof buf) > 0 && strstr(buf, "tempo2 "));
+    Settings back;
+    ReadSettings(buf, back);
+    CHECK(fabsf(TempoBpm(back.params[TEMPO]) - TempoBpm(st.params[TEMPO])) < 0.05f);
+    // The ends are reachable by turning: down to 40, up to 240.
+    Rig r;
+    r.ui.KnobClick(5, r.now); // volume, page 2: tempo
+    for(int i = 0; i < 300; i++)
+        r.ui.KnobTurn(5, -1, false, 400);
+    CHECK(fabsf(TempoBpm(r.m.settings.params[TEMPO]) - 40.f) < 0.01f);
+    for(int i = 0; i < 300; i++)
+        r.ui.KnobTurn(5, 1, false, 400);
+    CHECK(fabsf(TempoBpm(r.m.settings.params[TEMPO]) - 240.f) < 0.01f);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -2444,6 +2471,7 @@ int main()
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();
+    TestTempoRange();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

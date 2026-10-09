@@ -470,7 +470,7 @@ class Ui
         {
             // 1 BPM a click turned slowly, up to 5 spun fast.
             const int bpm = ClampInt(static_cast<int>(step * 72.f + 0.25f), 1, 5);
-            m_->SetParam(p, v + inc * bpm / 140.f);
+            m_->SetParam(p, v + inc * bpm / kTempoSpan);
         }
         else
             m_->SetParam(p, v + inc * step * KnobSpeed(p));
@@ -1131,7 +1131,7 @@ class Ui
                 else
                 {
                     const int bpm = ClampInt(static_cast<int>(step * 72.f + 0.25f), 1, 5);
-                    m_->SetParam(TEMPO, p[TEMPO] + inc * bpm / 140.f);
+                    m_->SetParam(TEMPO, p[TEMPO] + inc * bpm / kTempoSpan);
                     return;
                 }
                 break;

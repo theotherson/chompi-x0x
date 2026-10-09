@@ -83,7 +83,7 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"wave",        0.f,      2, 70},  // saw, square
     {"pulse_width", .5f,      0, 77},
     {"tuning",      .5f,      0, 15},  // -1..+1 semitone
-    {"tempo",       60/140.f, 0, 0},   // 60..200 BPM, default 120
+    {"tempo2",      .4f,      0, 0},   // 40..240 BPM, default 120 ("tempo": the old 60..200)
     {"swing",       0.f,      0, 16},
     {"quantize",    1.f,      2, 0},   // off, on
     {"quant_grid",  0.f,      3, 0},   // 1/16, 1/8, 1/4
@@ -207,8 +207,11 @@ inline void MixGains(float mix, float mute, float* bass, float* drums)
         *drums = 0.f;
 }
 
-inline float TempoBpm(float v) { return 60.f + 140.f * v; }
-inline float TempoKnob(float bpm) { return Clamp((bpm - 60.f) / 140.f, 0.f, 1.f); }
+/** The tempo knob: 40 to 240 BPM. */
+constexpr float kTempoMin  = 40.f;
+constexpr float kTempoSpan = 200.f;
+inline float    TempoBpm(float v) { return kTempoMin + kTempoSpan * v; }
+inline float    TempoKnob(float bpm) { return Clamp((bpm - kTempoMin) / kTempoSpan, 0.f, 1.f); }
 
 /** Quantize grid in steps: 1/16, 1/8, 1/4. */
 inline int QuantGridSteps(float v)
@@ -345,6 +348,13 @@ inline void ReadSettings(char* text, Settings& s)
                 const int i = ParsePatternName(sp + 1);
                 if(i >= 0)
                     s.pattern = i;
+            }
+            else if(strcmp(line, "tempo") == 0)
+            {
+                // Saved before the range was 40..240: the same BPM.
+                float v;
+                if(ParseUnit(sp + 1, &v))
+                    s.params[TEMPO] = TempoKnob(60.f + 140.f * v);
             }
             else if(strcmp(line, "protect") == 0)
                 s.protect = atoi(sp + 1) != 0;
