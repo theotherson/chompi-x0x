@@ -101,7 +101,7 @@ class Fx
         const bool  driving = s_.drive > 0.005f;
         const float gain    = 1.f + 60.f * s_.drive * s_.drive;
         const float bias    = 0.08f * s_.drive; // a touch of asymmetry
-        const float makeup  = 1.f / (1.f + 2.5f * s_.drive);
+        const float makeup  = DriveMakeup(s_.drive);
         const float hp_in   = TauToCoef(1.f / (2.f * kPi * 120.f), sr_);
         // Treble lift before the clip (+6 dB above ~1 kHz) so the highs
         // distort hardest, and a brighter tone filter after it (8 kHz down
@@ -538,7 +538,7 @@ class DrumFx
         // clip, then a tone low-pass (8 to 6 kHz); mixed with the dry.
         const bool  driving = s_.drive > 0.005f;
         const float gain    = 1.f + 60.f * s_.drive * s_.drive;
-        const float makeup  = 1.f / (1.f + 2.5f * s_.drive);
+        const float makeup  = DrumDriveMakeup(s_.drive);
         const float pre_lp  = TauToCoef(1.f / (2.f * kPi * 1000.f), sr_);
         const float tone_lp = TauToCoef(1.f / (2.f * kPi * (8000.f - 2000.f * s_.drive)), sr_);
         const float wet     = Clamp(s_.dist_mix, 0.f, 1.f);

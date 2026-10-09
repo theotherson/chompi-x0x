@@ -2483,6 +2483,46 @@ static void TestTempoRange()
     CHECK(fabsf(TempoBpm(r.m.settings.params[TEMPO]) - 240.f) < 0.01f);
 }
 
+static void TestEngineBalance()
+{
+    printf("bass / drums balance; the drives keep the loudness\n");
+    // Loudness (RMS, dB) of one side through the whole machine, 4 s.
+    auto loud = [](std::initializer_list<std::pair<Param, float>> kv, bool drums) {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        DemoPattern(p);
+        const char* rows[7] = {"x...x...x...x...", "....x.......x...", "................", "................",
+                               "................", "..x...x...x...x.", "x.x.x.x.x.x.x.x."};
+        for(int v = 0; v < 7; v++)
+            for(int i = 0; i < 16; i++)
+                if(rows[v][i] == 'x')
+                    p.drums[i] |= static_cast<uint8_t>(1 << v);
+        for(auto& q : kv)
+            r.m.settings.params[q.first] = q.second;
+        r.m.settings.params[MIX_MUTE] = drums ? 0.f : 1.f;
+        r.m.Play();
+        double e = 0;
+        float  L[48], R[48];
+        for(int b = 0; b < 4000; b++)
+        {
+            r.m.Process(L, R, 48);
+            for(int i = 0; i < 48; i++)
+                e += L[i] * L[i];
+        }
+        return 10 * log10(e / (4000.0 * 48));
+    };
+    const double drums = loud({}, true);
+    const double bass  = loud({{RESONANCE, 0.8f}, {ENV_MOD, 0.6f}}, false);
+    printf("  (resonance 0.8: bass %.1f dB, drums %.1f dB)\n", bass, drums);
+    CHECK(fabs(bass - drums) < 3.0); // about equal with resonance up
+    // The drives change the tone, not (much) the loudness.
+    const double b0 = loud({{RESONANCE, 1.f}, {ENV_MOD, 0.7f}}, false);
+    for(float d : {0.2f, 0.5f, 1.f})
+        CHECK(fabs(loud({{RESONANCE, 1.f}, {ENV_MOD, 0.7f}, {DRIVE, d}}, false) - b0) < 3.0);
+    for(float d : {0.2f, 0.5f, 1.f})
+        CHECK(fabs(loud({{DRUM_DRIVE, d}}, true) - drums) < 3.0);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -2520,6 +2560,7 @@ int main()
     TestDrumDistortion();
     TestDrumBeatLights();
     TestTempoRange();
+    TestEngineBalance();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

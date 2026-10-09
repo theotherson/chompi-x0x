@@ -291,7 +291,7 @@ class Drums
 
   private:
     static constexpr float kMetalHz[6] = {245.f, 308.f, 367.f, 418.f, 440.f, 627.f};
-    static constexpr float kGain       = 0.5f;
+    static constexpr float kGain       = 0.56f; // with the bass at about equal loudness (resonance up)
 
     /** Decay knob: 0.25x .. 4x the 606's, 0.5 = as it is. */
     static float DecayScale(float v) { return FastExp2(4.f * (v - 0.5f)); }

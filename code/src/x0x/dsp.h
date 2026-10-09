@@ -47,6 +47,21 @@ inline float FastTanh(float x)
 
 /** Clean below 0.75, then bends smoothly towards 1.0: keeps the output in
  *  range however hard the effects and drive are pushed. */
+/** The drives' make-up gain: their clip saturates quickly, so the level
+ *  they add levels off early; this keeps the loudness within ~2 dB across
+ *  the knob (fitted on the bass with resonance up). */
+inline float DriveMakeup(float drive)
+{
+    return 0.135f + 0.865f * FastExp2(-14.43f * drive); // exp(-10 drive)
+}
+
+/** The drums' distortion's make-up: they hit the clip harder than the
+ *  bass, so need more back (fitted the same way, on a 606 beat). */
+inline float DrumDriveMakeup(float drive)
+{
+    return 0.2f + 0.8f * FastExp2(-7.21f * drive); // exp(-5 drive)
+}
+
 inline float SoftLimit(float x)
 {
     const float a = fabsf(x);

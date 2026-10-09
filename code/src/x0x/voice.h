@@ -284,7 +284,7 @@ class Voice
                 post_lp_ += (y - post_lp_) * post_hp;
                 y = 1.25f * (y - post_lp_);
             }
-            out[i] += y * aenv_ * acc_amp_ * 0.5f;
+            out[i] += y * aenv_ * acc_amp_ * 0.265f; // (0.5 before the drums: -5.5 dB to sit with them)
         }
     }
 
