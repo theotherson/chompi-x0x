@@ -432,15 +432,18 @@ struct Options
     bool notes_out     = true;
     bool cc_in         = true;
     bool cc_out        = false;
+    int  drum_channel  = 10;   // the drums' MIDI channel, in and out (GM notes)
+    bool drums_in      = true; // notes on it play the drums
 };
 
 inline size_t WriteOptions(const Options& o, char* buf, size_t size)
 {
     const int w = snprintf(buf, size,
                            "midi_channel_in %d\nmidi_channel_out %d\nclock_in %d\nclock_out %d\n"
-                           "transport_in %d\ntransport_out %d\nnotes_out %d\ncc_in %d\ncc_out %d\n",
+                           "transport_in %d\ntransport_out %d\nnotes_out %d\ncc_in %d\ncc_out %d\n"
+                           "midi_drum_channel %d\ndrums_in %d\n",
                            o.channel_in, o.channel_out, o.clock_in, o.clock_out, o.transport_in,
-                           o.transport_out, o.notes_out, o.cc_in, o.cc_out);
+                           o.transport_out, o.notes_out, o.cc_in, o.cc_out, o.drum_channel, o.drums_in);
     return w > 0 && static_cast<size_t>(w) < size ? static_cast<size_t>(w) : 0;
 }
 
@@ -475,6 +478,10 @@ inline void ReadOptions(char* text, Options& o)
                 o.cc_in = v != 0;
             else if(strcmp(line, "cc_out") == 0)
                 o.cc_out = v != 0;
+            else if(strcmp(line, "midi_drum_channel") == 0)
+                o.drum_channel = ClampInt(v, 1, 16);
+            else if(strcmp(line, "drums_in") == 0)
+                o.drums_in = v != 0;
         }
         line = next;
     }

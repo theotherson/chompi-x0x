@@ -3552,6 +3552,73 @@ static void TestDrumPitchRecording()
     CHECK(n > 0);
 }
 
+static void TestMidiDrumsIn()
+{
+    printf("MIDI drums in: GM notes on the drum channel play (and record) the voices\n");
+    Rig r;
+    // The GM map: kicks, snares / rim / clap, toms, cymbals, hats; others nothing.
+    const int map[][2] = {{35, BD}, {36, BD}, {37, SD}, {38, SD}, {39, SD}, {40, SD}, {41, LT}, {45, LT},
+                          {48, HT}, {50, HT}, {49, CY}, {51, CY}, {57, CY}, {46, OH}, {42, CH}, {44, CH}};
+    for(const auto& m : map)
+    {
+        const uint32_t c = r.m.DrumHitCount(m[1]);
+        CHECK(r.m.MidiDrumNote(m[0], 100));
+        r.Run(2);
+        CHECK(r.m.DrumHitCount(m[1]) == c + 1);
+    }
+    uint32_t total = 0;
+    for(int v = 0; v < kDrumVoices; v++)
+        total += r.m.DrumHitCount(v);
+    CHECK(!r.m.MidiDrumNote(60, 100) && !r.m.MidiDrumNote(36, 0)); // not a drum; velocity 0 is an off
+    r.Run(2);
+    uint32_t after = 0;
+    for(int v = 0; v < kDrumVoices; v++)
+        after += r.m.DrumHitCount(v);
+    CHECK(after == total);
+    // Muted voices still play by hand (and from MIDI).
+    r.m.SetDrumMute(SD, true);
+    const uint32_t sd = r.m.DrumHitCount(SD);
+    r.m.MidiDrumNote(38, 100), r.Run(2);
+    CHECK(r.m.DrumHitCount(SD) == sd + 1);
+    r.m.SetDrumMute(SD, false);
+    // Recording, running: into the drum part, accented from velocity 112.
+    Pattern& p = r.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.m.Play();
+    r.ui.Loop(r.now); // record on
+    while(r.m.CurrentDrumStep() != 2)
+        r.Run(1);
+    r.Run(3);
+    r.m.MidiDrumNote(36, 120), r.m.MidiDrumNote(42, 80);
+    r.Run(5);
+    r.ui.Loop(r.now);
+    CHECK(p.DrumHit(2, BD) && p.DrumHit(2, CH) && p.DrumAccent(2));
+    r.m.Stop();
+    // MIDI out: the drums on the drum channel (10 unless set otherwise).
+    Machine::MidiOut mo;
+    while(r.m.PopMidi(Machine::kUart, mo))
+        ;
+    r.m.options.drum_channel = 5;
+    r.m.MidiDrumNote(38, 100), r.Run(2);
+    bool on5 = false;
+    while(r.m.PopMidi(Machine::kUart, mo))
+        on5 |= mo.b[0] == 0x94 && mo.b[1] == 38;
+    CHECK(on5);
+    // options.txt: the drum channel and the switch round-trip.
+    Options o;
+    o.drum_channel = 7, o.drums_in = false;
+    char buf[512];
+    CHECK(WriteOptions(o, buf, sizeof buf) > 0 && strstr(buf, "midi_drum_channel 7") && strstr(buf, "drums_in 0"));
+    Options back;
+    ReadOptions(buf, back);
+    CHECK(back.drum_channel == 7 && !back.drums_in);
+    char old[] = "midi_channel_in 2\n";
+    Options d;
+    ReadOptions(old, d);
+    CHECK(d.drum_channel == 10 && d.drums_in); // older files: channel 10, on
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3785,6 +3852,7 @@ int main()
     TestIndependentPatterns();
     TestDrumLfoTargets();
     TestDrumPitchRecording();
+    TestMidiDrumsIn();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

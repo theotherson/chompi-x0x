@@ -392,6 +392,18 @@ class Machine
      *  pattern while held. Overlapping notes slide. While recording with the
      *  pattern running it is written to the nearest step. With the
      *  arpeggiator on, it joins the chord the arpeggiator plays instead. */
+    /** A note on the MIDI drum channel: its GM drum plays (and records, if
+     *  recording), accented from velocity 112. @return false if no voice
+     *  plays that note */
+    bool MidiDrumNote(int note, int velocity)
+    {
+        const int v = GmToDrum(note);
+        if(v < 0 || velocity <= 0)
+            return false;
+        DrumHit(v, velocity >= 112);
+        return true;
+    }
+
     void LiveNoteOn(int note, bool accent = false)
     {
         note = ClampInt(note, 0, 127);
@@ -822,8 +834,6 @@ class Machine
     static constexpr int   kHitQueue = 16;
     static constexpr float kDrumTrim = 0.75f;
 
-    /** GM drum notes, for MIDI out (channel 10). */
-    static constexpr uint8_t kDrumMidi[kDrumVoices] = {36, 38, 45, 50, 49, 46, 42};
 
     void PlayDrum(int v, bool accent, int semitones = 0)
     {
@@ -837,8 +847,9 @@ class Machine
         drum_hit_count_[v]++;
         if(options.notes_out)
         {
-            PushMidi(0x99, kDrumMidi[v], accent ? 127 : 100);
-            PushMidi(0x89, kDrumMidi[v], 0);
+            const int ch = ClampInt(options.drum_channel, 1, 16) - 1;
+            PushMidi(0x90 | ch, kGmDrum[v], accent ? 127 : 100);
+            PushMidi(0x80 | ch, kGmDrum[v], 0);
         }
     }
 
@@ -1230,6 +1241,5 @@ class Machine
     OutQueue out_[2];
 };
 
-constexpr uint8_t Machine::kDrumMidi[kDrumVoices];
 
 } // namespace x0x

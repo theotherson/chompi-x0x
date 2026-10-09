@@ -447,4 +447,25 @@ inline void DemoPattern(Pattern& p)
     }
 }
 
+// ------------------------------------------------------------ GM drums
+
+/** The voices' General MIDI drum notes (channel 10), as x0x::Drum. */
+constexpr uint8_t kGmDrum[kDrumVoices] = {36, 38, 45, 50, 49, 46, 42}; // BD SD LT HT CY OH CH
+
+/** A GM drum note to the 606 voice that plays it, -1 for none. */
+inline int GmToDrum(int note)
+{
+    switch(note)
+    {
+        case 35: case 36: return 0;                           // kicks
+        case 37: case 38: case 39: case 40: return 1;         // snares, rim, clap
+        case 41: case 43: case 45: case 47: return 2;         // low toms
+        case 48: case 50: return 3;                           // high toms
+        case 49: case 51: case 52: case 53: case 55: case 57: case 59: return 4; // cymbals
+        case 46: return 5;                                    // open hat
+        case 42: case 44: return 6;                           // closed, pedal hat
+        default: return -1;
+    }
+}
+
 } // namespace x0x

@@ -169,9 +169,10 @@ A soft limiter keeps the output in range however hard they're pushed.
 | Clock | Followed when it arrives (the pattern then runs on it) | Sent while running on the internal clock |
 | Start / Stop / Continue | Run, stop, resume | Sent with PLAY |
 | Notes | Play the voice live (and record in pitch mode); velocity 112+ = accent | The pattern's and your notes, slides as overlapping notes |
+| Drum notes (channel 10) | GM drum notes play the drums (and record, when recording): kicks 35-36 BD, snares / rim / clap 37-40 SD, toms 41-47 LT, 48 / 50 HT, cymbals 49-59 CY, 46 OH, 42 / 44 CH; velocity 112+ = accent | The drum part and your hits, on GM notes (BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42) |
 | CC | 74 cutoff, 71 resonance, 12 env mod, 13 decay, 14 accent, 5 slide time, 70 wave, 77 pulse width, 15 tuning, 16 swing, 91 delay mix, 92 delay time, 94 delay feedback, 95 delay tone, 93 chorus/flanger, 18 bit crush, 19 sample-rate crush, 7 volume, 17 drive | The same CCs when knobs move (off by default) |
 
-Channels and on/off switches are in `/X0X/options.txt`.
+Channels and on/off switches are in `/X0X/options.txt`: `midi_drum_channel` (default 10) sets the drums' channel, in and out, and `drums_in 0` stops incoming notes playing them.
 
 ## On the card (`/X0X`)
 

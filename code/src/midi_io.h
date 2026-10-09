@@ -82,6 +82,16 @@ class MidiIo
             }
             return;
         }
+        // The drum channel: its GM drum notes play the drums (their note-offs
+        // are ignored: a drum hit has no length). Other notes on it, if it's
+        // also the bass's channel, go on to the bass.
+        if(m.options.drums_in && ev.channel == m.options.drum_channel - 1
+           && (ev.type == NoteOn || ev.type == NoteOff) && x0x::GmToDrum(ev.data[0]) >= 0)
+        {
+            if(ev.type == NoteOn)
+                m.MidiDrumNote(ev.data[0], ev.data[1]);
+            return;
+        }
         if(ev.channel != m.options.channel_in - 1)
             return;
         switch(ev.type)
