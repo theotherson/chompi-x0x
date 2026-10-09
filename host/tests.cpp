@@ -2033,9 +2033,10 @@ static void TestDrumPanel()
     // grey; the accent page, the accents blue. (BD on 1, 5, 11, 13; SD
     // cleared above; OH / CH on 3.)
     r.Black(0); // the BD page
+    r.Run(1300); // past the length display (the length was just turned)
     r.ui.Draw(f, r.now);
-    const Rgb bd = f.key[Ui::kWhite[0]], other = f.key[Ui::kWhite[2]];
-    CHECK(bd.r > 0.5f && bd.g < 0.2f && bd.b < 0.2f);                         // red
+    const Rgb bd_led = f.key[Ui::kWhite[0]], other = f.key[Ui::kWhite[2]];
+    CHECK(bd_led.r > 0.5f && bd_led.g < 0.2f && bd_led.b < 0.2f);             // red
     CHECK(other.r > 0.f && other.r < 0.1f && other.r == other.g && other.g == other.b); // dim grey
     r.Black(5); // the accent page; accent step 5
     r.White(4);
