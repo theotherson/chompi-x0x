@@ -42,7 +42,7 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | Knob 4, page 1 | Reverb send (blue) | Reverb size: a small room, quick, to a big hall, long (lavender) |
 | Knob 4, page 2 | Delay send (cyan): into the delay the bass uses too | The delay's synced time (shared with the bass side; white keys 1-9 show it) |
 | Knob 4, page 3 | Bit crush (green) | Sample-rate reduction (red) |
-| Knob 4, page 4 | Filter: low-pass turned left, high-pass turned right, off in the middle (yellow) | Distortion mix: dry to wet, for parallel distortion (default all wet) |
+| Knob 4, page 4 | Filter: low-pass turned left, high-pass turned right, off in the middle (yellow) | Resonance: from none to a ringing peak at the cutoff (orange). Nothing while the filter is in the middle (off) |
 | Purple | Tempo: its two lights flash the eighth notes, alternating left and right (from the pattern while it runs, from the tempo when stopped) | Swing (both lights show it) |
 | Volume | Volume (shared) | **The drums' own distortion**, as the bass's drive but separate from it (orange to red) |
 | Volume, pages | Click: volume, the mix, the compressor (shared). No tempo / swing page here: the purple knob has them on this side | |

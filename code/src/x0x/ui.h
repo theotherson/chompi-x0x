@@ -885,9 +885,9 @@ class Ui
             static constexpr Rgb kFxCol[4][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},  // reverb | size
                                                  {{0.f, .9f, 1.f}, {1.f, 1.f, 1.f}},  // delay send | time
                                                  {{.3f, 1.f, 0.f}, {1.f, .15f, 0.f}}, // crush | rate
-                                                 {{1.f, .85f, 0.f}, {1.f, .3f, 0.f}}}; // filter | distortion mix
+                                                 {{1.f, .85f, 0.f}, {1.f, .3f, 0.f}}}; // filter | resonance
             static constexpr int kFxP[4][2] = {{DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME},
-                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_FILTER, DRUM_DIST_MIX}};
+                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_FILTER, DRUM_FILTER_RES}};
             const int q = kFxP[drum_knob4_page_][chompi_ ? 1 : 0];
             float     v = p[q];
             if(q == DRUM_FILTER)
@@ -1158,7 +1158,7 @@ class Ui
                 static constexpr int kFx[4][2] = {{DRUM_REVERB, REVERB_SIZE},
                                                   {DRUM_DELAY, DELAY_TIME},
                                                   {DRUM_CRUSH, DRUM_CRUSH_RATE},
-                                                  {DRUM_FILTER, DRUM_DIST_MIX}};
+                                                  {DRUM_FILTER, DRUM_FILTER_RES}};
                 param = kFx[drum_knob4_page_][chompi_ ? 1 : 0];
                 if(param == DELAY_TIME)
                 {
@@ -1197,7 +1197,7 @@ class Ui
             // CHOMPI + click on knob 4: all the drums' effects back to their
             // defaults (the shared delay's time stays).
             static constexpr int kDrumFx[7] = {DRUM_REVERB, REVERB_SIZE, DRUM_DELAY, DRUM_CRUSH,
-                                               DRUM_CRUSH_RATE, DRUM_FILTER, DRUM_DIST_MIX};
+                                               DRUM_CRUSH_RATE, DRUM_FILTER, DRUM_FILTER_RES};
             for(int q : kDrumFx)
                 m_->SetParam(static_cast<Param>(q), kParams[q].def);
             return;

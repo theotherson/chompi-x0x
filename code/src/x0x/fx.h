@@ -524,8 +524,8 @@ class DrumFx
     struct Settings
     {
         float drive      = 0.f;
-        float dist_mix   = 1.f;
         float filter     = 0.5f;
+        float filter_res = 0.f;
         float crush_bits = 0.f;
         float crush_rate = 0.f;
     };
@@ -535,18 +535,23 @@ class DrumFx
     void Process(float* x, size_t n)
     {
         // Distortion, as the bass's drive: a treble lift into a nearly hard
-        // clip, then a tone low-pass (8 to 6 kHz); mixed with the dry.
+        // clip, then a tone low-pass (8 to 6 kHz).
         const bool  driving = s_.drive > 0.005f;
         const float gain    = 1.f + 60.f * s_.drive * s_.drive;
         const float makeup  = DrumDriveMakeup(s_.drive);
         const float pre_lp  = TauToCoef(1.f / (2.f * kPi * 1000.f), sr_);
         const float tone_lp = TauToCoef(1.f / (2.f * kPi * (8000.f - 2000.f * s_.drive)), sr_);
-        const float wet     = Clamp(s_.dist_mix, 0.f, 1.f);
         const float f       = s_.filter - 0.5f;
         const bool  lp      = f < -0.02f, hp = f > 0.02f;
         // Low-pass from 20 kHz down to 200 Hz; high-pass from 20 Hz up to 5 kHz.
         const float hz = lp ? 200.f * FastExp2(6.64f * (1.f + 2.f * f)) : 20.f * FastExp2(7.97f * 2.f * f);
-        const float k  = TauToCoef(1.f / (2.f * kPi * Clamp(hz, 20.f, 0.45f * sr_)), sr_);
+        // A state-variable filter, 12 dB / octave: Q from 0.5 (no peak) to
+        // about 9, a little quieter as it rings.
+        const float g    = tanf(kPi * Clamp(hz, 20.f, 0.45f * sr_) / sr_);
+        const float res  = Clamp(s_.filter_res, 0.f, 1.f);
+        const float kq   = 2.f * FastExp2(-4.2f * res); // 1 / Q
+        const float a1   = 1.f / (1.f + g * (g + kq)), a2 = g * a1, a3 = g * a2;
+        const float trim = 1.f / (1.f + 1.5f * res);
         const bool  crush = s_.crush_bits > 0.005f;
         const float levels = FastExp2(15.f - 12.f * s_.crush_bits);
         const int   hold   = 1 + static_cast<int>(31.f * s_.crush_rate * s_.crush_rate);
@@ -562,21 +567,14 @@ class DrumFx
                     d = (d < 0.f ? -1.f : 1.f) * (0.9f + 0.1f * FastTanh((a - 0.9f) * 10.f));
                 t1_ += (d - t1_) * tone_lp;
                 t2_ += (t1_ - t2_) * tone_lp;
-                y = y + (t2_ * makeup - y) * wet;
+                y = t2_ * makeup;
             }
-            // Two one-pole stages: 12 dB / octave.
-            if(lp)
+            if(lp || hp)
             {
-                f1_ += (y - f1_) * k;
-                f2_ += (f1_ - f2_) * k;
-                y = f2_;
-            }
-            else if(hp)
-            {
-                f1_ += (y - f1_) * k;
-                const float h1 = y - f1_;
-                f2_ += (h1 - f2_) * k;
-                y = h1 - f2_;
+                const float v3 = y - f2_;
+                const float v1 = a1 * f1_ + a2 * v3, v2 = f2_ + a2 * f1_ + a3 * v3;
+                f1_ = 2.f * v1 - f1_, f2_ = 2.f * v2 - f2_;
+                y   = (lp ? v2 : y - kq * v1 - v2) * trim;
             }
             if(crush || hold > 1)
             {

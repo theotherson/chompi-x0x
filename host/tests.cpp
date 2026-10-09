@@ -2509,19 +2509,20 @@ static void TestDrumDistortion()
     CHECK(r.ui.OnDrums());
     r.ui.Chompi(true), r.ui.KnobTurn(5, 8, false), r.ui.Chompi(false);
     CHECK(prm[DRUM_DRIVE] > 0.f && prm[DRIVE] == bass_drive);
-    // CHOMPI + knob 4 (page 4): the mix.
+    // CHOMPI + knob 4 (page 4): the filter's resonance.
     for(int i = 0; i < 3; i++)
         r.ui.KnobClick(3, r.now);
-    r.ui.Chompi(true), r.ui.KnobTurn(3, -10, false), r.ui.Chompi(false);
-    CHECK(prm[DRUM_DIST_MIX] < 1.f);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 10, false), r.ui.Chompi(false);
+    CHECK(prm[DRUM_FILTER_RES] > 0.f);
+    r.ui.Chompi(true), r.ui.KnobClick(3, r.now), r.ui.Chompi(false); // reset
+    CHECK(prm[DRUM_FILTER_RES] == 0.f);
 
-    // The sound: distorted is louder relative to its peak (squashed), and a
-    // mix of 0 is the dry signal exactly.
-    auto run = [](float drive, float mix, std::vector<float>& out) {
+    // The sound: distorted is louder relative to its peak (squashed).
+    auto run = [](float drive, std::vector<float>& out) {
         DrumFx fx;
         fx.Init(48000.f);
         DrumFx::Settings st;
-        st.drive = drive, st.dist_mix = mix;
+        st.drive = drive;
         fx.Set(st);
         out.resize(4800);
         for(size_t i = 0; i < out.size(); i++)
@@ -2529,8 +2530,8 @@ static void TestDrumDistortion()
         for(size_t i = 0; i < out.size(); i += 48)
             fx.Process(&out[i], 48);
     };
-    std::vector<float> dry, dist, mix0;
-    run(0.f, 1.f, dry), run(0.8f, 1.f, dist), run(0.8f, 0.f, mix0);
+    std::vector<float> dry, dist;
+    run(0.f, dry), run(0.8f, dist);
     auto crest = [](const std::vector<float>& v) {
         double e = 0, pk = 0;
         for(float x : v)
@@ -2538,10 +2539,57 @@ static void TestDrumDistortion()
         return pk / sqrt(e / v.size());
     };
     CHECK(crest(dist) < crest(dry) * 0.7); // squashed
-    bool same = true;
-    for(size_t i = 0; i < dry.size(); i++)
-        same &= fabsf(dry[i] - mix0[i]) < 1e-6f;
-    CHECK(same);
+
+    // The filter's resonance: an impulse rings on at the cutoff, both ways,
+    // and stays stable; none, it's the plain filter (no ring).
+    auto ring = [](float filter, float res) {
+        DrumFx fx;
+        fx.Init(48000.f);
+        DrumFx::Settings st;
+        st.filter = filter, st.filter_res = res;
+        fx.Set(st);
+        std::vector<float> x(48000, 0.f);
+        x[0] = 1.f;
+        for(size_t i = 0; i < x.size(); i += 48)
+            fx.Process(&x[i], 48);
+        double early = 0;
+        bool   finite = true;
+        for(size_t i = 0; i < x.size(); i++)
+        {
+            finite &= std::isfinite(x[i]);
+            if(i < 480)
+                early += x[i] * x[i];
+        }
+        CHECK(finite);
+        double tail = 0; // the ring: 10-30 ms on
+        for(size_t i = 480; i < 1440; i++)
+            tail += x[i] * x[i];
+        return tail / (early + 1e-30);
+    };
+    for(float filter : {0.15f, 0.7f}) // low-pass ~800 Hz, high-pass ~180 Hz
+    {
+        const double none = ring(filter, 0.f), full = ring(filter, 1.f);
+        CHECK(full > none * 100);
+    }
+    // Driven hard with noise at full resonance: bounded.
+    {
+        DrumFx fx;
+        fx.Init(48000.f);
+        DrumFx::Settings st;
+        st.filter = 0.35f, st.filter_res = 1.f;
+        fx.Set(st);
+        float    b[48], peak = 0.f;
+        uint32_t seed = 3;
+        for(int blk = 0; blk < 2000; blk++)
+        {
+            for(int i = 0; i < 48; i++)
+                seed = seed * 1664525u + 1013904223u, b[i] = static_cast<int32_t>(seed) * 4.6e-10f;
+            fx.Process(b, 48);
+            for(int i = 0; i < 48; i++)
+                peak = std::max(peak, fabsf(b[i]));
+        }
+        CHECK(std::isfinite(peak) && peak < 8.f);
+    }
 }
 
 static void TestDrumBeatLights()
