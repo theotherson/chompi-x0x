@@ -53,6 +53,7 @@ class Machine
         voice_.Init(sample_rate);
         drums_.Init(sample_rate);
         drum_fx_.Init(sample_rate);
+        drum_fx_r_.Init(sample_rate);
         drum_fx_send_.Init(sample_rate);
         comp_.Init(sample_rate);
         reverb_.Init(sample_rate, reverb_mem, reverb_frames);
@@ -556,13 +557,14 @@ class Machine
             dp.decay       = p[DRUM_PARAMS + 3 * v + 2];
             dp.tune        = p[DRUM_TUNE + v];
             dp.fm          = p[DRUM_FM + v];
+            dp.pan         = p[DRUM_PAN + v];
         }
         const uint8_t sends = static_cast<uint8_t>(StepIndex(p[DRUM_FX_SENDS], 128));
         drums_.SetSendMask(sends);
         const bool split = (sends & 0x7f) != 0x7f && (sends & 0x7f) != 0; // some voices in, some out
-        float      drum[64], dsrc[64];
+        float      drum[64], drum_r[64], dsrc[64]; // the drums, left and right; their send
         for(size_t i = 0; i < n; i++)
-            drum[i] = dsrc[i] = 0.f;
+            drum[i] = drum_r[i] = dsrc[i] = 0.f;
         // Live drum hits from the panel.
         block_pos_ = 0;
         while(hit_tail_ != hit_head_)
@@ -645,7 +647,7 @@ class Machine
             if(at > pos)
             {
                 voice_.Process(vp_, mono + pos, at - pos);
-                drums_.Process(drum + pos, at - pos, split ? dsrc + pos : nullptr);
+                drums_.Process(drum + pos, drum_r + pos, at - pos, split ? dsrc + pos : nullptr);
                 pos = at;
             }
             block_pos_ = at;
@@ -654,7 +656,7 @@ class Machine
         if(pos < n)
         {
             voice_.Process(vp_, mono + pos, n - pos);
-            drums_.Process(drum + pos, n - pos, split ? dsrc + pos : nullptr);
+            drums_.Process(drum + pos, drum_r + pos, n - pos, split ? dsrc + pos : nullptr);
         }
         if(arp_gate_left_ >= 0.0)
             arp_gate_left_ -= n;
@@ -667,7 +669,7 @@ class Machine
         mix_bass_ += (gb - mix_bass_) * 0.2f; // a little smoothing, per block
         mix_drums_ += (gd - mix_drums_) * 0.2f;
         for(size_t i = 0; i < n; i++)
-            mono[i] *= mix_bass_, drum[i] *= mix_drums_, dsrc[i] *= mix_drums_;
+            mono[i] *= mix_bass_, drum[i] *= mix_drums_, drum_r[i] *= mix_drums_, dsrc[i] *= mix_drums_;
 
         // The drums' own effects, then their sends to the shared delay and
         // the reverb.
@@ -698,25 +700,24 @@ class Machine
         lfo_now_ = shape > 0 ? LfoValue(shape, lfo_phase_, lfo_held_) : 0.f;
         drum_fx_.Set(ds);
         drum_fx_.Process(drum, n, mod);
-        // The sends: the voices in them, through the same filter, crush and
-        // distortion (a second copy: they aren't linear); all in, the bus.
-        const float* send_src = drum;
+        drum_fx_r_.Set(ds);
+        drum_fx_r_.Process(drum_r, n, mod);
+        // The sends (mono): the voices in them, through the same filter,
+        // crush and distortion (a copy: they aren't linear); all in, the
+        // bus's two sides together.
         if(split)
         {
             drum_fx_send_.Set(ds);
             drum_fx_send_.Process(dsrc, n, mod);
-            send_src = dsrc;
         }
-        else if((sends & 0x7f) == 0)
-        {
+        else
             for(size_t i = 0; i < n; i++)
-                dsrc[i] = 0.f;
-            send_src = dsrc;
-        }
+                dsrc[i] = (sends & 0x7f) ? 0.5f * (drum[i] + drum_r[i]) : 0.f;
+        const float* send_src = dsrc;
         // Down 2.5 dB after their effects (the distortion keeps its input):
         // even with the bass, loudness-weighted, at its usual settings.
         for(size_t i = 0; i < n; i++)
-            drum[i] *= kDrumTrim, dsrc[i] *= kDrumTrim;
+            drum[i] *= kDrumTrim, drum_r[i] *= kDrumTrim, dsrc[i] *= kDrumTrim;
         reverb_.Set(p[REVERB_SIZE]);
         const float dly_send = p[DRUM_DELAY] * p[DRUM_DELAY] * fx_drums_;
         const float rev_send = p[DRUM_REVERB] * p[DRUM_REVERB] * fx_drums_;
@@ -739,7 +740,7 @@ class Machine
             duck_ -= duck_ * rel;
             duck_gain_ += ((1.f - depth * duck_) - duck_gain_) * smooth;
             left[i]  = (left[i] + rl[i]) * duck_gain_ + drum[i];
-            right[i] = (right[i] + rr[i]) * duck_gain_ + drum[i];
+            right[i] = (right[i] + rr[i]) * duck_gain_ + drum_r[i];
         }
         // The master compressor, on everything.
         comp_.Set(p[COMP]);
@@ -780,6 +781,7 @@ class Machine
         const float acc = accent ? settings.params[DRUM_ACCENT] : 0.f;
         drums_.Trigger(static_cast<Drum>(v), acc, semitones);
         drum_fx_.Trigger(block_pos_, 1.f + 0.5f * acc); // the filter's envelope
+        drum_fx_r_.Trigger(block_pos_, 1.f + 0.5f * acc);
         drum_fx_send_.Trigger(block_pos_, 1.f + 0.5f * acc);
         if(v == BD)
             duck_ = 1.f; // the sidechain: duck from now
@@ -1091,7 +1093,7 @@ class Machine
     float       sr_ = 48000.f;
     Voice       voice_;
     Drums       drums_;
-    DrumFx      drum_fx_, drum_fx_send_;
+    DrumFx      drum_fx_, drum_fx_r_, drum_fx_send_; // the drums' left and right, their send
     size_t      block_pos_ = 0; // where in the block a drum hit lands
     uint32_t    bad_out_   = 0;
     float       lfo_phase_ = 0.f, lfo_held_ = 0.f, lfo_now_ = 0.f;

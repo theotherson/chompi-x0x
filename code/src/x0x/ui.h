@@ -815,7 +815,7 @@ class Ui
             const int pv = DRUM_PARAMS + 3 * drum_sel_;
             if(knob == 0)
             {
-                def(pv), def(DRUM_ACCENT);
+                def(pv), def(DRUM_PAN + drum_sel_), def(DRUM_ACCENT);
                 m_->SetDrumLength(kSteps);
                 drum_len_shown_at_ = last_tick_;
             }
@@ -964,10 +964,12 @@ class Ui
         // yet; the purple one tempo (flashing the beat) or swing.
         const Rgb   vc = kDrumCol[drum_sel_];
         const int   pv = DRUM_PARAMS + 3 * drum_sel_;
-        if(drum_knob1_page_ == 1)
-            f.knob[0] = chompi_ ? Rgb{} : Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * pat.drum_length / static_cast<float>(kSteps));
-        else
-            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_ACCENT]) : Scale(vc, 0.2f + 0.8f * p[pv]);
+        if(drum_knob1_page_ == 1) // the accent (blue); CHOMPI, the length (white)
+            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * pat.drum_length / static_cast<float>(kSteps))
+                                : Scale(kDrumAccentCol, 0.2f + 0.8f * p[DRUM_ACCENT]);
+        else // the level, in the voice's colour; CHOMPI, its pan (white, brighter off centre)
+            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.15f + 0.85f * fabsf(p[DRUM_PAN + drum_sel_] - 0.5f) * 2.f)
+                                : Scale(vc, 0.2f + 0.8f * p[pv]);
         if(drum_knob2_page_ == 1) // the filter (white), its resonance (pink): no voice's colours
             f.knob[1] = chompi_ ? Scale(Rgb{1.f, .4f, .7f}, 0.2f + 0.8f * p[DRUM_FILTER_RES])
                                 : Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * fabsf(p[DRUM_FILTER] - 0.5f) * 2.f);
@@ -998,6 +1000,14 @@ class Ui
         }
         if(now - delay_shown_at_ < kShowValueMs)
             DrawDelayTime(f);
+        if(now - pan_shown_at_ < kShowValueMs)
+        {
+            // After turning a voice's pan: where it sits across the white
+            // keys, in its colour (the middle key: centre).
+            const int at = static_cast<int>(p[DRUM_PAN + drum_sel_] * (kWhiteKeys - 1) + 0.5f);
+            for(int i = 0; i < kWhiteKeys; i++)
+                f.key[kWhite[i]] = i == at ? kDrumCol[drum_sel_] : (i == kWhiteKeys / 2 ? Rgb{.08f, .08f, .08f} : Rgb{});
+        }
         if(now - lfo_shown_at_ < kShowValueMs)
         {
             // After turning the LFO: white keys 1-5 its shape (1 = off),
@@ -1309,16 +1319,26 @@ class Ui
         switch(knob)
         {
             case 0:
+                // Knob 1: the voice's level (CHOMPI: its pan); page 2 the
+                // accent level (CHOMPI: the drum part's length).
                 if(drum_knob1_page_ == 1)
                 {
-                    if(!chompi_)
+                    if(chompi_)
                     {
                         m_->SetDrumLength(m_->Current().drum_length + (inc > 0 ? 1 : -1));
                         drum_len_shown_at_ = last_tick_;
+                        return;
                     }
+                    param = DRUM_ACCENT;
+                    break;
+                }
+                if(chompi_)
+                {
+                    m_->SetParam(DRUM_PAN + drum_sel_, p[DRUM_PAN + drum_sel_] + inc * step);
+                    pan_shown_at_ = last_tick_;
                     return;
                 }
-                param = chompi_ ? DRUM_ACCENT : pv;
+                param = pv;
                 break;
             case 1:
                 // Knob 2, page 2: the filter's cutoff; CHOMPI, its resonance.
@@ -1414,13 +1434,14 @@ class Ui
         // CHOMPI + click: back to defaults.
         if(knob == 0 && drum_knob1_page_ == 1)
         {
+            m_->SetParam(DRUM_ACCENT, kParams[DRUM_ACCENT].def);
             m_->SetDrumLength(kSteps);
             drum_len_shown_at_ = last_tick_;
         }
         else if(knob == 0)
         {
             m_->SetParam(static_cast<Param>(pv), kParams[pv].def);
-            m_->SetParam(DRUM_ACCENT, kParams[DRUM_ACCENT].def);
+            m_->SetParam(DRUM_PAN + drum_sel_, kParams[DRUM_PAN + drum_sel_].def);
         }
         else if(knob == 1 && drum_knob2_page_ == 1)
         {
@@ -2395,6 +2416,7 @@ class Ui
     int      drum_knob3_page_       = 0;     // decay, the filter's envelope
     int      lfo_shown_             = DRUM_LFO_SHAPE;
     uint32_t lfo_shown_at_          = 0x80000000u;
+    uint32_t pan_shown_at_          = 0x80000000u;
     bool     drum_clear_down_       = false;
     bool     live_quant_down_       = false; // live, drums: F#4 down (tap: quantize)
     bool     acc_key_down_          = false; // step, drums: the accent key down (tap: its page)

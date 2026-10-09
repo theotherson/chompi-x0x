@@ -74,7 +74,8 @@ enum Param : uint8_t
     // feedback FM (CHOMPI + knobs 2 and 3), as x0x::Drum.
     DRUM_TUNE,
     DRUM_FM = DRUM_TUNE + 7,
-    NUM_PARAMS = DRUM_FM + 7
+    DRUM_PAN = DRUM_FM + 7, // each voice's pan (CHOMPI + knob 1), centre 0.5
+    NUM_PARAMS = DRUM_PAN + 7
 };
 
 struct ParamInfo
@@ -163,6 +164,8 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"cy_tune", .5f, 0, 0}, {"oh_tune", .5f, 0, 0}, {"ch_tune", .5f, 0, 0},
     {"bd_fm", 0.f, 0, 0}, {"sd_fm", 0.f, 0, 0}, {"lt_fm", 0.f, 0, 0}, {"ht_fm", 0.f, 0, 0},
     {"cy_fm", 0.f, 0, 0}, {"oh_fm", 0.f, 0, 0}, {"ch_fm", 0.f, 0, 0},
+    {"bd_pan", .5f, 0, 0}, {"sd_pan", .5f, 0, 0}, {"lt_pan", .5f, 0, 0}, {"ht_pan", .5f, 0, 0},
+    {"cy_pan", .5f, 0, 0}, {"oh_pan", .5f, 0, 0}, {"ch_pan", .5f, 0, 0},
 };
 // clang-format on
 

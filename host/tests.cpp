@@ -2005,7 +2005,7 @@ static void TestDrumPanel()
     r.Black(1); // SD
     r.Key(Ui::kKeyClear);
     CHECK(!p.DrumHit(4, SD) && p.DrumHit(4, BD));
-    // Knobs act on the selected voice; CHOMPI + knob 1: the accent level.
+    // Knobs act on the selected voice.
     r.Black(0);
     const float lv = r.m.settings.params[DRUM_PARAMS + 3 * BD];
     r.ui.KnobTurn(0, -5, false);
@@ -2013,14 +2013,34 @@ static void TestDrumPanel()
     const float dk = r.m.settings.params[DRUM_PARAMS + 3 * BD + 2];
     r.ui.KnobTurn(2, 5, false);
     CHECK(r.m.settings.params[DRUM_PARAMS + 3 * BD + 2] > dk);
-    const float ac = r.m.settings.params[DRUM_ACCENT];
+    // CHOMPI + knob 1: the voice's pan (shown on the white keys).
+    r.Run(400); // past the swap's flash
     r.ui.Chompi(true), r.ui.KnobTurn(0, 5, false), r.ui.Chompi(false);
+    CHECK(r.m.settings.params[DRUM_PAN + BD] > 0.5f && r.m.settings.params[DRUM_PAN + SD] == 0.5f);
+    {
+        LedFrame g;
+        r.ui.Draw(g, r.now);
+        CHECK(g.key[Ui::kWhite[7]].r < 0.1f && g.key[Ui::kWhite[8]].r + g.key[Ui::kWhite[9]].r + g.key[Ui::kWhite[10]].r > 0.5f);
+    }
+    // Page 2: the accent level; CHOMPI, the drum part's length.
+    const float ac = r.m.settings.params[DRUM_ACCENT];
+    r.ui.KnobClick(0, r.now);
+    r.ui.KnobTurn(0, 5, false);
     CHECK(r.m.settings.params[DRUM_ACCENT] > ac);
-    r.ui.KnobClick(0, r.now); // page 2: the drum part's length
+    r.ui.Chompi(true);
     for(int i = 0; i < 4; i++)
         r.ui.KnobTurn(0, -1, false); // a step a click
+    r.ui.Chompi(false);
     CHECK(p.drum_length == 12 && p.length == 16);
+    // CHOMPI + click: the accent and length back; then page 1's: level and pan.
+    r.ui.Chompi(true), r.ui.KnobClick(0, r.now), r.ui.Chompi(false);
+    CHECK(p.drum_length == 16 && r.m.settings.params[DRUM_ACCENT] == kParams[DRUM_ACCENT].def);
+    p.drum_length = 12;
     r.ui.KnobClick(0, r.now);
+    r.ui.Chompi(true), r.ui.KnobClick(0, r.now), r.ui.Chompi(false);
+    CHECK(r.m.settings.params[DRUM_PAN + BD] == 0.5f && r.m.settings.params[DRUM_PARAMS + 3 * BD] == kParams[DRUM_PARAMS].def);
+    CHECK(p.drum_length == 12);
+    p.drum_length = 16;
     const float tempo = r.m.settings.params[TEMPO];
     r.ui.KnobTurn(4, 10, false); // the purple knob: tempo
     CHECK(fabsf(TempoBpm(r.m.settings.params[TEMPO]) - TempoBpm(tempo) - 10.f) < 0.01f);
@@ -3228,6 +3248,59 @@ static void TestKnobResetHold()
     CHECK(prm[DRUM_TUNE + BD] == 0.7f); // other voices keep theirs
 }
 
+static void TestDrumPan()
+{
+    printf("drums: each voice panned (equal power, centred as before)\n");
+    auto side = [](float pan) {
+        Drums d;
+        d.Init(48000.f);
+        d.Params(SD).pan = pan, d.Params(CH).pan = pan;
+        d.Trigger(SD, 0.5f), d.Trigger(CH, 0.5f);
+        std::vector<float> l(9600, 0.f), r(9600, 0.f);
+        for(size_t i = 0; i < l.size(); i += 48)
+            d.Process(&l[i], &r[i], 48);
+        double el = 0, er = 0;
+        for(size_t i = 0; i < l.size(); i++)
+            el += l[i] * l[i], er += r[i] * r[i];
+        return std::make_pair(el, er);
+    };
+    const auto c = side(0.5f), hl = side(0.f), hr = side(1.f), q = side(0.25f);
+    CHECK(fabs(c.first - c.second) < 1e-9 * c.first);           // centre: both the same
+    CHECK(hl.second < hl.first * 1e-6 && hr.first < hr.second * 1e-6); // hard left / right
+    CHECK(fabs((hl.first) / (c.first + c.second) - 1.0) < 0.01);      // equal power
+    CHECK(q.first > q.second * 4 && fabs((q.first + q.second) / (c.first + c.second) - 1.0) < 0.01);
+    // The hats apart: OH left, CH right.
+    Drums d;
+    d.Init(48000.f);
+    d.Params(OH).pan = 0.f, d.Params(CH).pan = 1.f;
+    d.Trigger(OH, 0.f);
+    std::vector<float> l(4800, 0.f), r(4800, 0.f);
+    for(size_t i = 0; i < l.size(); i += 48)
+        d.Process(&l[i], &r[i], 48);
+    double el = 0, er = 0;
+    for(size_t i = 0; i < l.size(); i++)
+        el += l[i] * l[i], er += r[i] * r[i];
+    CHECK(el > 0 && er < el * 1e-6);
+    // Through the machine: a hard-left snare comes out of the left only.
+    Rig rig;
+    Pattern& p = rig.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    p.drums[0] = 1 << SD;
+    rig.m.settings.params[DRUM_PAN + SD] = 0.f;
+    rig.m.Play();
+    double ml = 0, mr = 0;
+    float  L[48], R[48];
+    for(int ms = 0; ms < 200; ms++)
+    {
+        rig.m.Process(L, R, 48);
+        for(int i = 0; i < 48; i++)
+            ml += L[i] * L[i], mr += R[i] * R[i];
+    }
+    CHECK(ml > 0 && mr < ml * 1e-4);
+    char buf[8192];
+    CHECK(WriteSettings(rig.m.settings, buf, sizeof buf) > 0 && strstr(buf, "sd_pan 0.0000"));
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3457,6 +3530,7 @@ int main()
     TestDrumTuneAndFm();
     TestFxBalance();
     TestKnobResetHold();
+    TestDrumPan();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

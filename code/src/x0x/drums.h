@@ -46,6 +46,7 @@ struct DrumParams
     float attack = 0.5f; // the click / snap
     float decay  = 0.5f;
     float tune   = 0.5f; // +-24 semitones
+    float pan    = 0.5f; // left .. right
     float fm     = 0.f;  // feedback FM: the voice's pitch pushed by its own output
 };
 
@@ -233,16 +234,39 @@ class Drums
 
     /** Adds n samples of all the voices, mixed by their levels, to out; and
      *  to send (if given), the voices in the send mask. */
+    /** Mono: the left and right, averaged (centred voices as they are). */
     void Process(float* out, size_t n, float* send = nullptr)
+    {
+        float l[64], r[64];
+        for(size_t pos = 0; pos < n; pos += 64)
+        {
+            const size_t m = n - pos < 64 ? n - pos : 64;
+            for(size_t i = 0; i < m; i++)
+                l[i] = r[i] = 0.f;
+            Process(l, r, m, send ? send + pos : nullptr);
+            for(size_t i = 0; i < m; i++)
+                out[pos + i] += 0.5f * (l[i] + r[i]);
+        }
+    }
+
+    /** Stereo: each voice panned (equal power, a centred one at full in
+     *  both); the send is mono, unpanned. */
+    void Process(float* out_l, float* out_r, size_t n, float* send = nullptr)
     {
         const uint8_t sm      = send_mask_;
         const bool    in[NUM_DRUMS] = {(sm & 1) != 0, (sm & 2) != 0, (sm & 4) != 0, (sm & 8) != 0,
                                        (sm & 16) != 0, (sm & 32) != 0, (sm & 64) != 0};
-        // The hats share a VCA and filters: a second filter pair carries the
-        // send when only one of them is in.
-        const bool    hats_split = in[OH] != in[CH];
         const float lv[NUM_DRUMS] = {
             Level(BD), Level(SD), Level(LT), Level(HT), Level(CY), Level(OH), Level(CH)};
+        float gl[NUM_DRUMS], gr[NUM_DRUMS];
+        for(int v = 0; v < NUM_DRUMS; v++)
+        {
+            const float pan = Clamp(params_[v].pan, 0.f, 1.f);
+            if(fabsf(pan - 0.5f) < 0.002f)
+                gl[v] = gr[v] = 1.f;
+            else
+                gl[v] = 1.41421356f * FastSin2Pi(0.25f - 0.25f * pan), gr[v] = 1.41421356f * FastSin2Pi(0.25f * pan);
+        }
         const float sd_nk   = TauToCoef(sd_noise_tau_, sr_);
         const float ch_k    = TauToCoef(ch_tau_, sr_);
         const float oh_k    = TauToCoef(oh_tau_, sr_);
@@ -283,7 +307,6 @@ class Drums
             tom_click_ -= tom_click_ * click_k;
             const float lt_r = lt_fm_ > 0.f ? lt_.ProcessFm(lt_fm_) : lt_.Process();
             const float ht_r = ht_fm_ > 0.f ? ht_.ProcessFm(ht_fm_) : ht_.Process();
-            const float lt = lt_r + tclick, ht = ht_r + tclick;
             // The send: the click and noise with the last tom, if it's in.
             const float t_send = in[click_lt_ ? LT : HT] ? tclick * (lv[LT] + lv[HT]) : 0.f;
 
@@ -313,18 +336,17 @@ class Drums
             ch_time_ += 1.f / sr_;
             if(ch_time_ > 0.004f) // a moment's hold
                 ch_env_ -= ch_env_ * ch_k;
-            const float hat_vca = lv[OH] * oh_env_ + lv[CH] * ch_env_;
-            hat_hp_.Process(hat_bp_.Band() * hat_vca + hat_click_ * noise * 0.2f);
+            // The 606 has one VCA and filter for both; here each has its
+            // own filters (they're linear: together, the same sound), so
+            // they can be panned and sent apart. The click goes with the
+            // hat that made it.
+            const float hclick = hat_click_ * noise * 0.2f;
+            hat_hp_.Process(hat_bp_.Band() * lv[OH] * oh_env_ + (click_oh_ ? hclick : 0.f));
             hat_hp2_.Process(hat_hp_.High()); // steep: the squares' low end stays out
-            float hat_send = (in[OH] || in[CH]) ? hat_hp2_.High() : 0.f;
-            if(send && hats_split)
-            {
-                const float v = (in[OH] ? lv[OH] * oh_env_ : 0.f) + (in[CH] ? lv[CH] * ch_env_ : 0.f);
-                const float ck = in[click_oh_ ? OH : CH] ? hat_click_ : 0.f; // the click: of the last hat
-                hat_hp_s_.Process(hat_bp_.Band() * v + ck * noise * 0.2f);
-                hat_hp2_s_.Process(hat_hp_s_.High());
-                hat_send = hat_hp2_s_.High();
-            }
+            hat_hp_s_.Process(hat_bp_.Band() * lv[CH] * ch_env_ + (click_oh_ ? 0.f : hclick));
+            hat_hp2_s_.Process(hat_hp_s_.High());
+            const float oh       = hat_hp2_.High(), ch = hat_hp2_s_.High();
+            const float hat_send = (in[OH] ? oh : 0.f) + (in[CH] ? ch : 0.f);
             hat_click_ -= hat_click_ * click_k;
 
             // Cymbal: both bands, one envelope (a fast part and a tail).
@@ -341,8 +363,14 @@ class Drums
             cy_click_ -= cy_click_ * click_k;
             const float cy = 0.02f * cy_hp_lo_.High() + cy_hp_hi2_.High();
 
-            out[i] += kGain * (lv[BD] * bd + lv[SD] * sd + lv[LT] * lt + lv[HT] * ht + lv[CY] * 1.6f * cy
-                               + 1.6f * hat_hp2_.High());
+            const int   tv    = click_lt_ ? LT : HT; // the toms' click and noise: the last tom's
+            const float t_all = tclick * (lv[LT] + lv[HT]);
+            const float vb = lv[BD] * bd, vs = lv[SD] * sd, vl = lv[LT] * lt_r, vh = lv[HT] * ht_r,
+                        vc = lv[CY] * 1.6f * cy, vo = 1.6f * oh, vx = 1.6f * ch;
+            out_l[i] += kGain * (gl[BD] * vb + gl[SD] * vs + gl[LT] * vl + gl[HT] * vh + gl[tv] * t_all + gl[CY] * vc
+                                 + gl[OH] * vo + gl[CH] * vx);
+            out_r[i] += kGain * (gr[BD] * vb + gr[SD] * vs + gr[LT] * vl + gr[HT] * vh + gr[tv] * t_all + gr[CY] * vc
+                                 + gr[OH] * vo + gr[CH] * vx);
             if(send)
                 send[i] += kGain * ((in[BD] ? lv[BD] * bd : 0.f) + (in[SD] ? lv[SD] * sd : 0.f)
                                     + (in[LT] ? lv[LT] * lt_r : 0.f) + (in[HT] ? lv[HT] * ht_r : 0.f) + t_send
