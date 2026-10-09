@@ -3183,6 +3183,51 @@ static void TestFxBalance()
     CHECK(echo(0.25f, false) > bass_mid * 0.2 && echo(0.25f, false) < bass_mid * 0.9); // partway
 }
 
+static void TestKnobResetHold()
+{
+    printf("CHOMPI + knob 1-3 pushed 2 s: every page of that knob reset (a click: just the page)\n");
+    Rig r;
+    r.Run(10); // the panel's clock going
+    float* prm = r.m.settings.params;
+    // The bass's knob 1: wave / pulse width, and page 2 length / tuning.
+    prm[WAVE] = 1.f, prm[PULSE_WIDTH] = 0.9f, prm[TUNING] = 0.2f;
+    r.m.SetLength(9);
+    r.ui.Chompi(true), r.ui.KnobClick(0, r.now), r.ui.Chompi(false); // a click: page 1 only
+    CHECK(prm[WAVE] == kParams[WAVE].def && prm[TUNING] == 0.2f && r.m.Current().length == 9);
+    prm[WAVE] = 1.f;
+    r.ui.Chompi(true), r.ui.KnobDown(0), r.Run(2100);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.knob[0].r > 0.9f && f.knob[0].g > 0.9f && f.knob[0].b > 0.9f); // the flash
+    r.ui.KnobUp(0, r.now), r.ui.Chompi(false);
+    CHECK(prm[WAVE] == kParams[WAVE].def && prm[PULSE_WIDTH] == kParams[PULSE_WIDTH].def);
+    CHECK(prm[TUNING] == kParams[TUNING].def && r.m.Current().length == kSteps);
+    CHECK(r.ui.KnobPage(0) == 0); // and the release wasn't a click
+    // Let go early: nothing.
+    prm[WAVE] = 1.f;
+    r.ui.Chompi(true), r.ui.KnobDown(0), r.Run(1500), r.ui.KnobUp(0, r.now), r.ui.Chompi(false);
+    CHECK(prm[WAVE] == kParams[WAVE].def); // (the release was a CHOMPI + click: page 1)
+    prm[TUNING] = 0.3f;
+    r.ui.Chompi(true), r.ui.KnobDown(0), r.Run(1500), r.ui.KnobUp(0, r.now), r.ui.Chompi(false);
+    CHECK(prm[TUNING] == 0.3f);
+
+    // The drums: knob 2 (attack, tuning; filter, resonance), knob 3 (decay,
+    // FM; envelope, its decay), for the selected voice and the bus.
+    r.ui.Loop(r.now);
+    CHECK(r.ui.OnDrums());
+    r.Black(1); // SD
+    prm[DRUM_PARAMS + 3 * SD + 1] = 0.9f, prm[DRUM_TUNE + SD] = 0.8f, prm[DRUM_FILTER] = 0.2f, prm[DRUM_FILTER_RES] = 0.7f;
+    prm[DRUM_PARAMS + 3 * SD + 2] = 0.9f, prm[DRUM_FM + SD] = 0.6f, prm[DRUM_FENV] = 0.5f, prm[DRUM_FENV_DECAY] = 0.9f;
+    prm[DRUM_TUNE + BD] = 0.7f;
+    r.ui.Chompi(true), r.ui.KnobDown(1), r.ui.KnobDown(2), r.Run(2100);
+    r.ui.KnobUp(1, r.now), r.ui.KnobUp(2, r.now), r.ui.Chompi(false);
+    CHECK(prm[DRUM_PARAMS + 3 * SD + 1] == 0.5f && prm[DRUM_TUNE + SD] == 0.5f);
+    CHECK(prm[DRUM_FILTER] == 0.5f && prm[DRUM_FILTER_RES] == 0.f);
+    CHECK(prm[DRUM_PARAMS + 3 * SD + 2] == 0.5f && prm[DRUM_FM + SD] == 0.f);
+    CHECK(prm[DRUM_FENV] == 0.f && prm[DRUM_FENV_DECAY] == kParams[DRUM_FENV_DECAY].def);
+    CHECK(prm[DRUM_TUNE + BD] == 0.7f); // other voices keep theirs
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3411,6 +3456,7 @@ int main()
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();
     TestFxBalance();
+    TestKnobResetHold();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

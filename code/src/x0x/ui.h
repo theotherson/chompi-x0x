@@ -199,6 +199,7 @@ class Ui
     static constexpr uint32_t kProtectHoldMs  = 2000;
     static constexpr uint32_t kExportHoldMs   = 2000;
     static constexpr uint32_t kSoloHoldMs     = 2000;
+    static constexpr uint32_t kKnobResetHoldMs = 2000; // CHOMPI + a knob pushed: all its pages reset
     static constexpr uint32_t kCurrentFlashMs = 400; // the current pattern's slow flash (queued: fast)
 
     void Init(Machine* m) { m_ = m; }
@@ -408,8 +409,9 @@ class Ui
     {
         if(knob < 0 || knob >= 6)
             return;
-        knob_down_[knob]   = true;
-        knob_turned_[knob] = false;
+        knob_down_[knob]    = true;
+        knob_turned_[knob]  = false;
+        knob_down_at_[knob] = last_tick_;
     }
 
     void KnobUp(int knob, uint32_t now)
@@ -590,6 +592,16 @@ class Ui
             voice_key_      = -1;
             solo_at_        = now;
         }
+        for(int k = 0; k < 3; k++)
+            if(chompi_ && knob_down_[k] && !knob_turned_[k] && now - knob_down_at_[k] >= kKnobResetHoldMs)
+            {
+                // CHOMPI + knob 1-3 pushed 2 s: every page of it reset (the
+                // release isn't a click).
+                Touched();
+                ResetKnobAll(k);
+                knob_turned_[k]   = true;
+                knob_reset_at_[k] = now;
+            }
         if(drums_ && acc_key_down_ && held_[kBlack[5]] && now - acc_key_at_ >= kSoloHoldMs)
         {
             // The accent key held 2 s (step mode): every voice unmuted.
@@ -787,6 +799,44 @@ class Ui
             for(int i = 0; i < kKeyNotes; i++)
                 f.key[i] = Scale(drums_ ? kDrumColour : kBassColour, k);
         }
+        // A knob's every page just reset: it flashes white.
+        for(int k = 0; k < 3; k++)
+            if(now - knob_reset_at_[k] < 300)
+                f.knob[k] = {1.f, 1.f, 1.f};
+    }
+
+    /** CHOMPI + knob 1-3 held 2 s: all its pages back to their defaults
+     *  (on the drums, the selected voice's and the drum bus's). */
+    void ResetKnobAll(int knob)
+    {
+        auto def = [&](int q) { m_->SetParam(static_cast<Param>(q), kParams[q].def); };
+        if(drums_)
+        {
+            const int pv = DRUM_PARAMS + 3 * drum_sel_;
+            if(knob == 0)
+            {
+                def(pv), def(DRUM_ACCENT);
+                m_->SetDrumLength(kSteps);
+                drum_len_shown_at_ = last_tick_;
+            }
+            else if(knob == 1)
+                def(pv + 1), def(DRUM_TUNE + drum_sel_), def(DRUM_FILTER), def(DRUM_FILTER_RES);
+            else if(knob == 2)
+                def(pv + 2), def(DRUM_FM + drum_sel_), def(DRUM_FENV), def(DRUM_FENV_DECAY);
+            return;
+        }
+        for(int page = 0; page < kKnobPages[knob]; page++)
+            for(int layer = 0; layer < 2; layer++)
+            {
+                const uint8_t sel = kKnobMap[knob][page][layer];
+                if(sel == kKnobLength)
+                {
+                    m_->SetLength(kSteps);
+                    length_shown_at_ = last_tick_;
+                }
+                else if(sel != kKnobNone)
+                    def(sel);
+            }
     }
 
     /** The drums' side. Step mode: the page's steps (the voice's hits in
@@ -2321,6 +2371,8 @@ class Ui
     int      pat_key_side_          = 0;     // the side shown when it was pressed (1 = B)
     bool     knob_down_[6]          = {};    // pushed (its click comes on release)
     bool     knob_turned_[6]        = {};    // ...and turned while pushed: no click
+    uint32_t knob_down_at_[6]       = {};
+    uint32_t knob_reset_at_[3]      = {0x80000000u, 0x80000000u, 0x80000000u};
     uint32_t delay_shown_at_        = 0x80000000u;
     uint32_t pat_key_at_            = 0;
     uint32_t copied_at_             = 0x80000000u;
