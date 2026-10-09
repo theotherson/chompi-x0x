@@ -2378,6 +2378,122 @@ static void TestCompressorAndSidechain()
     r.m.Stop();
 }
 
+static void TestDrumFxSends()
+{
+    printf("drum fx sends: voices out of the reverb and delay (knob 4 + a voice)\n");
+    // A BD at step 1, a long delay echo window: with BD out, no echo but the
+    // hit itself still there.
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    p.drums[0] = 1 << BD;
+    float* prm = r.m.settings.params;
+    auto run_energy = [&](double t0, double t1) {
+        r.m.Stop();
+        r.Run(300);
+        r.m.Play();
+        double e = 0;
+        float  L[48], R[48];
+        for(int ms = 0; ms < static_cast<int>(t1 * 1000); ms++)
+        {
+            r.m.Process(L, R, 48);
+            r.now++;
+            r.ui.Tick(r.now);
+            if(ms >= t0 * 1000)
+                for(int i = 0; i < 48; i++)
+                    e += L[i] * L[i];
+        }
+        return e;
+    };
+    prm[DELAY_TIME] = StepValue(3, kDelayDivisions);
+    const double hit = run_energy(0.0, 0.1);
+    const double dry = run_energy(0.26, 0.4);
+    prm[DRUM_DELAY] = 0.8f, prm[DRUM_REVERB] = 0.8f;
+    const double wet = run_energy(0.26, 0.4);
+    CHECK(wet > dry * 30);
+    CHECK(r.m.DrumInFx(BD));
+    r.m.SetDrumInFx(BD, false);
+    CHECK(!r.m.DrumInFx(BD) && r.m.DrumInFx(SD));
+    const double out = run_energy(0.26, 0.4);
+    CHECK(out < wet * 0.01);
+    const double hit_out = run_energy(0.0, 0.1);
+    CHECK(hit_out > hit * 0.5); // still heard, dry
+    // Another voice still in: SD's echo stays while BD's is gone.
+    p.drums[0] = (1 << BD) | (1 << SD);
+    const double sd_in = run_energy(0.26, 0.4);
+    CHECK(sd_in > out * 30);
+    r.m.SetDrumInFx(BD, true);
+    // The hats: one in, the other out (a split of their shared filter): the
+    // send carries the one in as the main output does, and none of the other.
+    // The same for the toms' shared click and noise.
+    const int pairs[2][2] = {{OH, CH}, {LT, HT}};
+    for(const auto& pr : pairs)
+        for(int v : pr)
+            for(int in_v : pr)
+            {
+                Drums d;
+                d.Init(48000.f);
+                d.SetSendMask(static_cast<uint8_t>(0x7f & ~(1 << (in_v == pr[0] ? pr[1] : pr[0]))));
+                d.Trigger(static_cast<Drum>(v), 0.f);
+                std::vector<float> o(9600, 0.f), snd(9600, 0.f);
+                for(size_t i = 0; i < o.size(); i += 48)
+                    d.Process(&o[i], 48, &snd[i]);
+                double eo = 0, es = 0, diff = 0;
+                for(size_t i = 0; i < o.size(); i++)
+                    eo += o[i] * o[i], es += snd[i] * snd[i], diff += (o[i] - snd[i]) * (o[i] - snd[i]);
+                if(v == in_v)
+                    CHECK(eo > 0 && diff < eo * 1e-6);
+                else
+                    CHECK(eo > 0 && es < eo * 1e-6);
+            }
+    // On the machine: CH out, no echo of it.
+    p.drums[0] = 1 << CH;
+    prm[DRUM_REVERB] = 0.f;
+    r.m.SetDrumInFx(OH, false);
+    r.m.Stop(), r.Run(4000);
+    const double ch_in = run_energy(0.26, 0.4);
+    r.m.SetDrumInFx(CH, false);
+    r.m.Stop(), r.Run(4000);
+    const double ch_out = run_energy(0.26, 0.4);
+    CHECK(ch_in > ch_out * 1000);
+    r.m.SetDrumInFx(CH, true), r.m.SetDrumInFx(OH, true);
+    CHECK(prm[DRUM_FX_SENDS] == 1.f);
+
+    // Saved with the settings.
+    r.m.SetDrumInFx(LT, false);
+    char buf[4096];
+    CHECK(WriteSettings(r.m.settings, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, "drum_fx_sends 0.9685") != nullptr);
+    r.m.SetDrumInFx(LT, true);
+
+    // The panel: on the drums, knob 4 held + a voice key flips it; no page
+    // click on release, no hit; the keys show what's in.
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.ui.OnDrums());
+    r.Run(1000);                // the side's flash gone
+    r.ui.KnobTurn(3, 3, false); // reverb page
+    const float rev = prm[DRUM_REVERB];
+    r.ui.KnobDown(3);
+    const uint32_t hits = r.m.DrumHitCount(BD);
+    r.Black(0); // BD's key
+    CHECK(!r.m.DrumInFx(BD) && r.m.DrumHitCount(BD) == hits);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    const Rgb off = f.key[Ui::kBlack[0]], on = f.key[Ui::kBlack[1]];
+    CHECK(off.r + off.g + off.b < 0.1f && on.r + on.g + on.b > 0.5f);
+    r.ui.KnobUp(3, r.now);
+    r.ui.KnobTurn(3, 1, false);
+    CHECK(prm[DRUM_REVERB] > rev); // still page 1: the release didn't click
+    r.ui.KnobDown(3), r.Black(0), r.ui.KnobUp(3, r.now);
+    CHECK(r.m.DrumInFx(BD));
+    // Pushed and turned on the drums: no click either.
+    r.ui.KnobDown(3), r.ui.KnobTurn(3, 1, false), r.ui.KnobUp(3, r.now);
+    const float rev2 = prm[DRUM_REVERB];
+    r.ui.KnobTurn(3, 1, false);
+    CHECK(prm[DRUM_REVERB] > rev2);
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -2556,6 +2672,7 @@ int main()
     TestDrumPanel();
     TestDrumMuteSoloMix();
     TestDrumEffects();
+    TestDrumFxSends();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

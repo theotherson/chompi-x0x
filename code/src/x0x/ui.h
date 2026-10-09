@@ -417,13 +417,13 @@ class Ui
     {
         const float step = KnobStep(dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
         Touched();
+        if(knob_down_[knob])
+            knob_turned_[knob] = true;
         if(drums_ && knob != 5)
         {
             DrumKnobTurn(knob, inc, dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
             return; // the volume knob (volume, drive, tempo, swing) is shared
         }
-        if(knob_down_[knob])
-            knob_turned_[knob] = true;
         if(knob == 3 && knob_down_[3] && KnobPage(3) == 0)
         {
             // Knob 4 pushed and turned, on the delay page: the free delay
@@ -839,6 +839,14 @@ class Ui
         }
         if(now - solo_at_ < 300)
             f.key[kBlack[KeyOfVoice(voice_key_voice_)]] = {1.f, 1.f, 1.f};
+        if(knob_down_[3])
+            for(int b = 0; b < VoiceKeys(); b++)
+            {
+                // Knob 4 held: the voices in the reverb and delay lit, the
+                // others nearly off.
+                const int v      = VoiceOfKey(b);
+                f.key[kBlack[b]] = Scale(kDrumCol[v], m_->DrumInFx(v) ? 0.8f : 0.02f);
+            }
         if(mode_ == Mode::STEP)
         {
             f.key[kBlack[5]] = Scale(kDrumAccentCol, drum_acc_page_ ? 1.f : 0.12f);
@@ -1023,6 +1031,15 @@ class Ui
         }
         if(b >= 0 && b < VoiceKeys())
         {
+            if(knob_down_[3])
+            {
+                // Knob 4 held + a voice: in or out of the reverb and delay
+                // (the knob then doesn't click).
+                const int v = VoiceOfKey(b);
+                m_->SetDrumInFx(v, !m_->DrumInFx(v));
+                knob_turned_[3] = true;
+                return;
+            }
             if(chompi_)
             {
                 // CHOMPI + a voice: mute it (again: unmute).

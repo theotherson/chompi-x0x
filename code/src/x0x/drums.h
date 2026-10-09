@@ -122,6 +122,8 @@ class Drums
         cy_hp_hi2_.Set(6000.f, 0.8f, sr_);
         cy_hp_lo_.Set(3000.f, 0.7f, sr_);
         cy_hp_hi_.Set(6000.f, 1.0f, sr_);
+        hat_hp_s_.Set(6000.f, 1.0f, sr_);
+        hat_hp2_s_.Set(6000.f, 0.8f, sr_);
         sd_hp_.Set(1400.f, 0.9f, sr_);
         sd_lp_.Set(5000.f, 0.7f, sr_);
         tom_lp_.Set(1000.f, 0.7f, sr_);
@@ -166,12 +168,14 @@ class Drums
                 lt_glide_ = 1.f;
                 lt_pitch_ = pr;
                 tom_click_ = 0.3f * ck * hit;
+                click_lt_  = true;
                 tom_noise_ = 0.06f * hit;
                 break;
             case HT:
                 ht_.Set(208.f * pr, 0.035f * dk, sr_);
                 ht_.Ping(hit);
                 tom_click_ = 0.3f * ck * hit;
+                click_lt_  = false;
                 tom_noise_ = 0.06f * hit;
                 break;
             case CY:
@@ -187,6 +191,7 @@ class Drums
                 oh_tau_   = 0.25f * mk;
                 oh_time_  = 0.f;
                 hat_click_ = 0.3f * ck * hit;
+                click_oh_  = true;
                 break;
             case CH:
                 metal_pitch_ = pr;
@@ -195,14 +200,27 @@ class Drums
                 ch_tau_    = 0.017f * mk;
                 ch_time_   = 0.f;
                 hat_click_ = 0.3f * ck * hit;
+                click_oh_  = false;
                 break;
             default: break;
         }
     }
 
     /** Adds n samples of all the voices, mixed by their levels, to out. */
-    void Process(float* out, size_t n)
+    /** Which voices go to the effects' sends (bits, as Drum); the rest stay
+     *  out of them. */
+    void SetSendMask(uint8_t m) { send_mask_ = m; }
+
+    /** Adds n samples of all the voices, mixed by their levels, to out; and
+     *  to send (if given), the voices in the send mask. */
+    void Process(float* out, size_t n, float* send = nullptr)
     {
+        const uint8_t sm      = send_mask_;
+        const bool    in[NUM_DRUMS] = {(sm & 1) != 0, (sm & 2) != 0, (sm & 4) != 0, (sm & 8) != 0,
+                                       (sm & 16) != 0, (sm & 32) != 0, (sm & 64) != 0};
+        // The hats share a VCA and filters: a second filter pair carries the
+        // send when only one of them is in.
+        const bool    hats_split = in[OH] != in[CH];
         const float lv[NUM_DRUMS] = {
             Level(BD), Level(SD), Level(LT), Level(HT), Level(CY), Level(OH), Level(CH)};
         const float sd_nk   = TauToCoef(sd_noise_tau_, sr_);
@@ -240,7 +258,10 @@ class Drums
             tom_noise_ -= tom_noise_ * tom_nk;
             const float tclick = tom_click_ * noise + tom_lp_.Low();
             tom_click_ -= tom_click_ * click_k;
-            const float lt = lt_.Process() + tclick, ht = ht_.Process() + tclick;
+            const float lt_r = lt_.Process(), ht_r = ht_.Process();
+            const float lt = lt_r + tclick, ht = ht_r + tclick;
+            // The send: the click and noise with the last tom, if it's in.
+            const float t_send = in[click_lt_ ? LT : HT] ? tclick * (lv[LT] + lv[HT]) : 0.f;
 
             // The metal: six squares, band-limited (PolyBLEP).
             float metal = 0.f;
@@ -268,6 +289,15 @@ class Drums
             const float hat_vca = lv[OH] * oh_env_ + lv[CH] * ch_env_;
             hat_hp_.Process(hat_bp_.Band() * hat_vca + hat_click_ * noise * 0.2f);
             hat_hp2_.Process(hat_hp_.High()); // steep: the squares' low end stays out
+            float hat_send = (in[OH] || in[CH]) ? hat_hp2_.High() : 0.f;
+            if(send && hats_split)
+            {
+                const float v = (in[OH] ? lv[OH] * oh_env_ : 0.f) + (in[CH] ? lv[CH] * ch_env_ : 0.f);
+                const float ck = in[click_oh_ ? OH : CH] ? hat_click_ : 0.f; // the click: of the last hat
+                hat_hp_s_.Process(hat_bp_.Band() * v + ck * noise * 0.2f);
+                hat_hp2_s_.Process(hat_hp_s_.High());
+                hat_send = hat_hp2_s_.High();
+            }
             hat_click_ -= hat_click_ * click_k;
 
             // Cymbal: both bands, one envelope (a fast part and a tail).
@@ -286,6 +316,10 @@ class Drums
 
             out[i] += kGain * (lv[BD] * bd + lv[SD] * sd + lv[LT] * lt + lv[HT] * ht + lv[CY] * 1.6f * cy
                                + 1.6f * hat_hp2_.High());
+            if(send)
+                send[i] += kGain * ((in[BD] ? lv[BD] * bd : 0.f) + (in[SD] ? lv[SD] * sd : 0.f)
+                                    + (in[LT] ? lv[LT] * lt_r : 0.f) + (in[HT] ? lv[HT] * ht_r : 0.f) + t_send
+                                    + (in[CY] ? lv[CY] * 1.6f * cy : 0.f) + 1.6f * hat_send);
         }
     }
 
@@ -328,7 +362,10 @@ class Drums
     float     sd_noise_env_ = 0.f, sd_noise_tau_ = 0.05f;
     float     lt_glide_ = 0.f, lt_pitch_ = 1.f, metal_pitch_ = 1.f;
     float     tom_noise_ = 0.f;
-    Svf       hat_hp2_, cy_hp_hi2_;
+    Svf       hat_hp2_, cy_hp_hi2_, hat_hp_s_, hat_hp2_s_;
+    uint8_t   send_mask_ = 0x7f;
+    bool      click_oh_  = false; // the hats' click is the open one's
+    bool      click_lt_  = false; // the toms' click and noise are the low one's
     Svf       sd_hp_, sd_lp_, tom_lp_, hat_bp_, hat_hp_, cy_bp_lo_, cy_bp_hi_, cy_hp_lo_, cy_hp_hi_;
     float     metal_ph_[6] = {};
     float     oh_env_ = 0.f, oh_tau_ = 0.25f, oh_time_ = 0.f;

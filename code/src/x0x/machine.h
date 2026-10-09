@@ -53,6 +53,7 @@ class Machine
         voice_.Init(sample_rate);
         drums_.Init(sample_rate);
         drum_fx_.Init(sample_rate);
+        drum_fx_send_.Init(sample_rate);
         comp_.Init(sample_rate);
         reverb_.Init(sample_rate, reverb_mem, reverb_frames);
         fx_.Init(sample_rate, delay_mem, delay_frames);
@@ -208,6 +209,15 @@ class Machine
     /** For the LEDs: the compressor's gain reduction (dB) and the sidechain's
      *  duck now (0..1). */
     float CompReduction() const { return comp_.Reduction(); }
+
+    /** Whether drum voice v goes to the reverb and delay (saved). */
+    bool DrumInFx(int v) const { return (StepIndex(settings.params[DRUM_FX_SENDS], 128) >> v) & 1; }
+    void SetDrumInFx(int v, bool on)
+    {
+        int m = StepIndex(settings.params[DRUM_FX_SENDS], 128);
+        m     = on ? m | (1 << v) : m & ~(1 << v);
+        SetParam(DRUM_FX_SENDS, StepValue(m, 128));
+    }
     float Duck() const { return duck_; }
 
     /** Counts drum hits as they play (pattern or live), for the LEDs. */
@@ -509,9 +519,12 @@ class Machine
             dp.attack      = p[DRUM_PARAMS + 3 * v + 1];
             dp.decay       = p[DRUM_PARAMS + 3 * v + 2];
         }
-        float drum[64];
+        const uint8_t sends = static_cast<uint8_t>(StepIndex(p[DRUM_FX_SENDS], 128));
+        drums_.SetSendMask(sends);
+        const bool split = (sends & 0x7f) != 0x7f && (sends & 0x7f) != 0; // some voices in, some out
+        float      drum[64], dsrc[64];
         for(size_t i = 0; i < n; i++)
-            drum[i] = 0.f;
+            drum[i] = dsrc[i] = 0.f;
         // Live drum hits from the panel.
         while(hit_tail_ != hit_head_)
         {
@@ -570,7 +583,7 @@ class Machine
             if(at > pos)
             {
                 voice_.Process(vp_, mono + pos, at - pos);
-                drums_.Process(drum + pos, at - pos);
+                drums_.Process(drum + pos, at - pos, split ? dsrc + pos : nullptr);
                 pos = at;
             }
             Handle(ev[i]);
@@ -578,7 +591,7 @@ class Machine
         if(pos < n)
         {
             voice_.Process(vp_, mono + pos, n - pos);
-            drums_.Process(drum + pos, n - pos);
+            drums_.Process(drum + pos, n - pos, split ? dsrc + pos : nullptr);
         }
         if(arp_gate_left_ >= 0.0)
             arp_gate_left_ -= n;
@@ -591,7 +604,7 @@ class Machine
         mix_bass_ += (gb - mix_bass_) * 0.2f; // a little smoothing, per block
         mix_drums_ += (gd - mix_drums_) * 0.2f;
         for(size_t i = 0; i < n; i++)
-            mono[i] *= mix_bass_, drum[i] *= mix_drums_;
+            mono[i] *= mix_bass_, drum[i] *= mix_drums_, dsrc[i] *= mix_drums_;
 
         // The drums' own effects, then their sends to the shared delay and
         // the reverb.
@@ -603,12 +616,27 @@ class Machine
         ds.crush_rate = p[DRUM_CRUSH_RATE];
         drum_fx_.Set(ds);
         drum_fx_.Process(drum, n);
+        // The sends: the voices in them, through the same filter, crush and
+        // distortion (a second copy: they aren't linear); all in, the bus.
+        const float* send_src = drum;
+        if(split)
+        {
+            drum_fx_send_.Set(ds);
+            drum_fx_send_.Process(dsrc, n);
+            send_src = dsrc;
+        }
+        else if((sends & 0x7f) == 0)
+        {
+            for(size_t i = 0; i < n; i++)
+                dsrc[i] = 0.f;
+            send_src = dsrc;
+        }
         reverb_.Set(p[REVERB_SIZE]);
         const float dly_send = p[DRUM_DELAY] * p[DRUM_DELAY];
         const float rev_send = p[DRUM_REVERB] * p[DRUM_REVERB];
         float       dsend[64], rin[64];
         for(size_t i = 0; i < n; i++)
-            dsend[i] = drum[i] * dly_send, rin[i] = drum[i] * rev_send;
+            dsend[i] = send_src[i] * dly_send, rin[i] = send_src[i] * rev_send;
 
         fx_.Process(mono, dly_send > 0.0001f ? dsend : nullptr, left, right, n);
         float rl[64], rr[64];
@@ -881,7 +909,7 @@ class Machine
     float       sr_ = 48000.f;
     Voice       voice_;
     Drums       drums_;
-    DrumFx      drum_fx_;
+    DrumFx      drum_fx_, drum_fx_send_;
     Compressor  comp_;
     float       duck_ = 0.f, duck_gain_ = 1.f;
     Reverb      reverb_;

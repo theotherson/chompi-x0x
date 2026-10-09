@@ -59,6 +59,7 @@ enum Param : uint8_t
     DRUM_FILTER,     //   one-knob filter (low-pass left, high-pass right),
     DRUM_DRIVE,      //   distortion (CHOMPI + volume on the drums' side)
     DRUM_DIST_MIX,   //   its dry / wet
+    DRUM_FX_SENDS,   // which drum voices go to the reverb and delay (a mask: v * 127)
     COMP,            // the master compressor (volume knob, page 4)
     SIDECHAIN,       // CHOMPI + it: the kick ducks the rest (sidechain depth)
     NUM_PARAMS
@@ -135,6 +136,7 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_filter", .5f,      0, 0},   // centre: off
     {"drum_drive",  0.f,      0, 0},   // off by default
     {"drum_dist_mix", 1.f,    0, 0},   // all wet
+    {"drum_fx_sends", 1.f,    128, 0}, // every voice in
     {"comp",        0.f,      0, 0},   // off .. heavy
     {"sidechain",   0.f,      0, 0},   // none .. -20 dB on each kick
 };
