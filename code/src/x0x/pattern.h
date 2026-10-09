@@ -166,6 +166,14 @@ struct Pattern
             steps[i] = Step{};
         length = kSteps;
     }
+    /** The drum part alone (hits, timing, length) from another pattern. */
+    void CopyDrumsFrom(const Pattern& o)
+    {
+        memcpy(drums, o.drums, sizeof drums);
+        memcpy(drum_nudge, o.drum_nudge, sizeof drum_nudge);
+        drum_length = o.drum_length;
+    }
+
     void ClearDrums()
     {
         for(int i = 0; i < kSteps; i++)

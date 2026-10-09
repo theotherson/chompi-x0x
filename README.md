@@ -19,6 +19,10 @@ In step mode, **LOOP** swaps the panel between the bass and the drums, and **CHO
 
 In either mode, tap CHOMPI twice quickly (each tap short, nothing else touched in between) to swap the panel between the bass and the drums. Both always play; the swap only picks which one the keys and knobs edit. The keybed flashes the new side's colour (purple for the bass, amber for the drums), and the CHOMPI light stays amber while you're on the drums. A shift combination never counts, however fast: a press only counts as a tap if no key, knob or button was used during it.
 
+## Patterns for each side, or both
+
+Every pattern slot holds a bassline and a drum part, and each side plays its own slot: the bass might play 1A while the drums play 3B. Each side's pattern page shows and picks its own (on the drums' side, the slots with drum parts are lit); a change waits for the end of that side's loop (the drum part's own length for the drums), and the queued key again switches at once. To send **both** to a pattern, hold PATTERN (F#4) on the pattern page and press the pattern key (with CHOMPI too for a B): they switch together at the end of the bar, the drums from their top. Write protect (PATTERN held 2 s) only works while stopped, so holding PATTERN while playing never toggles it. The settings remember both sides' patterns (a settings file from before this starts the drums on the bass's).
+
 ## The drums (TR-606)
 
 Seven voices synthesised the way a TR-606 makes them (from Roland's block diagram), fitted to samples of real 606s: bass drum, snare, low and high tom, cymbal, open and closed hi-hat, plus accent. Every pattern holds a drum part alongside its bassline, so picking 3A changes both; the drum part has its own length, for polymeters. Accent is per step, as on the 606, and makes hits up to 3x as loud (the accent level sets how much). A closed hat chokes an open one.
@@ -32,8 +36,8 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | Voice keys | That voice's page | Play it |
 | C#4 / D#4 | The ACCENT page (blue); held 2 s: unmute every voice / view 1-8 / 9-16 | Closed / open hat. CHOMPI + LOOP: live hits accented on / off (LOOP blue while CHOMPI is held) |
 | White keys | The page's steps on / off: the voice's hits in its colour (accented ones tinted blue), other voices' dim (or the accents, blue) | The last voice played, pitched in C major from middle C (played, not recorded) |
-| F#4 | PATTERN: as on the bass side | **Quantize** (blue when on): a tap turns it on / off. Hold F#4 and press white key 1 / 2 / 3 for the grid: 1/16, 1/8, 1/4 (this turns quantize on) |
-| G#4 | COPY: as on the bass side | **Roll** (green): hold G#4 and hold voice keys, and they repeat in time. Hold G#4 and press white keys 1-5 for the rate: 1/8, 1/8T, 1/16, 1/16T, 1/32 |
+| F#4 | PATTERN: as on the bass side, but for the drums' own pattern (see below) | **Quantize** (blue when on): a tap turns it on / off. Hold F#4 and press white key 1 / 2 / 3 for the grid: 1/16, 1/8, 1/4 (this turns quantize on) |
+| G#4 | COPY: as on the bass side, but the drum part alone (the other slot's bassline is kept) | **Roll** (green): hold G#4 and hold voice keys, and they repeat in time. Hold G#4 and press white keys 1-5 for the rate: 1/8, 1/8T, 1/16, 1/16T, 1/32 |
 | A#4 | CLEAR: tap clears this voice's hits (or the accents); hold 1 s: the whole drum part | **Erase** (red): hold A#4 and hold voice keys while it runs, and their hits are wiped as the playhead passes them (the keys light red) |
 | LOOP | Swap to the bass; CHOMPI + LOOP: mute / unmute the drums | Record on/off; hold 2 s: clear the drum part |
 

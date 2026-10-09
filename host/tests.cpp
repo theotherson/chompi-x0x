@@ -2105,11 +2105,12 @@ static void TestDrumPanel()
     r.White(2);
     CHECK(r.m.CurrentPattern() == 0);
     r.Key(Ui::kKeyPattern); // (quantize back as it was)
-    // The pattern page works on the drums' side too, in step mode.
+    // The pattern page works on the drums' side too, in step mode: for the
+    // drums alone.
     r.ui.SetMode(Ui::Mode::STEP);
     r.Key(Ui::kKeyPattern);
     r.White(2);
-    CHECK(r.m.CurrentPattern() == 2);
+    CHECK(r.m.CurrentDrumPattern() == 2 && r.m.CurrentPattern() == 0);
 }
 
 static void TestDrumMuteSoloMix()
@@ -3301,6 +3302,90 @@ static void TestDrumPan()
     CHECK(WriteSettings(rig.m.settings, buf, sizeof buf) > 0 && strstr(buf, "sd_pan 0.0000"));
 }
 
+static void TestIndependentPatterns()
+{
+    printf("patterns: each side picks its own; PATTERN held + a pattern key: both; protect only stopped\n");
+    Rig r;
+    for(int i = 0; i < kPatterns; i++)
+        r.m.patterns[i].Clear();
+    // 1A: BD on 1; 3A: a bassline, SD on every step of an 8-step part; 3B
+    // (index 18): CH on 1.
+    r.m.patterns[0].drums[0] = 1 << BD;
+    r.m.patterns[2].steps[0].on = true;
+    for(int i = 0; i < 8; i++)
+        r.m.patterns[2].drums[i] = 1 << SD;
+    r.m.patterns[2].drum_length = 8;
+    r.m.patterns[PatternIndex(2, 1)].drums[0] = 1 << CH;
+    // Stopped: the bass's page picks the bass alone, at once.
+    r.Key(Ui::kKeyPattern);
+    r.White(2);
+    CHECK(r.m.CurrentPattern() == 2 && r.m.CurrentDrumPattern() == 0);
+    // The drums' side picks theirs (3B with CHOMPI).
+    r.ui.Loop(r.now); // the drums' side
+    r.Run(500);
+    r.ui.Chompi(true), r.White(2), r.ui.Chompi(false);
+    CHECK(r.m.CurrentDrumPattern() == PatternIndex(2, 1) && r.m.CurrentPattern() == 2);
+    // The drum side's pattern key shows the drums' (B: yellow); its page the
+    // slots with drum parts.
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyPattern].g > 0.5f && f.key[Ui::kKeyPattern].b < 0.3f);
+    // Playing: the drums play their own part (3B: CH), the bass its own.
+    r.m.Play();
+    uint32_t ch = r.m.DrumHitCount(CH), bd = r.m.DrumHitCount(BD);
+    r.Run(2000);
+    CHECK(r.m.DrumHitCount(CH) > ch && r.m.DrumHitCount(BD) == bd);
+    // Queued for the drums alone, 3A (an 8-step part): it waits for the end
+    // of theirs, then runs from its top; the bass stays on 3A.
+    r.White(2);
+    CHECK(r.m.QueuedDrumPattern() == 2 && r.m.CurrentDrumPattern() == PatternIndex(2, 1));
+    r.Run(2000);
+    CHECK(r.m.CurrentDrumPattern() == 2 && r.m.CurrentPattern() == 2);
+    // PATTERN held + a pattern key: both to 1A, together at the bar, and
+    // the page stays open; the PATTERN press isn't a protect hold.
+    const bool prot = r.m.Protected();
+    r.ui.KeyDown(Ui::kKeyPattern, r.now);
+    r.Run(100);
+    r.White(0);
+    r.Run(2500);
+    r.ui.KeyUp(Ui::kKeyPattern, r.now);
+    CHECK(r.m.Protected() == prot);
+    r.Run(2000);
+    CHECK(r.m.CurrentPattern() == 0 && r.m.CurrentDrumPattern() == 0);
+    r.White(4); // (still the pattern page: picks 5A for the drums)
+    CHECK(r.m.QueuedDrumPattern() == 4);
+    r.White(4); // the queued key again: at once
+    CHECK(r.m.CurrentDrumPattern() == 4);
+    // Write protect: not while playing, however long PATTERN is held.
+    r.ui.KeyDown(Ui::kKeyPattern, r.now), r.Run(2500), r.ui.KeyUp(Ui::kKeyPattern, r.now);
+    CHECK(r.m.Protected() == prot);
+    r.m.Stop();
+    r.ui.KeyDown(Ui::kKeyPattern, r.now), r.Run(2500), r.ui.KeyUp(Ui::kKeyPattern, r.now);
+    CHECK(r.m.Protected() != prot);
+    r.ui.KeyDown(Ui::kKeyPattern, r.now), r.Run(2500), r.ui.KeyUp(Ui::kKeyPattern, r.now);
+    CHECK(r.m.Protected() == prot);
+
+    // COPY on the drums' side: the drum part alone (the slot's bassline kept).
+    r.m.SelectDrums(2, true);
+    r.m.patterns[6].steps[3].on = true;
+    r.ui.KeyDown(Ui::kKeyCopy, r.now), r.White(6), r.ui.KeyUp(Ui::kKeyCopy, r.now);
+    CHECK(r.m.patterns[6].drum_length == 8 && r.m.patterns[6].DrumHit(5, SD) && r.m.patterns[6].steps[3].on);
+
+    // Saved: the drums' pattern; an old file without it follows the bass's.
+    Settings s;
+    s.pattern = 2, s.drum_pattern = PatternIndex(6, 1);
+    char buf[8192];
+    CHECK(WriteSettings(s, buf, sizeof buf) > 0 && strstr(buf, "drum_pattern 7B"));
+    Settings back;
+    ReadSettings(buf, back);
+    CHECK(back.pattern == 2 && back.drum_pattern == PatternIndex(6, 1));
+    char old[] = "pattern 4A\nprotect 0\n";
+    Rig o;
+    ReadSettings(old, o.m.settings);
+    o.m.Loaded();
+    CHECK(o.m.CurrentPattern() == 3 && o.m.CurrentDrumPattern() == 3);
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3531,6 +3616,7 @@ int main()
     TestFxBalance();
     TestKnobResetHold();
     TestDrumPan();
+    TestIndependentPatterns();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

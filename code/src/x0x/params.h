@@ -307,8 +307,9 @@ inline void ToVoiceParams(const float* p, VoiceParams& vp)
 struct Settings
 {
     float params[NUM_PARAMS];
-    int   pattern = 0;
-    bool  protect = false;
+    int   pattern      = 0;
+    int   drum_pattern = -1; // the drums' own (-1: the bass's, as before it existed)
+    bool  protect      = false;
 
     Settings()
     {
@@ -330,8 +331,10 @@ inline size_t WriteSettings(const Settings& s, char* buf, size_t size)
             return 0;
         len += w;
     }
-    const int w = snprintf(buf + len, size - len, "pattern %d%c\nprotect %d\n", PatternNumber(s.pattern) + 1,
-                           PatternSide(s.pattern) ? 'B' : 'A', s.protect ? 1 : 0);
+    const int dp = s.drum_pattern >= 0 ? s.drum_pattern : s.pattern;
+    const int w  = snprintf(buf + len, size - len, "pattern %d%c\ndrum_pattern %d%c\nprotect %d\n",
+                           PatternNumber(s.pattern) + 1, PatternSide(s.pattern) ? 'B' : 'A', PatternNumber(dp) + 1,
+                           PatternSide(dp) ? 'B' : 'A', s.protect ? 1 : 0);
     if(w <= 0 || static_cast<size_t>(w) >= size - len)
         return 0;
     return len + w;
@@ -382,6 +385,12 @@ inline void ReadSettings(char* text, Settings& s)
                 const int i = ParsePatternName(sp + 1);
                 if(i >= 0)
                     s.pattern = i;
+            }
+            else if(strcmp(line, "drum_pattern") == 0)
+            {
+                const int i = ParsePatternName(sp + 1);
+                if(i >= 0)
+                    s.drum_pattern = i;
             }
             else if(strcmp(line, "tempo") == 0)
             {

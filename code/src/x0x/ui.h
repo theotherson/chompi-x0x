@@ -287,6 +287,14 @@ class Ui
             return;
         Touched();
         held_[k] = true;
+        if(page_ == Page::PATTERN && WhiteIndex(k) >= 0)
+        {
+            // A pattern key with PATTERN held: both sides go there (and the
+            // PATTERN press is neither a tap nor a hold for protect).
+            pat_key_both_ = held_[kKeyPattern];
+            if(pat_key_both_)
+                pattern_down_ = false;
+        }
         if(drums_)
         {
             DrumKey(k, now);
@@ -558,7 +566,7 @@ class Ui
             pat_key_step_ = -1;
             m_->RequestExport();
         }
-        if(pattern_down_ && now - pattern_down_at_ >= kProtectHoldMs)
+        if(pattern_down_ && !m_->Running() && now - pattern_down_at_ >= kProtectHoldMs) // never while playing
         {
             pattern_down_ = false;
             m_->SetProtected(!m_->Protected());
@@ -574,7 +582,7 @@ class Ui
         {
             if(drums_)
             {
-                m_->Current().ClearDrums();
+                m_->DrumPattern().ClearDrums();
                 m_->PatternEdited();
             }
             else
@@ -611,7 +619,7 @@ class Ui
         }
         if(drums_ && drum_clear_down_ && held_[kKeyClear] && !clear_done_ && now - clear_down_ >= kClearHoldMs)
         {
-            m_->Current().ClearDrums(); // CLEAR held: the drum part
+            m_->DrumPattern().ClearDrums(); // CLEAR held: the drum part
             m_->PatternEdited();
             clear_done_ = true;
             cleared_at_ = now;
@@ -846,7 +854,7 @@ class Ui
      *  voice plays. Knobs 1-3 in the selected voice's colour. */
     void DrawDrums(LedFrame& f, uint32_t now, bool blink, int cur_step, bool step_lit) const
     {
-        const Pattern& pat = m_->Current();
+        const Pattern& pat = m_->DrumPattern();
         const float*   p   = m_->settings.params;
         const int      ds  = m_->CurrentDrumStep();
         const bool     lit = ds >= 0 && now - drum_step_at_ < 70;
@@ -917,9 +925,9 @@ class Ui
             f.key[kBlack[5]] = Scale(kDrumAccentCol, drum_acc_page_ ? 1.f : 0.12f);
             f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         }
-        f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentPattern())),
+        f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentDrumPattern())),
                                    page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
-        if(pattern_down_ && now - pattern_down_at_ > 300)
+        if(pattern_down_ && !m_->Running() && now - pattern_down_at_ > 300)
         {
             const float k = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
             f.key[kKeyPattern] = Scale(m_->Protected() ? kUnprotectColour : kProtectColour, k);
@@ -1131,8 +1139,9 @@ class Ui
         {
             if(held_[kKeyCopy])
             {
-                const int cur = m_->CurrentPattern();
-                m_->patterns[PatternIndex(PatternNumber(cur), 1 - PatternSide(cur))] = m_->Current();
+                // COPY + PATTERN: the drum part to its pattern's other side.
+                const int cur = m_->CurrentDrumPattern();
+                m_->patterns[PatternIndex(PatternNumber(cur), 1 - PatternSide(cur))].CopyDrumsFrom(m_->DrumPattern());
                 m_->PatternEdited();
                 copied_at_ = now;
             }
@@ -1149,10 +1158,12 @@ class Ui
                 half_ = w > 7 ? 1 : 0;
             if(held_[kKeyCopy])
             {
-                const int side = page_ == Page::PATTERN ? ViewSide() : PatternSide(m_->CurrentPattern());
+                // COPY + a number: the drum part alone to that pattern (its
+                // bassline untouched).
+                const int side = page_ == Page::PATTERN ? ViewSide() : PatternSide(m_->CurrentDrumPattern());
                 const int to   = PatternIndex(step, side);
-                if(to != m_->CurrentPattern())
-                    m_->patterns[to] = m_->Current(), m_->PatternEdited();
+                if(to != m_->CurrentDrumPattern())
+                    m_->patterns[to].CopyDrumsFrom(m_->DrumPattern()), m_->PatternEdited();
                 return;
             }
             pat_key_      = k;
@@ -1244,7 +1255,7 @@ class Ui
         const int step = StepOfWhite(w);
         if(w != 7)
             half_ = w > 7 ? 1 : 0;
-        Pattern& pat = m_->Current();
+        Pattern& pat = m_->DrumPattern();
         if(drum_acc_page_)
             pat.drums[step] ^= kDrumAccent;
         else
@@ -1297,7 +1308,7 @@ class Ui
             if(!clear_done_)
             {
                 // A tap: this voice's hits (or the accents, on their page).
-                Pattern&      p    = m_->Current();
+                Pattern&      p    = m_->DrumPattern();
                 const uint8_t mask = drum_acc_page_ && mode_ == Mode::STEP ? kDrumAccent : static_cast<uint8_t>(1 << drum_sel_);
                 for(int i = 0; i < kSteps; i++)
                 {
@@ -1325,7 +1336,7 @@ class Ui
                 {
                     if(chompi_)
                     {
-                        m_->SetDrumLength(m_->Current().drum_length + (inc > 0 ? 1 : -1));
+                        m_->SetDrumLength(m_->DrumPattern().drum_length + (inc > 0 ? 1 : -1));
                         drum_len_shown_at_ = last_tick_;
                         return;
                     }
@@ -1676,9 +1687,19 @@ class Ui
      *  for the bar, and the queued key again switches at once. */
     void PickPattern(int n, int side)
     {
+        // This side's pattern; PATTERN held when the key went down: both.
         const int i = PatternIndex(n, side);
-        m_->SelectPattern(i, m_->QueuedPattern() == i);
+        if(pat_key_both_)
+            m_->SelectPattern(i, m_->QueuedPattern() == i && m_->QueuedDrumPattern() == i);
+        else if(drums_)
+            m_->SelectDrums(i, m_->QueuedDrumPattern() == i);
+        else
+            m_->SelectBass(i, m_->QueuedPattern() == i);
     }
+
+    /** A slot as this side sees it: empty with no drum hits (drums) or no
+     *  notes (bass). */
+    bool SideEmpty(const Pattern& p) const { return drums_ ? p.DrumsEmpty() : p.BassEmpty(); }
 
     /** Which of 8 / 9 middle C stands for now. On the pattern page that's
      *  the half you chose (the last key pressed, or D#4), never the
@@ -2008,9 +2029,12 @@ class Ui
                         // patterns dim. The current and queued patterns
                         // show in their own side's colour in either view,
                         // so you can always see where you are.
+                        // Each side shows its own: the drums' pattern and
+                        // the slots with drum parts, or the bass's.
                         const int i   = PatternIndex(step, ViewSide());
-                        const int cur = m_->CurrentPattern(), q = m_->QueuedPattern();
-                        if(!m_->patterns[i].Empty())
+                        const int cur = drums_ ? m_->CurrentDrumPattern() : m_->CurrentPattern();
+                        const int q   = drums_ ? m_->QueuedDrumPattern() : m_->QueuedPattern();
+                        if(!SideEmpty(m_->patterns[i]))
                             c = Scale(PatternColour(ViewSide()), 0.12f);
                         if(PatternNumber(cur) == step)
                         {
@@ -2020,7 +2044,7 @@ class Ui
                             if((now / kCurrentFlashMs) % 2 == 0)
                                 c = cc;
                             else
-                                c = m_->patterns[cur].Empty() ? Rgb{} : Scale(cc, 0.12f);
+                                c = SideEmpty(m_->patterns[cur]) ? Rgb{} : Scale(cc, 0.12f);
                         }
                         if(q >= 0 && PatternNumber(q) == step && blink)
                             c = PatternColour(PatternSide(q)); // waiting for the bar
@@ -2067,7 +2091,7 @@ class Ui
                                    page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
         if(now - copied_at_ < 300)
             f.key[kKeyPattern] = PatternColour(1 - PatternSide(m_->CurrentPattern())); // copied to the other side
-        if(pattern_down_ && now - pattern_down_at_ > 300)
+        if(pattern_down_ && !m_->Running() && now - pattern_down_at_ > 300)
         {
             // Held: fills towards the switch, magenta to protect, light blue to unprotect.
             const float b = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
@@ -2419,6 +2443,7 @@ class Ui
     uint32_t pan_shown_at_          = 0x80000000u;
     bool     drum_clear_down_       = false;
     bool     live_quant_down_       = false; // live, drums: F#4 down (tap: quantize)
+    bool     pat_key_both_          = false; // the pattern key went down with PATTERN held: both sides
     bool     acc_key_down_          = false; // step, drums: the accent key down (tap: its page)
     uint32_t acc_key_at_            = 0;
     uint32_t unmuted_all_at_        = 0x80000000u;

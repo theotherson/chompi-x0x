@@ -68,7 +68,8 @@ class Machine
     /** After patterns and settings were loaded from the card. */
     void Loaded()
     {
-        settings.pattern = ClampInt(settings.pattern, 0, kPatterns - 1);
+        settings.pattern      = ClampInt(settings.pattern, 0, kPatterns - 1);
+        settings.drum_pattern = settings.drum_pattern < 0 ? settings.pattern : ClampInt(settings.drum_pattern, 0, kPatterns - 1);
         seq_.SetPattern(&patterns[settings.pattern]);
     }
 
@@ -84,7 +85,6 @@ class Machine
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
-        drum_pat_ = -1;
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
         if(options.transport_out && !ExternalClock())
@@ -117,11 +117,35 @@ class Machine
     int QueuedPattern() const { return queued_; }
     Pattern& Current() { return patterns[settings.pattern]; }
 
-    /** While running, the new pattern waits for the end of the current one,
-     *  unless `now`. */
+    /** The drums play their part from their own pattern, which can differ
+     *  from the bass's (picked on their side's pattern page). */
+    int            CurrentDrumPattern() const { return DrumIndex(); }
+    int            QueuedDrumPattern() const { return both_ ? queued_ : drum_queued_; }
+    Pattern&       DrumPattern() { return patterns[DrumIndex()]; }
+    const Pattern& DrumPattern() const { return patterns[DrumIndex()]; }
+
+    /** Both sides to pattern i: while running, together at the end of the
+     *  bass's pattern (the drums from their top), unless `now`. */
     void SelectPattern(int i, bool now)
     {
         i = ClampInt(i, 0, kPatterns - 1);
+        if(Running() && !now && (i != settings.pattern || i != DrumIndex()))
+        {
+            seq_.Queue(&patterns[i]);
+            queued_ = i, both_ = true, drum_queued_ = -1;
+            return;
+        }
+        SelectBass(i, true);
+        SelectDrums(i, true);
+    }
+
+    /** The bass's pattern alone: while running, at the end of the current
+     *  one, unless `now`. */
+    void SelectBass(int i, bool now)
+    {
+        i = ClampInt(i, 0, kPatterns - 1);
+        both_ = false;
+        settings.drum_pattern = DrumIndex(); // (not following the bass's from here)
         if(Running() && !now && i != settings.pattern)
         {
             seq_.Queue(&patterns[i]);
@@ -130,8 +154,27 @@ class Machine
         }
         settings.pattern = i;
         queued_          = -1;
-        drum_pat_        = -1;
         seq_.SetPattern(&patterns[i]);
+        settings_changes++;
+    }
+
+    /** The drums' pattern alone: while running, at the end of their part
+     *  (its own length), unless `now`. */
+    void SelectDrums(int i, bool now)
+    {
+        i = ClampInt(i, 0, kPatterns - 1);
+        if(both_)
+        {
+            // A both-sides change waiting: the bass keeps it, the drums don't.
+            both_ = false;
+        }
+        if(Running() && !now && i != DrumIndex())
+        {
+            drum_queued_ = i;
+            return;
+        }
+        drum_queued_          = -1;
+        settings.drum_pattern = i;
         settings_changes++;
     }
 
@@ -197,7 +240,7 @@ class Machine
 
     void SetDrumLength(int len)
     {
-        Current().drum_length = static_cast<uint8_t>(ClampInt(len, 1, kSteps));
+        DrumPattern().drum_length = static_cast<uint8_t>(ClampInt(len, 1, kSteps));
         pattern_changes++;
     }
 
@@ -452,7 +495,6 @@ class Machine
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
-        drum_pat_ = -1;
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
     }
@@ -548,7 +590,7 @@ class Machine
         fs.bpm        = seq_.Tempo();
         fx_.Set(fs);
         if(!seq_.Queued())
-            queued_ = -1;
+            queued_ = -1, both_ = false;
         for(int v = 0; v < kDrumVoices; v++)
         {
             DrumParams& dp = drums_.Params(static_cast<Drum>(v));
@@ -810,13 +852,24 @@ class Machine
 
     /** The pattern the drums play: the next one already from its first
      *  step's place on the grid, before a late first bass note starts it. */
-    Pattern& DrumPattern() { return patterns[drum_pat_ >= 0 ? drum_pat_ : settings.pattern]; }
+    int DrumIndex() const
+    {
+        return settings.drum_pattern >= 0 ? ClampInt(settings.drum_pattern, 0, kPatterns - 1) : settings.pattern;
+    }
 
     /** A step's place on the grid: the drum part's next step (its own
      *  length). Hits recorded late are scheduled (quantize on: on the grid);
      *  voices held for erasing lose theirs. */
     void DrumStep()
     {
+        // At the top of their part, a pattern queued for the drums alone.
+        if(drum_queued_ >= 0 && (drum_pos_ < 0 || drum_pos_ + 1 >= ClampInt(DrumPattern().drum_length, 1, kSteps)))
+        {
+            settings.drum_pattern = drum_queued_;
+            drum_queued_          = -1;
+            drum_pos_             = -1;
+            settings_changes++;
+        }
         Pattern&   pat   = DrumPattern();
         drum_pos_        = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
         const bool quant = StepIndex(settings.params[DRUM_QUANTIZE], 2) == 1;
@@ -968,9 +1021,14 @@ class Machine
                     PushMidi(0x80 | ch, e.note, 0);
                 break;
             case Sequencer::Event::GRID:
-                // The drums step on the grid; at the top, a queued pattern's.
-                if(e.step == 0 && queued_ >= 0)
-                    drum_pat_ = queued_, drum_pos_ = -1;
+                // The drums step on the grid; at the top, a pattern queued for
+                // both sides takes them over too, from their first step (before
+                // a late first bass note starts the bass's).
+                if(e.step == 0 && queued_ >= 0 && both_)
+                {
+                    settings.drum_pattern = queued_, drum_pos_ = -1, drum_queued_ = -1;
+                    both_                 = false;
+                }
                 DrumStep();
                 break;
             case Sequencer::Event::DRUM:
@@ -1004,10 +1062,7 @@ class Machine
             case Sequencer::Event::PATTERN_CHANGE:
                 if(queued_ >= 0)
                     settings.pattern = queued_;
-                queued_ = -1;
-                if(drum_pat_ < 0)
-                    drum_pos_ = -1; // the new pattern's drums from their top
-                drum_pat_ = -1;     // (they already are, from the grid)
+                queued_ = -1, both_ = false;
                 settings_changes++;
                 break;
         }
@@ -1107,7 +1162,8 @@ class Machine
     float       duck_ = 0.f, duck_gain_ = 1.f;
     Reverb      reverb_;
     int         drum_pos_ = -1;
-    int         drum_pat_ = -1;      // the drums' pattern, ahead of the bass's
+    int         drum_queued_ = -1;   // a pattern waiting for the drums alone
+    bool        both_        = false; // the bass's queued pattern takes the drums too
     float       fx_drums_ = 1.f;     // the drums' share of the sends (the effects' balance)
     uint8_t     rec_skip_ = 0;       // voices recorded into the next step
     int8_t      roll_rec_step_[kDrumVoices] = {-1, -1, -1, -1, -1, -1, -1}; // each voice's last recorded step
