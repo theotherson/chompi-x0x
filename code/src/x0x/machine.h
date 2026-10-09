@@ -526,6 +526,7 @@ class Machine
         for(size_t i = 0; i < n; i++)
             drum[i] = dsrc[i] = 0.f;
         // Live drum hits from the panel.
+        block_pos_ = 0;
         while(hit_tail_ != hit_head_)
         {
             const uint8_t h     = hits_[hit_tail_];
@@ -586,6 +587,7 @@ class Machine
                 drums_.Process(drum + pos, at - pos, split ? dsrc + pos : nullptr);
                 pos = at;
             }
+            block_pos_ = at;
             Handle(ev[i]);
         }
         if(pos < n)
@@ -611,6 +613,8 @@ class Machine
         DrumFx::Settings ds;
         ds.drive      = p[DRUM_DRIVE];
         ds.filter_res = p[DRUM_FILTER_RES];
+        ds.env_amount = p[DRUM_FENV];
+        ds.env_decay  = p[DRUM_FENV_DECAY];
         ds.filter     = p[DRUM_FILTER];
         ds.crush_bits = p[DRUM_CRUSH];
         ds.crush_rate = p[DRUM_CRUSH_RATE];
@@ -675,7 +679,10 @@ class Machine
 
     void PlayDrum(int v, bool accent, int semitones = 0)
     {
-        drums_.Trigger(static_cast<Drum>(v), accent ? settings.params[DRUM_ACCENT] : 0.f, semitones);
+        const float acc = accent ? settings.params[DRUM_ACCENT] : 0.f;
+        drums_.Trigger(static_cast<Drum>(v), acc, semitones);
+        drum_fx_.Trigger(block_pos_, 1.f + 0.5f * acc); // the filter's envelope
+        drum_fx_send_.Trigger(block_pos_, 1.f + 0.5f * acc);
         if(v == BD)
             duck_ = 1.f; // the sidechain: duck from now
         drum_hit_count_[v]++;
@@ -910,6 +917,7 @@ class Machine
     Voice       voice_;
     Drums       drums_;
     DrumFx      drum_fx_, drum_fx_send_;
+    size_t      block_pos_ = 0; // where in the block a drum hit lands
     Compressor  comp_;
     float       duck_ = 0.f, duck_gain_ = 1.f;
     Reverb      reverb_;

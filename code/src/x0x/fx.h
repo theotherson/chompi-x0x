@@ -526,11 +526,21 @@ class DrumFx
         float drive      = 0.f;
         float filter     = 0.5f;
         float filter_res = 0.f;
+        float env_amount = 0.f; // the filter's envelope: how far each hit opens it
+        float env_decay  = 0.4f;
         float crush_bits = 0.f;
         float crush_rate = 0.f;
     };
 
     void Set(const Settings& s) { s_ = s; }
+
+    /** A drum hit, `at` samples into the next Process: the filter's envelope
+     *  starts again (depth: 1, more for an accent). */
+    void Trigger(size_t at, float depth)
+    {
+        trig_at_    = at;
+        trig_depth_ = depth;
+    }
 
     void Process(float* x, size_t n)
     {
@@ -550,13 +560,28 @@ class DrumFx
         const float g    = tanf(kPi * Clamp(hz, 20.f, 0.45f * sr_) / sr_);
         const float res  = Clamp(s_.filter_res, 0.f, 1.f);
         const float kq   = 2.f * FastExp2(-4.2f * res); // 1 / Q
-        const float a1   = 1.f / (1.f + g * (g + kq)), a2 = g * a1, a3 = g * a2;
+        float       a1   = 1.f / (1.f + g * (g + kq)), a2 = g * a1, a3 = g * a2;
         const float trim = 1.f / (1.f + 1.5f * res);
+        // The envelope: on each hit the cutoff jumps open (low-pass up,
+        // high-pass down) by up to 6 octaves, then falls back, 10 ms to 1 s.
+        const float env_oct = 6.f * Clamp(s_.env_amount, 0.f, 1.f) * (lp ? 1.f : -1.f);
+        const float env_k   = TauToCoef(0.01f * FastExp2(6.64f * Clamp(s_.env_decay, 0.f, 1.f)), sr_);
+        const bool  env_on  = (lp || hp) && s_.env_amount > 0.005f;
         const bool  crush = s_.crush_bits > 0.005f;
         const float levels = FastExp2(15.f - 12.f * s_.crush_bits);
         const int   hold   = 1 + static_cast<int>(31.f * s_.crush_rate * s_.crush_rate);
         for(size_t i = 0; i < n; i++)
         {
+            if(i == trig_at_ || (i == n - 1 && trig_at_ != kNoTrigger))
+                env_ = trig_depth_, trig_at_ = kNoTrigger; // (past the block: at its end)
+            env_ -= env_ * env_k;
+            if(env_on && (i & 3) == 0)
+            {
+                // The cutoff, moved: every 4 samples.
+                const float hz_e = Clamp(hz * FastExp2(env_oct * env_), 20.f, 0.45f * sr_);
+                const float ge   = tanf(kPi * hz_e / sr_);
+                a1 = 1.f / (1.f + ge * (ge + kq)), a2 = ge * a1, a3 = ge * a2;
+            }
             float y = x[i];
             if(driving)
             {
@@ -592,7 +617,10 @@ class DrumFx
   private:
     float    sr_ = 48000.f;
     Settings s_;
+    static constexpr size_t kNoTrigger = ~static_cast<size_t>(0);
     float    f1_ = 0.f, f2_ = 0.f, held_ = 0.f, pre_ = 0.f, t1_ = 0.f, t2_ = 0.f;
+    float    env_ = 0.f, trig_depth_ = 0.f;
+    size_t   trig_at_ = kNoTrigger;
     int      hold_count_ = 0;
 };
 

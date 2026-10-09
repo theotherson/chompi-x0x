@@ -58,6 +58,8 @@ enum Param : uint8_t
     DRUM_CRUSH_RATE, //   sample-rate reduction,
     DRUM_FILTER,     //   one-knob filter (low-pass left, high-pass right),
     DRUM_FILTER_RES, //   its resonance (CHOMPI + it),
+    DRUM_FENV,       //   its envelope's amount (each hit opens it),
+    DRUM_FENV_DECAY, //   and decay (CHOMPI + it),
     DRUM_DRIVE,      //   distortion (CHOMPI + volume on the drums' side)
     DRUM_FX_SENDS,   // which drum voices go to the reverb and delay (a mask: v * 127)
     COMP,            // the master compressor (volume knob, page 4)
@@ -135,6 +137,8 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_crush_rate", 0.f,  0, 0},
     {"drum_filter", .5f,      0, 0},   // centre: off
     {"drum_filter_res", 0.f,  0, 0},   // none
+    {"drum_fenv",   0.f,      0, 0},   // off
+    {"drum_fenv_decay", .4f,  0, 0},   // ~60 ms
     {"drum_drive",  0.f,      0, 0},   // off by default
     {"drum_fx_sends", 1.f,    128, 0}, // every voice in
     {"comp",        0.f,      0, 0},   // off .. heavy

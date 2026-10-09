@@ -2494,6 +2494,100 @@ static void TestDrumFxSends()
     CHECK(prm[DRUM_REVERB] > rev2);
 }
 
+static void TestDrumFilterEnvelope()
+{
+    printf("drum filter envelope: each hit sweeps the filter open (knob 4, page 5)\n");
+    // Noise through the low-pass, a hit at the start: bright at first, then
+    // back to the knob's cutoff; the high-pass sweeps the other way.
+    auto hf = [](float filter, float amount, float decay, int from_ms, int to_ms, bool trigger) {
+        DrumFx fx;
+        fx.Init(48000.f);
+        DrumFx::Settings st;
+        st.filter = filter, st.env_amount = amount, st.env_decay = decay;
+        fx.Set(st);
+        uint32_t seed = 9;
+        float    b[48], prev = 0.f, lo = 0.f;
+        double   e = 0;
+        for(int ms = 0; ms < to_ms; ms++)
+        {
+            if(ms == 0 && trigger)
+                fx.Trigger(0, 1.f);
+            for(int i = 0; i < 48; i++)
+                seed = seed * 1664525u + 1013904223u, b[i] = static_cast<int32_t>(seed) * 4.6e-10f;
+            fx.Process(b, 48);
+            for(int i = 0; i < 48; i++)
+            {
+                lo += (b[i] - lo) * 0.04f;                         // below ~300 Hz
+                const float d = filter < 0.5f ? b[i] - prev : lo; // LP: the highs; HP: the lows
+                prev          = b[i];
+                if(ms >= from_ms)
+                    e += d * d;
+                CHECK(std::isfinite(b[i]));
+            }
+        }
+        return e;
+    };
+    // Low-pass at ~400 Hz: opened right after the hit, closed again later.
+    const double off_early = hf(0.2f, 0.f, 0.4f, 0, 20, true), on_early = hf(0.2f, 0.8f, 0.4f, 0, 20, true);
+    CHECK(on_early > off_early * 10);
+    const double off_late = hf(0.2f, 0.f, 0.4f, 600, 800, true), on_late = hf(0.2f, 0.8f, 0.4f, 600, 800, true);
+    CHECK(on_late < off_late * 1.2);
+    // No hit, no sweep.
+    CHECK(hf(0.2f, 0.8f, 0.4f, 0, 20, false) < off_early * 1.2);
+    // A longer decay: still open later.
+    CHECK(hf(0.2f, 0.8f, 0.9f, 100, 200, true) > hf(0.2f, 0.8f, 0.2f, 100, 200, true) * 5);
+    // High-pass at ~1 kHz: swept down, so the lows get through at first.
+    CHECK(hf(0.85f, 0.8f, 0.4f, 0, 20, true) > hf(0.85f, 0.f, 0.4f, 0, 20, true) * 2);
+    // The filter off (centre): the envelope does nothing.
+    CHECK(fabs(hf(0.5f, 0.8f, 0.4f, 0, 20, true) / hf(0.5f, 0.f, 0.4f, 0, 20, true) - 1.0) < 1e-6);
+
+    // On the machine: the pattern's hits trigger it (a low-passed hat comes
+    // through far brighter with the envelope).
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    p.drums[0] = 1 << CH;
+    float* prm = r.m.settings.params;
+    prm[DRUM_FILTER] = 0.2f;
+    auto run_energy = [&]() {
+        r.m.Stop();
+        r.Run(300);
+        r.m.Play();
+        double e = 0;
+        float  L[48], R[48];
+        for(int ms = 0; ms < 100; ms++)
+        {
+            r.m.Process(L, R, 48);
+            r.now++;
+            r.ui.Tick(r.now);
+            for(int i = 0; i < 48; i++)
+                e += L[i] * L[i];
+        }
+        return e;
+    };
+    const double closed = run_energy();
+    prm[DRUM_FENV] = 0.8f;
+    const double swept = run_energy();
+    CHECK(swept > closed * 5);
+    prm[DRUM_FENV] = 0.f, prm[DRUM_FILTER] = 0.5f;
+
+    // The panel: knob 4's fifth page; CHOMPI, the decay; CHOMPI + click resets.
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.ui.OnDrums());
+    for(int i = 0; i < 4; i++)
+        r.ui.KnobClick(3, r.now);
+    r.ui.KnobTurn(3, 5, false);
+    CHECK(prm[DRUM_FENV] > 0.f);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 5, false), r.ui.Chompi(false);
+    CHECK(prm[DRUM_FENV_DECAY] > kParams[DRUM_FENV_DECAY].def);
+    r.ui.Chompi(true), r.ui.KnobClick(3, r.now), r.ui.Chompi(false);
+    CHECK(prm[DRUM_FENV] == 0.f && prm[DRUM_FENV_DECAY] == kParams[DRUM_FENV_DECAY].def);
+    r.ui.KnobClick(3, r.now); // round to page 1: reverb
+    r.ui.KnobTurn(3, 3, false);
+    CHECK(prm[DRUM_REVERB] > 0.f);
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -2721,6 +2815,7 @@ int main()
     TestDrumMuteSoloMix();
     TestDrumEffects();
     TestDrumFxSends();
+    TestDrumFilterEnvelope();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

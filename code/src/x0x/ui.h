@@ -882,12 +882,14 @@ class Ui
         f.knob[2] = chompi_ ? Rgb{} : Scale(vc, 0.2f + 0.8f * p[pv + 2]);
         {
             // Knob 4: the effects page's colour; CHOMPI, its second control's.
-            static constexpr Rgb kFxCol[4][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},  // reverb | size
+            static constexpr Rgb kFxCol[5][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},  // reverb | size
                                                  {{0.f, .9f, 1.f}, {1.f, 1.f, 1.f}},  // delay send | time
                                                  {{.3f, 1.f, 0.f}, {1.f, .15f, 0.f}}, // crush | rate
-                                                 {{1.f, .85f, 0.f}, {1.f, .3f, 0.f}}}; // filter | resonance
-            static constexpr int kFxP[4][2] = {{DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME},
-                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_FILTER, DRUM_FILTER_RES}};
+                                                 {{1.f, .85f, 0.f}, {1.f, .3f, 0.f}},  // filter | resonance
+                                                 {{1.f, .2f, .6f}, {.6f, .2f, 1.f}}}; // envelope | decay
+            static constexpr int kFxP[5][2] = {{DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME},
+                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_FILTER, DRUM_FILTER_RES},
+                                               {DRUM_FENV, DRUM_FENV_DECAY}};
             const int q = kFxP[drum_knob4_page_][chompi_ ? 1 : 0];
             float     v = p[q];
             if(q == DRUM_FILTER)
@@ -1154,11 +1156,12 @@ class Ui
                 break;
             case 3:
             {
-                // Knob 4: the drums' effects, four pages.
-                static constexpr int kFx[4][2] = {{DRUM_REVERB, REVERB_SIZE},
+                // Knob 4: the drums' effects, five pages.
+                static constexpr int kFx[5][2] = {{DRUM_REVERB, REVERB_SIZE},
                                                   {DRUM_DELAY, DELAY_TIME},
                                                   {DRUM_CRUSH, DRUM_CRUSH_RATE},
-                                                  {DRUM_FILTER, DRUM_FILTER_RES}};
+                                                  {DRUM_FILTER, DRUM_FILTER_RES},
+                                                  {DRUM_FENV, DRUM_FENV_DECAY}};
                 param = kFx[drum_knob4_page_][chompi_ ? 1 : 0];
                 if(param == DELAY_TIME)
                 {
@@ -1189,15 +1192,15 @@ class Ui
             if(knob == 0)
                 drum_knob1_page_ ^= 1;
             else if(knob == 3)
-                drum_knob4_page_ = (drum_knob4_page_ + 1) % 4;
+                drum_knob4_page_ = (drum_knob4_page_ + 1) % 5;
             return;
         }
         if(knob == 3)
         {
             // CHOMPI + click on knob 4: all the drums' effects back to their
             // defaults (the shared delay's time stays).
-            static constexpr int kDrumFx[7] = {DRUM_REVERB, REVERB_SIZE, DRUM_DELAY, DRUM_CRUSH,
-                                               DRUM_CRUSH_RATE, DRUM_FILTER, DRUM_FILTER_RES};
+            static constexpr int kDrumFx[9] = {DRUM_REVERB,     REVERB_SIZE, DRUM_DELAY,      DRUM_CRUSH, DRUM_CRUSH_RATE,
+                                               DRUM_FILTER,     DRUM_FILTER_RES, DRUM_FENV, DRUM_FENV_DECAY};
             for(int q : kDrumFx)
                 m_->SetParam(static_cast<Param>(q), kParams[q].def);
             return;
@@ -2153,7 +2156,7 @@ class Ui
     uint32_t solo_at_               = 0x80000000u;
     bool     drum_acc_page_         = false; // step mode: the accent page
     int      drum_knob1_page_       = 0;
-    int      drum_knob4_page_       = 0;     // reverb, delay, crush, filter
+    int      drum_knob4_page_       = 0;     // reverb, delay, crush, filter, filter envelope
     bool     drum_clear_down_       = false;
     uint32_t drum_len_shown_at_     = 0x80000000u;
     uint32_t drum_hits_seen_[kDrumVoices] = {};
