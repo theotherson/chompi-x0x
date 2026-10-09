@@ -523,6 +523,10 @@ class Machine
         fs.mod        = p[MOD];
         fs.mod_width  = p[MOD_WIDTH];
         fs.dly_mix    = p[DELAY];
+        float fx_bass, fx_drums; // the effects' balance (CHOMPI + the mix)
+        MixGains(p[FX_MIX], 0.f, &fx_bass, &fx_drums);
+        fs.dly_send = fx_bass;
+        fx_drums_   = fx_drums;
         fs.dly_div    = StepIndex(p[DELAY_TIME], kDelayDivisions);
         fs.dly_free   = StepIndex(p[DELAY_FREE_ON], 2) == 1;
         fs.dly_free_ms = DelayFreeMs(p[DELAY_FREE]);
@@ -702,8 +706,8 @@ class Machine
         for(size_t i = 0; i < n; i++)
             drum[i] *= kDrumTrim, dsrc[i] *= kDrumTrim;
         reverb_.Set(p[REVERB_SIZE]);
-        const float dly_send = p[DRUM_DELAY] * p[DRUM_DELAY];
-        const float rev_send = p[DRUM_REVERB] * p[DRUM_REVERB];
+        const float dly_send = p[DRUM_DELAY] * p[DRUM_DELAY] * fx_drums_;
+        const float rev_send = p[DRUM_REVERB] * p[DRUM_REVERB] * fx_drums_;
         float       dsend[64], rin[64];
         for(size_t i = 0; i < n; i++)
             dsend[i] = send_src[i] * dly_send, rin[i] = send_src[i] * rev_send;
@@ -1090,6 +1094,7 @@ class Machine
     Reverb      reverb_;
     int         drum_pos_ = -1;
     int         drum_pat_ = -1;      // the drums' pattern, ahead of the bass's
+    float       fx_drums_ = 1.f;     // the drums' share of the sends (the effects' balance)
     uint8_t     rec_skip_ = 0;       // voices recorded into the next step
     int8_t      roll_rec_step_[kDrumVoices] = {-1, -1, -1, -1, -1, -1, -1}; // each voice's last recorded step
     volatile uint8_t erase_mask_ = 0; // voices held for erasing

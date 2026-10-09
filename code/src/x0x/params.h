@@ -50,7 +50,8 @@ enum Param : uint8_t
     DRUM_PARAMS,
     DRUM_ACCENT = DRUM_PARAMS + 3 * 7,
     MIX,             // bass / drums balance: centre both, left drums only, right bass only
-    MIX_MUTE,        // the mutes: bit 0 the bass, bit 1 the drums (CHOMPI + the mix; CHOMPI + LOOP)
+    MIX_MUTE,        // the mutes: bit 0 the bass, bit 1 the drums (CHOMPI + LOOP, step mode)
+    FX_MIX,          // CHOMPI + the mix: what feeds the delay and reverb, drums only .. both .. bass only
     DRUM_REVERB,     // the drums' effects (their knob 4): reverb send,
     REVERB_SIZE,     //   its size,
     DRUM_DELAY,      //   the shared delay's send,
@@ -139,6 +140,7 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_accent", .5f,     0, 0},   // accent: up to 3x as loud
     {"mix",         .5f,      0, 0},   // bass / drums
     {"mutes",       0.f,      4, 0},   // none / bass / drums / both
+    {"fx_mix",      .5f,      0, 0},   // both at full
     {"drum_reverb", 0.f,      0, 0},
     {"reverb_size", .5f,      0, 0},
     {"drum_delay",  0.f,      0, 0},
@@ -196,7 +198,7 @@ constexpr uint8_t kKnobMap[6][kMaxKnobPages][2] = {
     {{DECAY, SLIDE_TIME}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
     {{DELAY, DELAY_TIME}, {DELAY_FB, DELAY_TONE}, {MOD, MOD_WIDTH}, {CRUSH, CRUSH_RATE}},
     {{CUTOFF, RESONANCE}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}, {kKnobNone, kKnobNone}},
-    {{VOLUME, DRIVE}, {TEMPO, SWING}, {MIX, MIX_MUTE}, {COMP, SIDECHAIN}},
+    {{VOLUME, DRIVE}, {TEMPO, SWING}, {MIX, FX_MIX}, {COMP, SIDECHAIN}},
 };
 
 /** How far one click of a knob moves a continuous parameter, by how long

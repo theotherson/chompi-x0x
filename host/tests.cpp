@@ -2165,16 +2165,11 @@ static void TestDrumMuteSoloMix()
     CHECK(r.ui.KnobPage(5) == 2);
     r.ui.KnobTurn(5, -10, false);
     CHECK(r.m.settings.params[MIX] < 0.5f);
-    r.ui.Chompi(true), r.ui.KnobTurn(5, 1, false), r.ui.Chompi(false);
-    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 2); // drums muted
-    r.ui.Chompi(true), r.ui.KnobTurn(5, -1, false), r.ui.KnobTurn(5, -1, false), r.ui.Chompi(false);
-    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 1); // through neither to the bass muted
-    r.ui.Chompi(true), r.ui.KnobTurn(5, -1, false), r.ui.Chompi(false);
-    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 1); // the end
-    r.m.settings.params[MIX_MUTE] = 1.f;                    // both (CHOMPI + LOOP can do that)
-    r.ui.Chompi(true), r.ui.KnobTurn(5, 1, false), r.ui.Chompi(false);
-    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 2); // from the middle
-    r.m.settings.params[MIX_MUTE] = 0.f;
+    // CHOMPI: the effects' balance (not the mutes); CHOMPI + click resets.
+    r.ui.Chompi(true), r.ui.KnobTurn(5, 10, false), r.ui.Chompi(false);
+    CHECK(r.m.settings.params[FX_MIX] > 0.5f && r.m.settings.params[MIX_MUTE] == 0.f);
+    r.ui.Chompi(true), r.ui.KnobClick(5, r.now), r.ui.Chompi(false);
+    CHECK(r.m.settings.params[FX_MIX] == 0.5f && r.m.settings.params[MIX] == 0.5f);
 }
 
 static void TestDrumEffects()
@@ -3124,6 +3119,43 @@ static void TestDrumTuneAndFm()
     CHECK(WriteSettings(r.m.settings, buf, sizeof buf) > 0 && strstr(buf, "ch_tune 0.8000") && strstr(buf, "mutes 0.0000"));
 }
 
+static void TestFxBalance()
+{
+    printf("CHOMPI + the mix: what feeds the delay and reverb, drums only .. both .. bass only\n");
+    // Echo energy between hits: a bass note and a snare on step 1, the delay
+    // at 1/8 (250 ms), listening 260-400 ms; each side alone, at each end.
+    auto echo = [](float fx_mix, bool drums) {
+        Rig r;
+        Pattern& p   = r.m.Current();
+        float*   prm = r.m.settings.params;
+        p.ClearBass(), p.ClearDrums();
+        if(drums)
+            p.drums[0] = 1 << SD;
+        else
+            p.steps[0].on = true;
+        prm[DELAY_TIME] = StepValue(3, kDelayDivisions);
+        prm[DELAY]      = 0.4f, prm[DRUM_DELAY] = 0.8f, prm[DRUM_REVERB] = 0.8f;
+        prm[FX_MIX]     = fx_mix;
+        r.m.Play();
+        double e = 0;
+        float  L[48], R[48];
+        for(int ms = 0; ms < 400; ms++)
+        {
+            r.m.Process(L, R, 48);
+            if(ms >= 260)
+                for(int i = 0; i < 48; i++)
+                    e += L[i] * L[i];
+        }
+        return e;
+    };
+    const double bass_mid = echo(0.5f, false), drums_mid = echo(0.5f, true);
+    CHECK(echo(0.f, false) < bass_mid * 0.01);    // left: the bass's echoes gone
+    CHECK(echo(0.f, true) > drums_mid * 0.9);     // the drums' stay
+    CHECK(echo(1.f, true) < drums_mid * 0.01);    // right: the drums' echoes and reverb gone
+    CHECK(echo(1.f, false) > bass_mid * 0.9);     // the bass's stay
+    CHECK(echo(0.25f, false) > bass_mid * 0.2 && echo(0.25f, false) < bass_mid * 0.9); // partway
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3351,6 +3383,7 @@ int main()
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();
+    TestFxBalance();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

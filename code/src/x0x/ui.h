@@ -472,14 +472,6 @@ class Ui
                 m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
             delay_shown_at_ = last_tick_;
         }
-        else if(p == MIX_MUTE)
-        {
-            // Left: the bass muted; middle: neither; right: the drums muted
-            // (both muted, as CHOMPI + LOOP can leave them, counts as middle).
-            static constexpr int kPos[4] = {1, 0, 2, 1}, kBits[3] = {1, 0, 2};
-            const int pos = ClampInt(kPos[StepIndex(v, 4)] + dir, 0, 2);
-            m_->SetParam(p, StepValue(kBits[pos], 4));
-        }
         else if(steps)
             m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
         else if(p == TEMPO)
@@ -2278,18 +2270,16 @@ class Ui
                 c = {1.f, .1f, .1f};
                 v = m_->settings.params[SIDECHAIN] * (1.f - 0.8f * m_->Duck());
             }
-            else if(sel == MIX || sel == MIX_MUTE)
+            else if(sel == MIX || sel == FX_MIX)
             {
-                // The balance: amber (all drums) .. pink (both) .. purple (all
-                // bass); CHOMPI: amber (bass muted) / pink / purple (drums muted).
-                static constexpr float kMuteShown[4] = {0.5f, 0.f, 1.f, 0.5f}; // none, bass, drums, both
-                const int   mutes = StepIndex(m_->settings.params[MIX_MUTE], 4);
-                const float m     = sel == MIX ? m_->settings.params[MIX] : kMuteShown[mutes];
+                // The balance, of the sound or (CHOMPI) of what feeds the
+                // effects: amber (all drums) .. pink (both) .. purple (all bass).
+                const float m = m_->settings.params[sel];
                 const Rgb drums = kDrumColour, bass = kBassColour, mid = {1.f, .35f, .45f};
                 const float k   = m < 0.5f ? m * 2.f : (m - 0.5f) * 2.f;
                 const Rgb   a   = m < 0.5f ? drums : mid, b = m < 0.5f ? mid : bass;
                 c = {a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k};
-                v = sel == MIX_MUTE && mutes == 3 ? 0.15f : 1.f; // both muted: dim
+                v = 1.f;
             }
             else if(sel != kKnobNone)
                 v = m_->settings.params[sel];

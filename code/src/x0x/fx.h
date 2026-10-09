@@ -76,6 +76,7 @@ class Fx
         float mod        = 0.f; // 0 off, chorus to flanger
         float mod_width  = 0.5f;
         float dly_mix    = 0.f; // dry/wet
+        float dly_send   = 1.f; // the bass's share of the delay's input (the effects' balance)
         int   dly_div    = 5;   // index into kDelayBeats
         bool  dly_free   = false; // free time instead of synced
         float dly_free_ms = 375.f;
@@ -252,7 +253,7 @@ class Fx
                 }
 
                 // Each repeat through the tape: low-pass, high-pass, saturation.
-                const float in_d = dwet * (l + r) * 0.5f + (send ? send[i] : 0.f);
+                const float in_d = s_.dly_send * dwet * (l + r) * 0.5f + (send ? send[i] : 0.f);
                 float       fl   = in_d + dfb * d.r;
                 float       fr   = dfb * d.l;
                 lp_l_ += (fl - lp_l_) * tape_lp;
