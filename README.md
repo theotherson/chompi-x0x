@@ -13,9 +13,11 @@ Built from scratch on top of CHOMPI Club's TEMPO firmware, whose hardware layer,
 
 PLAY runs and stops the pattern in both.
 
-## Bass and drums: double-tap CHOMPI
+## Bass and drums: LOOP in step mode, or double-tap CHOMPI
 
-Tap CHOMPI twice quickly (each tap short, nothing else touched in between) to swap the panel between the bass and the drums. Both always play; the swap only picks which one the keys and knobs edit. The keybed flashes the new side's colour (red for the bass, amber for the drums), and the CHOMPI light stays amber while you're on the drums. A shift combination never counts, however fast: a press only counts as a tap if no key, knob or button was used during it.
+In step mode, **LOOP** swaps the panel between the bass and the drums, and **CHOMPI + LOOP** mutes or unmutes the side you're on (the bass or the drums, effects and all). LOOP lights dim in that side's colour, and blinks slowly while it's muted. Both sides can be muted at once. The mutes are the same as the mix page's (volume knob, page 3, with CHOMPI) and are saved with your settings. Tap tempo is on the purple knob's click.
+
+In either mode, tap CHOMPI twice quickly (each tap short, nothing else touched in between) to swap the panel between the bass and the drums. Both always play; the swap only picks which one the keys and knobs edit. The keybed flashes the new side's colour (red for the bass, amber for the drums), and the CHOMPI light stays amber while you're on the drums. A shift combination never counts, however fast: a press only counts as a tap if no key, knob or button was used during it.
 
 ## The drums (TR-606)
 
@@ -33,7 +35,7 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | F#4 | PATTERN: as on the bass side | **Quantize** (blue when on): a tap turns it on / off. Hold F#4 and press white key 1 / 2 / 3 for the grid: 1/16, 1/8, 1/4 (this turns quantize on) |
 | G#4 | COPY: as on the bass side | **Roll** (green): hold G#4 and hold voice keys, and they repeat in time. Hold G#4 and press white keys 1-5 for the rate: 1/8, 1/8T, 1/16, 1/16T, 1/32 |
 | A#4 | CLEAR: tap clears this voice's hits (or the accents); hold 1 s: the whole drum part | **Erase** (red): hold A#4 and hold voice keys while it runs, and their hits are wiped as the playhead passes them (the keys light red) |
-| LOOP | Tap tempo | Record on/off; hold 2 s: clear the drum part |
+| LOOP | Swap to the bass; CHOMPI + LOOP: mute / unmute the drums | Record on/off; hold 2 s: clear the drum part |
 
 **Recording drums live.** With quantize on (the default), each hit goes to the nearest point of the grid. With it off, each hit keeps its timing within the step, to 1/24 of a beat (a hit just before a step goes on that step, on time). Turning quantize on plays hits recorded off the grid on their steps instead; the timing is kept for when it's off again. A hit you record into the step about to play isn't played twice. Rolls are recorded too, one hit per voice per step (the first). The pattern, copy and clear keys are in step mode only.
 
@@ -42,9 +44,9 @@ The drums keep to the grid: a bass note recorded late doesn't move the drums on 
 | Knob | Turn | With CHOMPI |
 |---|---|---|
 | Knob 1 | The selected voice's level; page 2: the drum part's length | Accent level |
-| Knob 2 | Attack: the voice's click / snap | |
+| Knob 2 | Attack: the voice's click / snap | **Tuning** of the selected voice: +-24 semitones, the 606's own in the middle (white, brighter away from it). The hats and cymbal share their oscillators, so the last one played sets their pitch |
 | Knob 2, page 2 | **Filter** on the whole drum bus: low-pass turned left, high-pass turned right, off in the middle (yellow) | Resonance: from none to a ringing peak at the cutoff (orange) |
-| Knob 3 | Decay | |
+| Knob 3 | Decay | **Feedback FM** of the selected voice: its pitch pushed by its own output, from clean to gritty, glitchy and chaotic (its colour, whitening as it goes up) |
 | Knob 3, page 2 | **Filter envelope** (pink): each drum hit sweeps the filter open, by up to 6 octaves (the low-pass up, the high-pass down), then it falls back to where the filter is set. Accented hits sweep further | Envelope decay (violet): from a 10 ms blip to a 1 s sweep |
 | Knob 4, page 1 | Reverb send (blue) | Reverb size: a small room, quick, to a big hall, long (lavender) |
 | Knob 4, page 2 | Delay send (cyan): into the delay the bass uses too | The delay's synced time (shared with the bass side; white keys 1-9 show it) |
@@ -54,7 +56,7 @@ The drums keep to the grid: a bass note recorded late doesn't move the drums on 
 | Volume | Volume (shared) | **The drums' own distortion**, as the bass's drive but separate from it (orange to red) |
 | Volume, pages | Click: volume, the mix, the compressor (shared). No tempo / swing page here: the purple knob has them on this side | |
 
-Knob 2's and knob 3's clicks switch between the selected voice's attack / decay and the filter / its envelope; on the filter pages, CHOMPI + click resets the filter (and resonance) or the envelope (and decay). The filter, its envelope and its LFO do nothing while the filter is in the middle (off). Knob 4's click steps through its pages; CHOMPI + click resets its effects (not the shared delay time). **Hold knob 4 and press a voice key** to take that voice out of the reverb and delay, or put it back in. While knob 4 is held, the voice keys show which voices are in (lit) and out (nearly off). A voice taken out still plays, and still goes through the filter, crush and distortion; only its reverb and delay sends are cut. Every voice starts in, and the choice is saved with your settings. In step mode the toms and hats keys toggle whichever of the pair they currently show (press the key again first to switch); in live mode every voice has its own key. Pushing knob 4 to do this doesn't change its page. The delay is shared: the bass reaches it through its own delay knob, the drums through their send, so their echoes always line up; its feedback and tone (the bass's knob 4, page 2) set it for both. The mix knob (volume, page 3) acts before the effects, so muting a side mutes its echoes too. MIDI out sends them on channel 10 (GM notes: BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42), and MIDI files export and import the drum part on channel 10.
+Knob 2's and knob 3's clicks switch between the selected voice's attack / decay and the filter / its envelope; on the filter pages, CHOMPI + click resets the filter (and resonance) or the envelope (and decay); on the first pages, attack and tuning (knob 2) or decay and FM (knob 3). The filter, its envelope and its LFO do nothing while the filter is in the middle (off). Knob 4's click steps through its pages; CHOMPI + click resets its effects (not the shared delay time). **Hold knob 4 and press a voice key** to take that voice out of the reverb and delay, or put it back in. While knob 4 is held, the voice keys show which voices are in (lit) and out (nearly off). A voice taken out still plays, and still goes through the filter, crush and distortion; only its reverb and delay sends are cut. Every voice starts in, and the choice is saved with your settings. In step mode the toms and hats keys toggle whichever of the pair they currently show (press the key again first to switch); in live mode every voice has its own key. Pushing knob 4 to do this doesn't change its page. The delay is shared: the bass reaches it through its own delay knob, the drums through their send, so their echoes always line up; its feedback and tone (the bass's knob 4, page 2) set it for both. The mix knob (volume, page 3) acts before the effects, so muting a side mutes its echoes too. MIDI out sends them on channel 10 (GM notes: BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42), and MIDI files export and import the drum part on channel 10.
 
 ## The 16 steps on 15 white keys
 
@@ -76,7 +78,7 @@ White keys 1-7 are steps 1-7 and white keys 9-15 are steps 10-16. Middle C (whit
 | Black F#4 (key 8) | PATTERN. Tap: the pattern page on / off. Each pattern number 1-16 has an A and a B side, as on a TB-303. The page shows the A patterns (light blue); **hold CHOMPI** and it shows the B patterns (yellow). A step key picks that number on the side shown, when you let go: 2 is 2A, CHOMPI + 2 is 2B, so you can go from 1A straight to 2B. Used patterns are dim and empty ones off. The current pattern flashes slowly in its own side's colour, in either view: bright and dim if it has notes, bright and off if it's empty. A queued one blinks fast. Running, a change waits for the bar, and the queued key again (on the same side) switches at once. No playhead or dimmed half there, even while running; middle C is pattern 8 or 9 by the half you last chose. **Hold a pattern key 2 s** on the page to export every pattern as a MIDI file (see below); the key fills white, then all keys flash white (red if the card failed). **Hold PATTERN 2 s**: write protect on/off. While it's on you can edit freely, but nothing is saved to the card, so the next power-on loads your patterns as they were. Every light flashes magenta when it goes on (light blue when it goes off), and the pattern colours turn magenta (A) and orange (B). Turning it off keeps what you have now, which then saves as usual. It stays on across restarts |
 | Black G#4 (key 9) | COPY: hold it and press a step key to copy this pattern to that number (on the pattern page, to the side that number shows; elsewhere, to this pattern's side). COPY + PATTERN copies it to its own other side, A to B or B to A: the quick way to start a variation |
 | Black A#4 (key 10) | CLEAR (red): tap clears the selected step; hold 1 s clears the whole pattern (the key fills red as you hold) |
-| LOOP | Tap tempo |
+| LOOP | Swap to the drums; CHOMPI + LOOP: mute / unmute the bass |
 
 **Pages.** On a parameter page the step keys toggle that setting for each step, lit in the page's colour (DOWN purple, UP cyan, ACCENT orange, SLIDE blue, TIE green). The page's key again goes back to the notes page.
 
@@ -124,7 +126,7 @@ Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has 
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction (red) | | |
 | Big purple | Cutoff (purple) | Resonance (red) | | |
 | Volume | Volume (white) | Drive (light orange to red) | Tempo, 40-240 (1 BPM a click turned slowly; yellow, flashing the beat) | Swing (pink) |
-| Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through white to red (bass) | Mute the bass / neither / mute the drums |
+| Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through white to red (bass) | Mute the bass (left) / neither (middle) / the drums (right): amber, white or red. With both muted (CHOMPI + LOOP can do that) it's dim, and a turn goes from the middle |
 | Volume, page 4 | **Compressor** on the whole mix, after every effect: off to heavy (threshold down and ratio up together, about 1.5:1 to 8:1, soft knee, automatic make-up gain; about 8 ms attack, 120 ms release). Teal, dimming as it compresses | **Sidechain** from the kick: each BD hit ducks the bass, the delay echoes and the reverb (not the drums) by up to about 20 dB, recovering by the next beat. Red, pulsing with each duck |
 
 The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, on the eighth notes, alternating sides: left on step 1, right on step 3, left on step 5, and so on; the side of the current eighth flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.

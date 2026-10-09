@@ -50,7 +50,7 @@ enum Param : uint8_t
     DRUM_PARAMS,
     DRUM_ACCENT = DRUM_PARAMS + 3 * 7,
     MIX,             // bass / drums balance: centre both, left drums only, right bass only
-    MIX_MUTE,        // CHOMPI + the mix: mute the bass / neither / mute the drums
+    MIX_MUTE,        // the mutes: bit 0 the bass, bit 1 the drums (CHOMPI + the mix; CHOMPI + LOOP)
     DRUM_REVERB,     // the drums' effects (their knob 4): reverb send,
     REVERB_SIZE,     //   its size,
     DRUM_DELAY,      //   the shared delay's send,
@@ -69,7 +69,11 @@ enum Param : uint8_t
     DRUM_FX_SENDS,   // which drum voices go to the reverb and delay (a mask: v * 127)
     COMP,            // the master compressor (volume knob, page 4)
     SIDECHAIN,       // CHOMPI + it: the kick ducks the rest (sidechain depth)
-    NUM_PARAMS
+    // Each drum voice's tuning (centre: the 606's, +-24 semitones) and
+    // feedback FM (CHOMPI + knobs 2 and 3), as x0x::Drum.
+    DRUM_TUNE,
+    DRUM_FM = DRUM_TUNE + 7,
+    NUM_PARAMS = DRUM_FM + 7
 };
 
 struct ParamInfo
@@ -134,7 +138,7 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"ch_decay", .5f,       0, 0},
     {"drum_accent", .5f,     0, 0},   // accent: up to 3x as loud
     {"mix",         .5f,      0, 0},   // bass / drums
-    {"mix_mute",    .5f,      3, 0},   // mute bass / none / mute drums
+    {"mutes",       0.f,      4, 0},   // none / bass / drums / both
     {"drum_reverb", 0.f,      0, 0},
     {"reverb_size", .5f,      0, 0},
     {"drum_delay",  0.f,      0, 0},
@@ -153,6 +157,10 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_fx_sends", 1.f,    128, 0}, // every voice in
     {"comp",        0.f,      0, 0},   // off .. heavy
     {"sidechain",   0.f,      0, 0},   // none .. -20 dB on each kick
+    {"bd_tune", .5f, 0, 0}, {"sd_tune", .5f, 0, 0}, {"lt_tune", .5f, 0, 0}, {"ht_tune", .5f, 0, 0},
+    {"cy_tune", .5f, 0, 0}, {"oh_tune", .5f, 0, 0}, {"ch_tune", .5f, 0, 0},
+    {"bd_fm", 0.f, 0, 0}, {"sd_fm", 0.f, 0, 0}, {"lt_fm", 0.f, 0, 0}, {"ht_fm", 0.f, 0, 0},
+    {"cy_fm", 0.f, 0, 0}, {"oh_fm", 0.f, 0, 0}, {"ch_fm", 0.f, 0, 0},
 };
 // clang-format on
 
@@ -215,15 +223,16 @@ inline float DelayFreeKnob(float ms) { return Clamp(log2f(ms / 30.f) / 5.985f, 0
 /** The bass's and the drums' gains for the mix knob (0 drums only, 0.5
  *  both, 1 bass only) and its CHOMPI layer (0 mute the bass, 0.5 neither,
  *  1 mute the drums). Each fades out over its half of the knob. */
+/** mute: MIX_MUTE's value (bit 0 the bass, bit 1 the drums). */
 inline void MixGains(float mix, float mute, float* bass, float* drums)
 {
     const float m = Clamp(mix, 0.f, 1.f);
     *bass         = m < 0.5f ? sinf(kPi * m) : 1.f;          // 0 at the left end
     *drums        = m > 0.5f ? sinf(kPi * (1.f - m)) : 1.f;  // 0 at the right end
-    const int mu  = StepIndex(mute, 3);
-    if(mu == 0)
+    const int mu  = StepIndex(mute, 4);
+    if(mu & 1)
         *bass = 0.f;
-    else if(mu == 2)
+    if(mu & 2)
         *drums = 0.f;
 }
 

@@ -1299,7 +1299,7 @@ static void TestChompiDoubleTap()
     const Pattern before = r.m.Current();
     const float   env    = r.m.settings.params[ENV_MOD];
     const float   vol    = r.m.settings.params[VOLUME];
-    r.White(3), r.Black(2), r.ui.KnobTurn(1, 5, false), r.ui.Loop(r.now);
+    r.White(3), r.Black(2), r.ui.KnobTurn(1, 5, false);
     CHECK(r.m.Current().steps[3] == before.steps[3] && r.ui.Selected() == 0);
     CHECK(r.m.settings.params[ENV_MOD] == env && !r.m.Recording());
     r.ui.KnobTurn(5, -3, false);
@@ -2139,18 +2139,20 @@ static void TestDrumMuteSoloMix()
 
     // The mix: centre both; left drums only; right bass only; CHOMPI layer mutes.
     float b, d;
-    MixGains(0.5f, 0.5f, &b, &d);
-    CHECK(b == 1.f && d == 1.f);
-    MixGains(0.f, 0.5f, &b, &d);
-    CHECK(b < 0.01f && d == 1.f);
-    MixGains(1.f, 0.5f, &b, &d);
-    CHECK(b == 1.f && d < 0.01f);
-    MixGains(0.25f, 0.5f, &b, &d);
-    CHECK(b > 0.5f && b < 0.9f && d == 1.f);
     MixGains(0.5f, 0.f, &b, &d);
+    CHECK(b == 1.f && d == 1.f);
+    MixGains(0.f, 0.f, &b, &d);
+    CHECK(b < 0.01f && d == 1.f);
+    MixGains(1.f, 0.f, &b, &d);
+    CHECK(b == 1.f && d < 0.01f);
+    MixGains(0.25f, 0.f, &b, &d);
+    CHECK(b > 0.5f && b < 0.9f && d == 1.f);
+    MixGains(0.5f, StepValue(1, 4), &b, &d); // the mutes: bass, drums, both
     CHECK(b == 0.f && d == 1.f);
-    MixGains(0.5f, 1.f, &b, &d);
+    MixGains(0.5f, StepValue(2, 4), &b, &d);
     CHECK(b == 1.f && d == 0.f);
+    MixGains(0.5f, 1.f, &b, &d);
+    CHECK(b == 0.f && d == 0.f);
     // On the panel (the drums' side): the volume knob's pages are volume,
     // the mix and the compressor; no tempo / swing (the purple knob has them).
     r.ui.KnobClick(5, r.now);
@@ -2164,7 +2166,15 @@ static void TestDrumMuteSoloMix()
     r.ui.KnobTurn(5, -10, false);
     CHECK(r.m.settings.params[MIX] < 0.5f);
     r.ui.Chompi(true), r.ui.KnobTurn(5, 1, false), r.ui.Chompi(false);
-    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 3) == 2); // drums muted
+    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 2); // drums muted
+    r.ui.Chompi(true), r.ui.KnobTurn(5, -1, false), r.ui.KnobTurn(5, -1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 1); // through neither to the bass muted
+    r.ui.Chompi(true), r.ui.KnobTurn(5, -1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 1); // the end
+    r.m.settings.params[MIX_MUTE] = 1.f;                    // both (CHOMPI + LOOP can do that)
+    r.ui.Chompi(true), r.ui.KnobTurn(5, 1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(r.m.settings.params[MIX_MUTE], 4) == 2); // from the middle
+    r.m.settings.params[MIX_MUTE] = 0.f;
 }
 
 static void TestDrumEffects()
@@ -2275,10 +2285,10 @@ static void TestDrumEffects()
     const double wet = run_energy(0.26, 0.4);
     CHECK(wet > dry * 30);
     // The mix knob's 'mute the drums' silences their echoes too.
-    prm[MIX_MUTE] = 1.f;
+    prm[MIX_MUTE] = StepValue(2, 4);
     const double muted = run_energy(0.26, 0.4);
     CHECK(muted < wet * 0.01);
-    prm[MIX_MUTE] = 0.5f, prm[DRUM_DELAY] = 0.f;
+    prm[MIX_MUTE] = 0.f, prm[DRUM_DELAY] = 0.f;
     // The reverb send: a tail after the hit.
     prm[DRUM_REVERB] = 0.8f;
     const double rev = run_energy(0.26, 0.4);
@@ -2988,6 +2998,130 @@ static void TestFastMathAndGuards()
         g_delay[i] = {0.f, 0.f};
 }
 
+static void TestLoopSidesAndMutes()
+{
+    printf("step mode: LOOP switches bass / drums, CHOMPI + LOOP mutes the side shown\n");
+    Rig r;
+    CHECK(!r.ui.OnDrums());
+    r.ui.Loop(r.now);
+    CHECK(r.ui.OnDrums());
+    r.ui.Loop(r.now);
+    CHECK(!r.ui.OnDrums());
+    const float tempo = r.m.settings.params[TEMPO];
+    r.ui.Loop(r.now), r.Run(300), r.ui.Loop(r.now), r.Run(300), r.ui.Loop(r.now);
+    CHECK(r.m.settings.params[TEMPO] == tempo); // no tap tempo there now
+    CHECK(r.ui.OnDrums());
+    // CHOMPI + LOOP: the drums muted (the bass not), again unmuted; the
+    // CHOMPI press isn't a tap that switches sides.
+    r.Run(1000);
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.m.SideMuted(true) && !r.m.SideMuted(false) && r.ui.OnDrums());
+    float b, d;
+    MixGains(r.m.settings.params[MIX], r.m.settings.params[MIX_MUTE], &b, &d);
+    CHECK(b == 1.f && d == 0.f);
+    LedFrame f;
+    bool     lit = false, dark = false;
+    for(int i = 0; i < 1000; i += 50)
+    {
+        r.Run(50), r.ui.Draw(f, r.now);
+        lit |= f.loop.r > 0.4f && f.loop.g > 0.2f, dark |= f.loop.r == 0.f;
+    }
+    CHECK(lit && dark); // blinking amber
+    // Both muted: switch and mute the bass too.
+    r.ui.Loop(r.now);
+    r.Run(1000);
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.m.SideMuted(true) && r.m.SideMuted(false));
+    MixGains(0.5f, r.m.settings.params[MIX_MUTE], &b, &d);
+    CHECK(b == 0.f && d == 0.f);
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.Run(60), r.ui.Chompi(false);
+    CHECK(!r.m.SideMuted(false) && r.m.SideMuted(true));
+    r.Run(500), r.ui.Draw(f, r.now);
+    CHECK(f.loop.r > 0.2f && f.loop.g == 0.f); // the bass's side: steady red
+    // Live mode: LOOP still records, CHOMPI + LOOP the arpeggiator's latch.
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.Loop(r.now);
+    CHECK(r.m.Recording() && !r.ui.OnDrums());
+    r.ui.Loop(r.now);
+    const bool latch = r.m.ArpLatch();
+    r.ui.Chompi(true), r.ui.Loop(r.now), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.m.ArpLatch() != latch && r.m.SideMuted(true));
+}
+
+static void TestDrumTuneAndFm()
+{
+    printf("drums: CHOMPI + knob 2 tunes the voice (+-24 st), CHOMPI + knob 3 its feedback FM\n");
+    // The BD an octave up: twice the zero crossings in its first 50 ms.
+    auto crossings = [](float tune, float fm, Drum v, std::vector<float>* keep = nullptr) {
+        Drums d;
+        d.Init(48000.f);
+        d.Params(v).tune = tune, d.Params(v).fm = fm;
+        d.Trigger(v, 1.f);
+        std::vector<float> o(48000, 0.f);
+        for(size_t i = 0; i < o.size(); i += 48)
+            d.Process(&o[i], 48);
+        int z = 0;
+        for(int i = 200; i < 2400; i++)
+            z += (o[i - 1] < 0.f) != (o[i] < 0.f);
+        if(keep)
+            *keep = o;
+        return z;
+    };
+    const int z0 = crossings(0.5f, 0.f, BD), z12 = crossings(0.75f, 0.f, BD), zd = crossings(0.25f, 0.f, BD);
+    CHECK(z12 > z0 * 1.7 && z12 < z0 * 2.3 && zd < z0 * 0.65);
+    // FM changes the sound (more crossings: the pitch pushed up while loud);
+    // every voice stays bounded at the extremes.
+    std::vector<float> plain, fmd;
+    crossings(0.5f, 0.f, SD, &plain), crossings(0.5f, 1.f, SD, &fmd);
+    double diff = 0, e = 0;
+    for(size_t i = 0; i < plain.size(); i++)
+        diff += (plain[i] - fmd[i]) * (plain[i] - fmd[i]), e += plain[i] * plain[i];
+    CHECK(diff > e * 0.1);
+    for(int v = 0; v < NUM_DRUMS; v++)
+        for(float tune : {0.f, 0.5f, 1.f})
+            for(float fm : {0.f, 0.5f, 1.f})
+            {
+                std::vector<float> o;
+                crossings(tune, fm, static_cast<Drum>(v), &o);
+                float pk = 0.f;
+                bool  ok = true;
+                for(float x : o)
+                    ok &= std::isfinite(x), pk = std::max(pk, fabsf(x));
+                CHECK(ok && pk < 12.f);
+            }
+    // Tuned and FM'd at 0.5 / 0: the 606 exactly as before.
+    {
+        Drums a, b2;
+        a.Init(48000.f), b2.Init(48000.f);
+        b2.Params(LT).tune = 0.5f, b2.Params(LT).fm = 0.f;
+        a.Trigger(LT, 0.5f), b2.Trigger(LT, 0.5f);
+        float x[480] = {}, y[480] = {};
+        a.Process(x, 480), b2.Process(y, 480);
+        CHECK(memcmp(x, y, sizeof x) == 0);
+    }
+
+    // The panel, drums' side: CHOMPI + knob 2 / 3 on the selected voice;
+    // CHOMPI + click resets attack and tuning (knob 2), decay and FM (knob 3).
+    Rig r;
+    float* prm = r.m.settings.params;
+    r.ui.Loop(r.now); // the drums (step mode)
+    CHECK(r.ui.OnDrums());
+    r.Black(1); // SD's page
+    r.ui.Chompi(true), r.ui.KnobTurn(1, 5, false), r.ui.KnobTurn(2, 5, false), r.ui.Chompi(false);
+    CHECK(prm[DRUM_TUNE + SD] > 0.5f && prm[DRUM_FM + SD] > 0.f);
+    CHECK(prm[DRUM_TUNE + BD] == 0.5f && prm[DRUM_FM + BD] == 0.f);
+    CHECK(prm[DRUM_PARAMS + 3 * SD + 1] == 0.5f && prm[DRUM_PARAMS + 3 * SD + 2] == 0.5f);
+    LedFrame f;
+    r.ui.Chompi(true), r.ui.Draw(f, r.now);
+    CHECK(f.knob[1].r > 0.2f && f.knob[1].r == f.knob[1].b); // white
+    r.ui.KnobClick(1, r.now), r.ui.KnobClick(2, r.now), r.ui.Chompi(false);
+    CHECK(prm[DRUM_TUNE + SD] == 0.5f && prm[DRUM_FM + SD] == 0.f);
+    // Saved by name.
+    prm[DRUM_TUNE + CH] = 0.8f;
+    char buf[8192];
+    CHECK(WriteSettings(r.m.settings, buf, sizeof buf) > 0 && strstr(buf, "ch_tune 0.8000") && strstr(buf, "mutes 0.0000"));
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3150,7 +3284,7 @@ static void TestEngineBalance()
                     p.drums[i] |= static_cast<uint8_t>(1 << v);
         for(auto& q : kv)
             r.m.settings.params[q.first] = q.second;
-        r.m.settings.params[MIX_MUTE] = drums ? 0.f : 1.f;
+        r.m.settings.params[MIX_MUTE] = StepValue(drums ? 1 : 2, 4); // the other side muted
         r.m.Play();
         double e = 0;
         float  L[48], R[48];
@@ -3212,6 +3346,8 @@ int main()
     TestDrumFilterLfo();
     TestDrumTimingAndLiveKeys();
     TestFastMathAndGuards();
+    TestLoopSidesAndMutes();
+    TestDrumTuneAndFm();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

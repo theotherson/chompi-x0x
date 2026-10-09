@@ -538,6 +538,8 @@ class Machine
             dp.level       = p[DRUM_PARAMS + 3 * v];
             dp.attack      = p[DRUM_PARAMS + 3 * v + 1];
             dp.decay       = p[DRUM_PARAMS + 3 * v + 2];
+            dp.tune        = p[DRUM_TUNE + v];
+            dp.fm          = p[DRUM_FM + v];
         }
         const uint8_t sends = static_cast<uint8_t>(StepIndex(p[DRUM_FX_SENDS], 128));
         drums_.SetSendMask(sends);
@@ -731,6 +733,14 @@ class Machine
             if(!(fabsf(left[i]) + fabsf(right[i]) <= 4.f))
                 left[i] = right[i] = 0.f, bad_out_++;
         }
+    }
+
+    /** A side's mute (the bass, or the drums): silent, effects and all. */
+    bool SideMuted(bool drums) const { return (StepIndex(settings.params[MIX_MUTE], 4) >> (drums ? 1 : 0)) & 1; }
+    void SetSideMuted(bool drums, bool on)
+    {
+        const int m = StepIndex(settings.params[MIX_MUTE], 4), bit = drums ? 2 : 1;
+        SetParam(MIX_MUTE, StepValue(on ? m | bit : m & ~bit, 4));
     }
 
     /** Broken values caught: at the output, and in the bass's effects. */

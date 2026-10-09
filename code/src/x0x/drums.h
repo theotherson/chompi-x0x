@@ -45,6 +45,8 @@ struct DrumParams
     float level  = 0.75f;
     float attack = 0.5f; // the click / snap
     float decay  = 0.5f;
+    float tune   = 0.5f; // +-24 semitones
+    float fm     = 0.f;  // feedback FM: the voice's pitch pushed by its own output
 };
 
 /** A resonator, pinged: a two-pole filter whose impulse response is a
@@ -54,16 +56,28 @@ class Resonator
   public:
     void Set(float hz, float tau_s, float sr)
     {
-        w_ = 2.f * kPi * hz / sr;
         r_ = expf(-1.f / (tau_s * sr));
-        a1_ = 2.f * r_ * cosf(w_);
         a2_ = -r_ * r_;
+        Retune(hz, sr);
     }
     /** Re-tune while ringing (the decay unchanged). */
     void Retune(float hz, float sr)
     {
-        w_  = 2.f * kPi * hz / sr;
-        a1_ = 2.f * r_ * cosf(w_);
+        w_  = 2.f * kPi * Clamp(hz, 10.f, 0.2f * sr) / sr;
+        c_  = cosf(w_), s_ = sinf(w_);
+        a1_ = 2.f * r_ * c_;
+    }
+    /** A sample with feedback FM: the frequency times (1 + depth * output),
+     *  its coefficient from cos(w + u) to second order in u; bounded. */
+    float ProcessFm(float depth)
+    {
+        const float m  = Clamp(depth * y1_, -0.9f, 4.f);
+        const float u  = w_ * m;
+        const float a1 = Clamp(2.f * r_ * (c_ * (1.f - 0.5f * u * u) - s_ * u), -2.f * r_, 2.f * r_);
+        float       y  = a1 * y1_ + a2_ * y2_;
+        y              = Clamp(y, -8.f, 8.f); // a modulated resonator can pump itself up
+        y2_ = y1_, y1_ = y;
+        return y;
     }
     void Ping(float amp) { y1_ += amp * sinf(w_); } // starts the sine at `amp`
     float Process()
@@ -75,7 +89,7 @@ class Resonator
     void Reset() { y1_ = y2_ = 0.f; }
 
   private:
-    float w_ = 0.f, r_ = 0.f, a1_ = 0.f, a2_ = 0.f, y1_ = 0.f, y2_ = 0.f;
+    float w_ = 0.f, r_ = 0.f, a1_ = 0.f, a2_ = 0.f, y1_ = 0.f, y2_ = 0.f, c_ = 1.f, s_ = 0.f;
 };
 
 /** A state-variable filter (Chamberlin, 2x per sample for stability up
@@ -137,8 +151,10 @@ class Drums
      *  semitones: played pitched (the live keyboard), 0 = as the 606. */
     void Trigger(Drum d, float accent, int semitones = 0)
     {
-        const float pr = semitones ? FastExp2(semitones / 12.f) : 1.f;
-        const DrumParams& p = params_[d];
+        const DrumParams& p  = params_[d];
+        const float       st = semitones + 48.f * (Clamp(p.tune, 0.f, 1.f) - 0.5f); // +-24 from the knob
+        const float       pr = fabsf(st) > 0.01f ? FastExp2(st / 12.f) : 1.f;
+        const float       fm = 3.f * p.fm * p.fm; // feedback FM depth
         // Accent raises the trigger voltage: up to 3x as loud (the service
         // notes: 2 Vp-p at accent minimum, 6 at maximum), the shape the same
         // (plain and accented hits of one 606 decay alike).
@@ -154,6 +170,7 @@ class Drums
                 bd_body_.Ping(hit);
                 bd_knock_.Ping(0.3f * hit);
                 bd_click_ = 0.35f * ck * hit;
+                bd_fm_    = fm;
                 break;
             case SD:
                 sd_tone_.Set(212.f * pr, 0.024f * dk, sr_);
@@ -161,6 +178,7 @@ class Drums
                 sd_noise_env_ = hit;
                 sd_noise_tau_ = 0.033f * dk;
                 sd_click_     = 0.4f * ck * hit;
+                sd_fm_        = fm;
                 break;
             case LT:
                 lt_.Set(176.f * pr, 0.047f * dk, sr_);
@@ -170,6 +188,7 @@ class Drums
                 tom_click_ = 0.3f * ck * hit;
                 click_lt_  = true;
                 tom_noise_ = 0.06f * hit;
+                lt_fm_     = fm;
                 break;
             case HT:
                 ht_.Set(208.f * pr, 0.035f * dk, sr_);
@@ -177,16 +196,17 @@ class Drums
                 tom_click_ = 0.3f * ck * hit;
                 click_lt_  = false;
                 tom_noise_ = 0.06f * hit;
+                ht_fm_     = fm;
                 break;
             case CY:
-                metal_pitch_ = pr;
+                metal_pitch_ = pr, metal_fm_ = fm;
                 cy_env_fast_ = 0.78f * hit, cy_env_slow_ = 0.22f * hit;
                 cy_time_     = 0.f;
                 cy_tau_      = mk;
                 cy_click_    = 0.3f * ck * hit;
                 break;
             case OH:
-                metal_pitch_ = pr;
+                metal_pitch_ = pr, metal_fm_ = fm;
                 oh_env_   = hit;
                 oh_tau_   = 0.25f * mk;
                 oh_time_  = 0.f;
@@ -194,7 +214,7 @@ class Drums
                 click_oh_  = true;
                 break;
             case CH:
-                metal_pitch_ = pr;
+                metal_pitch_ = pr, metal_fm_ = fm;
                 oh_env_    = 0.f; // the choke: a closed hat cuts the open one
                 ch_env_    = hit;
                 ch_tau_    = 0.017f * mk;
@@ -235,7 +255,9 @@ class Drums
         for(size_t i = 0; i < n; i++)
         {
             // Bass drum: the two resonators and a click.
-            float bd = bd_body_.Process() + bd_knock_.Process() + bd_click_;
+            float bd = (bd_fm_ > 0.f ? bd_body_.ProcessFm(bd_fm_) + bd_knock_.ProcessFm(bd_fm_)
+                                     : bd_body_.Process() + bd_knock_.Process())
+                       + bd_click_;
             bd_click_ -= bd_click_ * click_k;
 
             // Snare: the tone and click, and the noise high-passed.
@@ -243,7 +265,8 @@ class Drums
             sd_hp_.Process(noise * sd_noise_env_);
             sd_lp_.Process(sd_hp_.High());
             sd_noise_env_ -= sd_noise_env_ * sd_nk;
-            float sd = sd_tone_.Process() + 0.7f * sd_lp_.Low() + sd_click_ * noise;
+            float sd = (sd_fm_ > 0.f ? sd_tone_.ProcessFm(sd_fm_) : sd_tone_.Process()) + 0.7f * sd_lp_.Low()
+                       + sd_click_ * noise;
             sd_click_ -= sd_click_ * click_k;
 
             // Toms: the low one's pitch sinks as it rings.
@@ -258,16 +281,19 @@ class Drums
             tom_noise_ -= tom_noise_ * tom_nk;
             const float tclick = tom_click_ * noise + tom_lp_.Low();
             tom_click_ -= tom_click_ * click_k;
-            const float lt_r = lt_.Process(), ht_r = ht_.Process();
+            const float lt_r = lt_fm_ > 0.f ? lt_.ProcessFm(lt_fm_) : lt_.Process();
+            const float ht_r = ht_fm_ > 0.f ? ht_.ProcessFm(ht_fm_) : ht_.Process();
             const float lt = lt_r + tclick, ht = ht_r + tclick;
             // The send: the click and noise with the last tom, if it's in.
             const float t_send = in[click_lt_ ? LT : HT] ? tclick * (lv[LT] + lv[HT]) : 0.f;
 
             // The metal: six squares, band-limited (PolyBLEP).
-            float metal = 0.f;
+            // Feedback FM: their pitch pushed by their own last output.
+            const float metal_mod = metal_fm_ > 0.f ? Clamp(1.f + 2.f * metal_fm_ * metal_last_, 0.1f, 4.f) : 1.f;
+            float       metal     = 0.f;
             for(int k = 0; k < 6; k++)
             {
-                const float inc = kMetalHz[k] * metal_pitch_ / sr_;
+                const float inc = kMetalHz[k] * metal_pitch_ * metal_mod / sr_;
                 float&      ph  = metal_ph_[k];
                 ph += inc;
                 if(ph >= 1.f)
@@ -277,6 +303,7 @@ class Drums
                 metal += sq;
             }
             metal *= 1.f / 6.f;
+            metal_last_ = metal;
 
             // Hats: the upper band through one VCA (open and closed
             // envelopes), then the high-pass.
@@ -361,6 +388,7 @@ class Drums
     float     bd_click_ = 0.f, sd_click_ = 0.f, tom_click_ = 0.f, hat_click_ = 0.f, cy_click_ = 0.f;
     float     sd_noise_env_ = 0.f, sd_noise_tau_ = 0.05f;
     float     lt_glide_ = 0.f, lt_pitch_ = 1.f, metal_pitch_ = 1.f;
+    float     bd_fm_ = 0.f, sd_fm_ = 0.f, lt_fm_ = 0.f, ht_fm_ = 0.f, metal_fm_ = 0.f, metal_last_ = 0.f;
     float     tom_noise_ = 0.f;
     Svf       hat_hp2_, cy_hp_hi2_, hat_hp_s_, hat_hp2_s_;
     uint8_t   send_mask_ = 0x7f;

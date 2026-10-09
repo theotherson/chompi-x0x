@@ -349,6 +349,19 @@ class Ui
     void LoopDown(uint32_t now)
     {
         Touched();
+        if(mode_ == Mode::STEP)
+        {
+            // Step mode: LOOP switches between the bass and the drums;
+            // CHOMPI + LOOP mutes / unmutes the side shown.
+            if(chompi_)
+            {
+                m_->SetSideMuted(drums_, !m_->SideMuted(drums_));
+                chompi_clean_ = false;
+            }
+            else
+                SwapMachine();
+            return;
+        }
         if(drums_ && chompi_)
         {
             live_accent_ = !live_accent_; // CHOMPI + LOOP: live hits accented, or not
@@ -357,12 +370,6 @@ class Ui
         if(chompi_)
         {
             m_->SetArpLatch(!m_->ArpLatch()); // CHOMPI + LOOP: arpeggiator latch
-            return;
-        }
-        if(mode_ == Mode::STEP)
-        {
-            m_->Tap(now);
-            tapped_at_ = now;
             return;
         }
         loop_down_    = true;
@@ -464,6 +471,14 @@ class Ui
             else
                 m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
             delay_shown_at_ = last_tick_;
+        }
+        else if(p == MIX_MUTE)
+        {
+            // Left: the bass muted; middle: neither; right: the drums muted
+            // (both muted, as CHOMPI + LOOP can leave them, counts as middle).
+            static constexpr int kPos[4] = {1, 0, 2, 1}, kBits[3] = {1, 0, 2};
+            const int pos = ClampInt(kPos[StepIndex(v, 4)] + dir, 0, 2);
+            m_->SetParam(p, StepValue(kBits[pos], 4));
         }
         else if(steps)
             m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
@@ -694,7 +709,7 @@ class Ui
         if(m_->Running())
             f.play = {0.f, .7f, .1f};
         if(mode_ == Mode::STEP)
-            f.loop = now - tapped_at_ < 100 ? Rgb{1.f, 1.f, 1.f} : Rgb{}; // tap tempo
+            f.loop = StepLoopLed(now);
         else if(loop_down_ && !loop_cleared_ && now - loop_down_at_ > 300)
         {
             // Held: fills red towards the clear.
@@ -708,7 +723,8 @@ class Ui
         if(chompi_)
         {
             f.play = Scale(kArpOnColour, m_->ArpOn() ? 1.f : 0.12f);
-            f.loop = Scale(kLatchColour, m_->ArpLatch() ? 1.f : 0.12f);
+            if(mode_ == Mode::PITCH)
+                f.loop = Scale(kLatchColour, m_->ArpLatch() ? 1.f : 0.12f);
         }
 
         if(chompi_)
@@ -907,13 +923,17 @@ class Ui
         if(drum_knob2_page_ == 1) // the filter (yellow), its resonance (orange)
             f.knob[1] = chompi_ ? Scale(Rgb{1.f, .3f, 0.f}, 0.2f + 0.8f * p[DRUM_FILTER_RES])
                                 : Scale(Rgb{1.f, .85f, 0.f}, 0.2f + 0.8f * fabsf(p[DRUM_FILTER] - 0.5f) * 2.f);
+        else if(chompi_) // the tuning: white, brighter away from the 606's
+            f.knob[1] = Scale(Rgb{1.f, 1.f, 1.f}, 0.15f + 0.85f * fabsf(p[DRUM_TUNE + drum_sel_] - 0.5f) * 2.f);
         else
-            f.knob[1] = chompi_ ? Rgb{} : Scale(vc, 0.2f + 0.8f * p[pv + 1]);
+            f.knob[1] = Scale(vc, 0.2f + 0.8f * p[pv + 1]);
         if(drum_knob3_page_ == 1) // the filter's envelope (pink), its decay (violet)
             f.knob[2] = Scale(chompi_ ? Rgb{.6f, .2f, 1.f} : Rgb{1.f, .2f, .6f},
                               0.2f + 0.8f * p[chompi_ ? DRUM_FENV_DECAY : DRUM_FENV]);
+        else if(chompi_) // the FM: the voice's colour, whitening as it goes up
+            f.knob[2] = Whiten(Scale(vc, 0.2f + 0.8f * p[DRUM_FM + drum_sel_]), 0.6f * p[DRUM_FM + drum_sel_]);
         else
-            f.knob[2] = chompi_ ? Rgb{} : Scale(vc, 0.2f + 0.8f * p[pv + 2]);
+            f.knob[2] = Scale(vc, 0.2f + 0.8f * p[pv + 2]);
         {
             // Knob 4: the effects page's colour; CHOMPI, its second control's.
             static constexpr Rgb kFxCol[4][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},  // reverb | size
@@ -958,7 +978,7 @@ class Ui
 
         f.play = m_->Running() ? Rgb{0.f, .7f, .1f} : Rgb{};
         if(mode_ == Mode::STEP)
-            f.loop = now - tapped_at_ < 100 ? Rgb{1.f, 1.f, 1.f} : Rgb{}; // tap tempo
+            f.loop = StepLoopLed(now);
         else if(loop_down_ && !loop_cleared_ && now - loop_down_at_ > 300)
             f.loop = {Clamp((now - loop_down_at_) / static_cast<float>(kLoopClearMs), 0.f, 1.f), 0.f, 0.f};
         else if(m_->Recording())
@@ -968,7 +988,8 @@ class Ui
         if(chompi_)
         {
             f.chompi = {1.f, 1.f, 1.f};
-            f.loop   = Scale(kDrumAccentCol, live_accent_ ? 1.f : 0.12f); // CHOMPI + LOOP: live accent
+            if(mode_ == Mode::PITCH)
+                f.loop = Scale(kDrumAccentCol, live_accent_ ? 1.f : 0.12f); // CHOMPI + LOOP: live accent
         }
         else
             f.chompi = Scale(kDrumColour, lit && ds % 4 == 0 ? 1.f : .45f);
@@ -1252,7 +1273,7 @@ class Ui
                     m_->SetParam(static_cast<Param>(q), p[q] + inc * step * 1.25f);
                     return;
                 }
-                param = pv + 1;
+                param = chompi_ ? DRUM_TUNE + drum_sel_ : pv + 1; // CHOMPI: the voice's tuning
                 break;
             case 2:
                 // Knob 3, page 2: the filter's envelope; CHOMPI, its decay.
@@ -1262,7 +1283,7 @@ class Ui
                     m_->SetParam(static_cast<Param>(q), p[q] + inc * step * 1.25f);
                     return;
                 }
-                param = pv + 2;
+                param = chompi_ ? DRUM_FM + drum_sel_ : pv + 2; // CHOMPI: its feedback FM
                 break;
             case 4:
                 if(chompi_)
@@ -1307,8 +1328,6 @@ class Ui
             }
             default: return;
         }
-        if(chompi_ && (knob == 1 || knob == 2))
-            return;
         m_->SetParam(static_cast<Param>(param), p[param] + inc * step * 1.25f);
     }
 
@@ -1359,7 +1378,12 @@ class Ui
             m_->SetParam(DRUM_FENV_DECAY, kParams[DRUM_FENV_DECAY].def);
         }
         else if(knob == 1 || knob == 2)
+        {
+            // Attack and tuning, or decay and FM.
+            const int q = knob == 1 ? DRUM_TUNE + drum_sel_ : DRUM_FM + drum_sel_;
             m_->SetParam(static_cast<Param>(pv + knob), kParams[pv + knob].def);
+            m_->SetParam(static_cast<Param>(q), kParams[q].def);
+        }
     }
 
     static constexpr Rgb kRed             = {1.f, 0.f, 0.f};
@@ -1606,6 +1630,16 @@ class Ui
     {
         chompi_clean_ = false;
         chompi_taps_  = 0;
+    }
+
+    /** Step mode's LOOP: the side shown, red (the bass) or amber (the
+     *  drums), dim; blinking slowly while that side is muted. */
+    Rgb StepLoopLed(uint32_t now) const
+    {
+        const Rgb c = drums_ ? kDrumColour : kRed;
+        if(m_->SideMuted(drums_))
+            return Scale(c, (now / 400) % 2 ? 0.5f : 0.f);
+        return Scale(c, 0.3f);
     }
 
     void SwapMachine()
@@ -2247,13 +2281,14 @@ class Ui
             {
                 // The balance: amber (all drums) .. white .. red (all bass);
                 // CHOMPI: amber (bass muted) / white / red (drums muted).
-                const float m = sel == MIX ? m_->settings.params[MIX]
-                                           : 0.5f * StepIndex(m_->settings.params[MIX_MUTE], 3);
+                static constexpr float kMuteShown[4] = {0.5f, 0.f, 1.f, 0.5f}; // none, bass, drums, both
+                const int   mutes = StepIndex(m_->settings.params[MIX_MUTE], 4);
+                const float m     = sel == MIX ? m_->settings.params[MIX] : kMuteShown[mutes];
                 const Rgb drums = kDrumColour, bass = {1.f, 0.f, 0.f}, mid = {1.f, 1.f, 1.f};
                 const float k   = m < 0.5f ? m * 2.f : (m - 0.5f) * 2.f;
                 const Rgb   a   = m < 0.5f ? drums : mid, b = m < 0.5f ? mid : bass;
                 c = {a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k};
-                v = 1.f;
+                v = sel == MIX_MUTE && mutes == 3 ? 0.15f : 1.f; // both muted: dim
             }
             else if(sel != kKnobNone)
                 v = m_->settings.params[sel];
