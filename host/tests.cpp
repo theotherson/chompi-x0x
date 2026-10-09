@@ -2606,7 +2606,7 @@ static void TestDrumFilterEnvelope()
     CHECK(prm[DRUM_PARAMS + 1] == attack && prm[DRUM_PARAMS + 2] == decay);
     LedFrame f;
     r.ui.Draw(f, r.now);
-    CHECK(f.knob[1].r > 0.2f && f.knob[1].g > 0.5f * f.knob[1].r && f.knob[1].b == 0.f); // the filter: yellow
+    CHECK(f.knob[1].r > 0.2f && f.knob[1].g == f.knob[1].r && f.knob[1].b == f.knob[1].r); // the filter: white
     r.ui.Chompi(true), r.ui.KnobClick(1, r.now), r.ui.KnobClick(2, r.now), r.ui.Chompi(false);
     CHECK(prm[DRUM_FILTER] == 0.5f && prm[DRUM_FILTER_RES] == 0.f);
     CHECK(prm[DRUM_FENV] == 0.f && prm[DRUM_FENV_DECAY] == kParams[DRUM_FENV_DECAY].def);

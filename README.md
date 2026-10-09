@@ -45,7 +45,7 @@ The drums keep to the grid: a bass note recorded late doesn't move the drums on 
 |---|---|---|
 | Knob 1 | The selected voice's level; page 2: the drum part's length | Accent level |
 | Knob 2 | Attack: the voice's click / snap | **Tuning** of the selected voice: +-24 semitones, the 606's own in the middle (white, brighter away from it). The hats and cymbal share their oscillators, so the last one played sets their pitch |
-| Knob 2, page 2 | **Filter** on the whole drum bus: low-pass turned left, high-pass turned right, off in the middle (yellow) | Resonance: from none to a ringing peak at the cutoff (orange) |
+| Knob 2, page 2 | **Filter** on the whole drum bus: low-pass turned left, high-pass turned right, off in the middle (white) | Resonance: from none to a ringing peak at the cutoff (pink) |
 | Knob 3 | Decay | **Feedback FM** of the selected voice: its pitch pushed by its own output, from clean to gritty, glitchy and chaotic (its colour, whitening as it goes up) |
 | Knob 3, page 2 | **Filter envelope** (pink): each drum hit sweeps the filter open, by up to 6 octaves (the low-pass up, the high-pass down), then it falls back to where the filter is set. Accented hits sweep further | Envelope decay (violet): from a 10 ms blip to a 1 s sweep |
 | Knob 4, page 1 | Reverb send (blue) | Reverb size: a small room, quick, to a big hall, long (lavender) |

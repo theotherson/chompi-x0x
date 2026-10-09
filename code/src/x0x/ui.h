@@ -920,9 +920,9 @@ class Ui
             f.knob[0] = chompi_ ? Rgb{} : Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * pat.drum_length / static_cast<float>(kSteps));
         else
             f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_ACCENT]) : Scale(vc, 0.2f + 0.8f * p[pv]);
-        if(drum_knob2_page_ == 1) // the filter (yellow), its resonance (orange)
-            f.knob[1] = chompi_ ? Scale(Rgb{1.f, .3f, 0.f}, 0.2f + 0.8f * p[DRUM_FILTER_RES])
-                                : Scale(Rgb{1.f, .85f, 0.f}, 0.2f + 0.8f * fabsf(p[DRUM_FILTER] - 0.5f) * 2.f);
+        if(drum_knob2_page_ == 1) // the filter (white), its resonance (pink): no voice's colours
+            f.knob[1] = chompi_ ? Scale(Rgb{1.f, .4f, .7f}, 0.2f + 0.8f * p[DRUM_FILTER_RES])
+                                : Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * fabsf(p[DRUM_FILTER] - 0.5f) * 2.f);
         else if(chompi_) // the tuning: white, brighter away from the 606's
             f.knob[1] = Scale(Rgb{1.f, 1.f, 1.f}, 0.15f + 0.85f * fabsf(p[DRUM_TUNE + drum_sel_] - 0.5f) * 2.f);
         else
