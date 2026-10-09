@@ -334,8 +334,8 @@ class Fx
  *
  *  Size sets everything together: the tank's length (0.75x to 1.25x), the
  *  decay (RT60 ~0.4 to ~6 s), the pre-delay (10 to 40 ms) and the tone
- *  (bigger is darker: damping ~3.5 to ~1.2 kHz, input bandwidth ~5 to
- *  ~3 kHz, two-pole), as in real rooms. The modulation
+ *  (bigger is darker: damping ~6 to ~2.5 kHz, input bandwidth ~8 to
+ *  ~5 kHz, two-pole), as in real rooms. The modulation
  *  keeps the tail from ringing. Memory: kReverbFrames floats. */
 class Reverb
 {
@@ -398,8 +398,8 @@ class Reverb
         pre_.len  = static_cast<int>((0.01f + 0.03f * size) * sr_);
         // Bigger is darker: the damping in the tank and the input's
         // bandwidth both close down as the room grows.
-        damp_     = TauToCoef(1.f / (2.f * kPi * (3500.f - 2300.f * size)), sr_);
-        bw_coef_  = TauToCoef(1.f / (2.f * kPi * (5000.f - 2000.f * size)), sr_);
+        damp_     = TauToCoef(1.f / (2.f * kPi * (6000.f - 3500.f * size)), sr_);
+        bw_coef_  = TauToCoef(1.f / (2.f * kPi * (8000.f - 3000.f * size)), sr_);
         tap_k_    = k_ * sc;
     }
 
