@@ -2125,16 +2125,43 @@ static void TestDrumMuteSoloMix()
     CHECK(r.m.DrumHitCount(SD) == sd + 1);
     r.ui.Chompi(true), r.Black(1), r.ui.Chompi(false);
     CHECK(!r.m.DrumMuted(SD));
-    // Hold SD 2 s: soloed; BD stops.
+    // Hold SD 2 s: solo, i.e. every other voice muted; BD stops.
     r.ui.KeyDown(Ui::kBlack[1], r.now);
     r.Run(2100);
     r.ui.KeyUp(Ui::kBlack[1], r.now);
-    CHECK(r.m.DrumSoloed(SD));
+    CHECK(!r.m.DrumMuted(SD) && r.m.DrumMuted(BD) && r.m.DrumMuted(CH));
     bd = r.m.DrumHitCount(BD), sd = r.m.DrumHitCount(SD);
     r.Run(1000);
     CHECK(r.m.DrumHitCount(BD) == bd && r.m.DrumHitCount(SD) > sd + 5);
+    // CHOMPI + BD brings just the BD back in.
+    r.ui.Chompi(true), r.Black(0), r.ui.Chompi(false);
+    CHECK(!r.m.DrumMuted(BD) && !r.m.DrumMuted(SD) && r.m.DrumMuted(CH));
+    // Hold SD again: SD alone again; and again (the only one playing): the
+    // whole kit back, every voice key flashing.
     r.ui.KeyDown(Ui::kBlack[1], r.now), r.Run(2100), r.ui.KeyUp(Ui::kBlack[1], r.now);
-    CHECK(!r.m.DrumSoloed(SD));
+    CHECK(r.m.DrumMuted(BD) && !r.m.DrumMuted(SD));
+    r.ui.KeyDown(Ui::kBlack[1], r.now), r.Run(2100), r.ui.KeyUp(Ui::kBlack[1], r.now);
+    for(int v = 0; v < kDrumVoices; v++)
+        CHECK(!r.m.DrumMuted(v));
+    // Step mode: the accent key held 2 s unmutes them all (and isn't a tap
+    // of its page); a tap still opens the page.
+    r.ui.SetMode(Ui::Mode::STEP);
+    r.ui.KeyDown(Ui::kBlack[0], r.now), r.Run(2100), r.ui.KeyUp(Ui::kBlack[0], r.now); // BD alone
+    CHECK(r.m.DrumMuted(SD) && !r.m.DrumMuted(BD));
+    r.ui.KeyDown(Ui::kBlack[5], r.now), r.Run(2100);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kBlack[1]].g > 0.9f); // the flash
+    r.ui.KeyUp(Ui::kBlack[5], r.now);
+    for(int v = 0; v < kDrumVoices; v++)
+        CHECK(!r.m.DrumMuted(v));
+    r.Run(400), r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kBlack[5]].b < 0.3f); // still on the voice's page
+    r.Key(Ui::kBlack[5]);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kBlack[5]].b > 0.9f); // the ACCENT page
+    r.Key(Ui::kBlack[5]);
+    r.ui.SetMode(Ui::Mode::PITCH);
     r.m.Stop();
 
     // The mix: centre both; left drums only; right bass only; CHOMPI layer mutes.

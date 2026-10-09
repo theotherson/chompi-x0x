@@ -200,14 +200,26 @@ class Machine
         pattern_changes++;
     }
 
-    /** Mute and solo, per voice (bits), for the drum part's playback: a
-     *  muted voice is silent; while any voice is soloed only soloed ones
-     *  play. Live hits always sound. Not saved. */
+    /** Mutes, per voice (bits), for the drum part's playback: a muted voice
+     *  is silent. Live hits always sound. Not saved. */
     void SetDrumMute(int v, bool on) { drum_mute_ = Bit(drum_mute_, v, on); }
-    void SetDrumSolo(int v, bool on) { drum_solo_ = Bit(drum_solo_, v, on); }
     bool DrumMuted(int v) const { return (drum_mute_ >> v) & 1; }
-    bool DrumSoloed(int v) const { return (drum_solo_ >> v) & 1; }
-    bool DrumAudible(int v) const { return !DrumMuted(v) && (!drum_solo_ || DrumSoloed(v)); }
+    bool DrumAudible(int v) const { return !DrumMuted(v); }
+    /** Solo: every other voice muted, this one not; then each can be brought
+     *  back on its own. Soloing the only voice playing unmutes them all.
+     *  @return true if that brought the whole kit back */
+    bool SoloDrum(int v)
+    {
+        const uint8_t others = static_cast<uint8_t>(0x7f & ~(1 << v));
+        if(drum_mute_ == others)
+        {
+            drum_mute_ = 0;
+            return true;
+        }
+        drum_mute_ = others;
+        return false;
+    }
+    void UnmuteDrums() { drum_mute_ = 0; }
 
     /** For the LEDs: the compressor's gain reduction (dB) and the sidechain's
      *  duck now (0..1). */
@@ -1109,7 +1121,7 @@ class Machine
     bool        hit_rec_[kHitQueue] = {};
     volatile int hit_head_ = 0, hit_tail_ = 0;
     uint32_t    drum_hit_count_[kDrumVoices] = {};
-    uint8_t     drum_mute_ = 0, drum_solo_ = 0;
+    uint8_t     drum_mute_ = 0;
     float       mix_bass_ = 1.f, mix_drums_ = 1.f;
     VoiceParams vp_;
     Fx          fx_;

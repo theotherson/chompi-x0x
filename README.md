@@ -25,12 +25,12 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 
 **Voices on the black keys.** Step mode: C#3 BD · D#3 SD · F#3 LT / HT · G#3 CY · A#3 CH / OH; the toms' and hats' keys alternate press by press (the key again gives the other voice's page). Live mode: every voice its own key, C#3 BD · D#3 SD · F#3 LT · G#3 HT · A#3 CY · C#4 CH · D#4 OH. Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH magenta), the selected one bright, and flashes when it plays.
 
-**Mute and solo** (both modes): CHOMPI + a voice key mutes that voice (it blinks slowly); again unmutes it. Holding a voice key 2 s solos it (it lights brighter, the others dim); again unsolos. Several can be soloed. They act on the drum part's playback: voices you play by hand always sound. They aren't saved.
+**Mute and solo** (both modes): CHOMPI + a voice key mutes that voice (it blinks slowly); again unmutes it. Holding a voice key 2 s solos it: every other voice is muted, so you can bring them back one at a time with CHOMPI + their keys. Holding a voice 2 s when it's already the only one playing brings the whole kit back, and so does holding the accent key (C#4) 2 s in step mode; every voice key flashes white. Mutes act on the drum part's playback: voices you play by hand always sound. They aren't saved.
 
 | | Step mode (toggle up) | Live mode (toggle down) |
 |---|---|---|
 | Voice keys | That voice's page | Play it |
-| C#4 / D#4 | The ACCENT page (blue) / view 1-8 / 9-16 | Closed / open hat. CHOMPI + LOOP: live hits accented on / off (LOOP blue while CHOMPI is held) |
+| C#4 / D#4 | The ACCENT page (blue); held 2 s: unmute every voice / view 1-8 / 9-16 | Closed / open hat. CHOMPI + LOOP: live hits accented on / off (LOOP blue while CHOMPI is held) |
 | White keys | The page's steps on / off: the voice's hits in its colour (accented ones tinted blue), other voices' dim (or the accents, blue) | The last voice played, pitched in C major from middle C (played, not recorded) |
 | F#4 | PATTERN: as on the bass side | **Quantize** (blue when on): a tap turns it on / off. Hold F#4 and press white key 1 / 2 / 3 for the grid: 1/16, 1/8, 1/4 (this turns quantize on) |
 | G#4 | COPY: as on the bass side | **Roll** (green): hold G#4 and hold voice keys, and they repeat in time. Hold G#4 and press white keys 1-5 for the rate: 1/8, 1/8T, 1/16, 1/16T, 1/32 |

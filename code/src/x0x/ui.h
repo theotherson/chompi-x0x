@@ -96,8 +96,11 @@
  *                                  (the toms' and hats' keys alternate, press
  *                                  by press). Step mode: that voice's page;
  *                                  live mode: play it. CHOMPI + a voice: mute
- *                                  it; held 2 s: solo it (again: undo)
- *    C#4                           step mode: the ACCENT page
+ *                                  it; held 2 s: solo it (mutes the rest;
+ *                                  again, when it's the only one left: all
+ *                                  back)
+ *    C#4                           step mode: the ACCENT page (on release);
+ *                                  held 2 s: every voice unmuted
  *    live mode                     every voice its own key: BD SD LT HT CY on
  *                                  C#3-A#3, CH and OH on C#4 and D#4;
  *                                  CHOMPI + LOOP: hits accented on / off
@@ -581,10 +584,18 @@ class Ui
         }
         if(drums_ && voice_key_ >= 0 && held_[voice_key_] && now - voice_key_at_ >= kSoloHoldMs)
         {
-            // A voice key held 2 s: solo that voice (again: unsolo).
-            m_->SetDrumSolo(voice_key_voice_, !m_->DrumSoloed(voice_key_voice_));
-            voice_key_ = -1;
-            solo_at_   = now;
+            // A voice key held 2 s: solo that voice (the rest muted); when
+            // it's already the only one playing, the whole kit back.
+            unmuted_all_at_ = m_->SoloDrum(voice_key_voice_) ? now : unmuted_all_at_;
+            voice_key_      = -1;
+            solo_at_        = now;
+        }
+        if(drums_ && acc_key_down_ && held_[kBlack[5]] && now - acc_key_at_ >= kSoloHoldMs)
+        {
+            // The accent key held 2 s (step mode): every voice unmuted.
+            acc_key_down_ = false;
+            m_->UnmuteDrums();
+            unmuted_all_at_ = now;
         }
         if(drums_ && drum_clear_down_ && held_[kKeyClear] && !clear_done_ && now - clear_down_ >= kClearHoldMs)
         {
@@ -829,19 +840,14 @@ class Ui
         }
 
         // The black keys.
-        bool soloing = false;
-        for(int v = 0; v < kDrumVoices; v++)
-            soloing |= m_->DrumSoloed(v);
         for(int b = 0; b < VoiceKeys(); b++)
         {
             const int v = VoiceOfKey(b);
             Rgb       c = Scale(kDrumCol[v], v == drum_sel_ ? 0.8f : 0.12f);
             if(m_->DrumMuted(v))
                 c = Scale(kDrumCol[v], (now / 400) % 2 ? 0.25f : 0.f); // muted: blinks slowly
-            else if(m_->DrumSoloed(v))
-                c = Whiten(kDrumCol[v], 0.2f);                       // soloed: bright
-            else if(soloing)
-                c = Scale(kDrumCol[v], 0.03f);                       // not heard while soloing
+            if(now - unmuted_all_at_ < 300)
+                c = {1.f, 1.f, 1.f}; // the whole kit back: every voice flashes
             if(now - drum_hit_at_[v] < 90)
                 c = Whiten(kDrumCol[v], 0.35f); // it just played
             f.key[kBlack[b]] = c;
@@ -1162,7 +1168,9 @@ class Ui
         }
         if(b == 5)
         {
-            drum_acc_page_ = !drum_acc_page_; // step mode (live, it's a voice)
+            // Step mode (live, it's a voice): the ACCENT page when let go;
+            // held 2 s, every voice unmuted instead (see Tick).
+            acc_key_down_ = true, acc_key_at_ = now;
             return;
         }
         if(w < 0)
@@ -1188,6 +1196,11 @@ class Ui
     {
         if(k == voice_key_)
             voice_key_ = -1;
+        if(k == kBlack[5] && acc_key_down_)
+        {
+            acc_key_down_  = false;
+            drum_acc_page_ = !drum_acc_page_;
+        }
         const int b = BlackIndex(k);
         if(b >= 0 && b < VoiceKeys() && mode_ == Mode::PITCH)
         {
@@ -2332,6 +2345,9 @@ class Ui
     uint32_t lfo_shown_at_          = 0x80000000u;
     bool     drum_clear_down_       = false;
     bool     live_quant_down_       = false; // live, drums: F#4 down (tap: quantize)
+    bool     acc_key_down_          = false; // step, drums: the accent key down (tap: its page)
+    uint32_t acc_key_at_            = 0;
+    uint32_t unmuted_all_at_        = 0x80000000u;
     bool     live_quant_used_       = false; // ...and a grid picked meanwhile
     uint32_t drum_len_shown_at_     = 0x80000000u;
     uint32_t drum_hits_seen_[kDrumVoices] = {};
@@ -2356,7 +2372,6 @@ class Ui
     bool     loop_down_    = false;
     bool     loop_cleared_ = false;
     uint32_t loop_down_at_ = 0;
-    uint32_t tapped_at_    = 0x80000000u;
     bool     held_[kKeyNotes]     = {};
     bool     sounding_[kKeyNotes] = {};
     uint32_t clear_down_      = 0;
