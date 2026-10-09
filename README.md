@@ -1,6 +1,8 @@
 # CHOMPI x0x
 
-A TB-303 / x0xb0x-style bass line machine for the CHOMPI: one 303-style voice and a 16-step sequencer you program a step at a time or record into live. No menus: every control is a key, a knob or the toggle.
+A TB-303 / x0xb0x-style bass line machine for the CHOMPI, with a TR-606-style drum machine alongside: a 303-style voice and seven 606 voices, each with a 16-step sequencer you program a step at a time or record into live. No menus: every control is a key, a knob or the toggle.
+
+**Download:** get the latest `.bin` from the [Releases page](https://github.com/theotherson/chompi-x0x/releases/latest), copy it to the root of the SD card (the only `.bin` there) and power on. See [Flashing](#flashing) below for more.
 
 Built from scratch on top of CHOMPI Club's TEMPO firmware, whose hardware layer, libraries and startup it keeps.
 
