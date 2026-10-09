@@ -879,9 +879,21 @@ class Ui
         }
         if(now - delay_shown_at_ < kShowValueMs)
             DrawDelayTime(f);
-        f.knob[4] = chompi_ ? Scale(Rgb{1.f, .15f, .45f}, 0.2f + 0.8f * p[SWING])
-                            : Scale(Rgb{1.f, .85f, 0.f}, TempoBeat(now, cur_step) ? 1.f : 0.2f);
-        f.big_right = f.knob[4];
+        // The purple knob's two lights: the swing with CHOMPI held; otherwise
+        // the tempo, in eighth notes alternating left and right, as on the
+        // bass side (from the pattern, or the tempo when stopped).
+        if(chompi_)
+        {
+            f.knob[4]   = Scale(Rgb{1.f, .15f, .45f}, 0.2f + 0.8f * p[SWING]);
+            f.big_right = f.knob[4];
+        }
+        else if(m_->Running() && cur_step >= 0)
+        {
+            f.knob[4] = {};
+            DrawBeat(f, now, cur_step);
+        }
+        else
+            DrawTempoEighths(f, now);
 
         f.play = m_->Running() ? Rgb{0.f, .7f, .1f} : Rgb{};
         if(mode_ == Mode::STEP)
@@ -1988,8 +2000,8 @@ class Ui
     /** Each knob in its page's colour, brightness = the value it turns (the
      *  CHOMPI layer while CHOMPI is held). */
     /** The big knob's two LEDs show cutoff (resonance with CHOMPI held).
-     *  While the pattern plays they flash instead, alternating sides, on
-     *  steps 1, 5, 9 and 13 (the beats); the side of the current beat
+     *  While the pattern plays they flash instead, alternating sides, on the
+     *  eighth notes (left on step 1, right on step 3, ...); the side of the current beat
      *  flashes red when a note is recorded. For a moment after the knob
      *  turns they show its value again. */
     void DrawBeat(LedFrame& f, uint32_t now, int cur_step) const
@@ -1997,14 +2009,25 @@ class Ui
         f.big_right = f.knob[4];
         if(!m_->Running() || cur_step < 0 || now - big_turned_at_ < kShowValueMs)
             return;
-        const bool right = (cur_step / 4) % 2 == 1;
+        // Eighth notes, alternating: left on step 1, right on step 3, ...
+        const bool right = (cur_step / 2) % 2 == 1;
         Rgb        c;
         if(now - rec_flash_at_ < 150)
             c = {.6f, 0.f, 0.f};
-        else if(cur_step % 4 == 0 && now - step_seen_at_ < 100)
+        else if(cur_step % 2 == 0 && now - step_seen_at_ < 100)
             c = {.6f, .48f, 0.f};
         f.knob[4]   = right ? Rgb{} : c;
         f.big_right = right ? c : Rgb{};
+    }
+
+    /** The beat lights stopped, from the tempo: eighth notes, alternating. */
+    void DrawTempoEighths(LedFrame& f, uint32_t now) const
+    {
+        const float eighths = now * m_->TempoBpmNow() / 30000.f;
+        const int   n       = static_cast<int>(eighths);
+        const Rgb   c       = eighths - n < 0.2f ? Rgb{.6f, .48f, 0.f} : Rgb{};
+        f.knob[4]           = n % 2 ? Rgb{} : c;
+        f.big_right         = n % 2 ? c : Rgb{};
     }
 
     /** On the beat: from the pattern while it runs, else from the tempo. */

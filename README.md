@@ -43,7 +43,7 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | Knob 4, page 2 | Delay send (cyan): into the delay the bass uses too | The delay's synced time (shared with the bass side; white keys 1-9 show it) |
 | Knob 4, page 3 | Bit crush (green) | Sample-rate reduction (red) |
 | Knob 4, page 4 | Filter: low-pass turned left, high-pass turned right, off in the middle (yellow) | Distortion mix: dry to wet, for parallel distortion (default all wet) |
-| Purple | Tempo (flashing the beat) | Swing |
+| Purple | Tempo: its two lights flash the eighth notes, alternating left and right (from the pattern while it runs, from the tempo when stopped) | Swing (both lights show it) |
 | Volume | Volume (shared) | **The drums' own distortion**, as the bass's drive but separate from it (orange to red) |
 | Volume, pages | Click: volume, the mix, the compressor (shared). No tempo / swing page here: the purple knob has them on this side | |
 
@@ -120,7 +120,7 @@ Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has 
 | Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through white to red (bass) | Mute the bass / neither / mute the drums |
 | Volume, page 4 | **Compressor** on the whole mix, after every effect: off to heavy (threshold down and ratio up together, about 1.5:1 to 8:1, soft knee, automatic make-up gain; about 8 ms attack, 120 ms release). Teal, dimming as it compresses | **Sidechain** from the kick: each BD hit ducks the bass, the delay echoes and the reverb (not the drums) by up to about 20 dB, recovering by the next beat. Red, pulsing with each duck |
 
-The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, alternating sides, on steps 1, 5, 9 and 13; the side of the current beat flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
+The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, on the eighth notes, alternating sides: left on step 1, right on step 3, left on step 5, and so on; the side of the current eighth flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
 
 Big purple knob click: tap tempo. Volume knob click: steps through volume / drive, tempo / swing, the bass / drums mix and the compressor, and stops any stuck live notes.
 

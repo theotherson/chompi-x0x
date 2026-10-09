@@ -962,19 +962,22 @@ static void TestShortcutsAndLights()
     r.Run(80); // between beats: both dark
     r.ui.Draw(f, r.now);
     CHECK(f.knob[4].r == 0.f && f.big_right.r == 0.f);
+    // Eighth notes, alternating: left on steps 1, 5, 9, 13; right on 3, 7, 11, 15.
+    at_step(2);
+    CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.5f);
     at_step(4);
-    CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.5f);
-    at_step(8);
     CHECK(f.knob[4].r > 0.5f && f.big_right.r == 0.f);
-    at_step(12);
+    at_step(6);
     CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.5f);
+    at_step(12);
+    CHECK(f.knob[4].r > 0.5f && f.big_right.r == 0.f);
 
-    // A recorded note flashes the beat side red.
+    // A recorded note flashes the current eighth's side red.
     r.ui.Loop(r.now); // record on
     at_step(13);
     r.ui.KeyDown(5, r.now), r.ui.KeyUp(5, r.now);
     r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
-    CHECK(f.big_right.r > 0.5f && f.big_right.g == 0.f); // steps 13-16: the right side
+    CHECK(f.knob[4].r > 0.5f && f.knob[4].g == 0.f); // step 14 (with 13): the left side
 
     // Turning cutoff shows cutoff on both, for a moment.
     r.ui.KnobTurn(4, 1, false);
@@ -2360,6 +2363,34 @@ static void TestDrumDistortion()
     CHECK(same);
 }
 
+static void TestDrumBeatLights()
+{
+    printf("drums' side: the purple knob's lights alternate in eighths\n");
+    Rig r;
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    r.Run(500);
+    // Stopped: from the tempo (120 BPM: an eighth every 250 ms), left then right.
+    LedFrame f;
+    bool left = false, right = false, both = false;
+    for(int ms = 0; ms < 1000; ms++)
+    {
+        r.Run(1);
+        r.ui.Draw(f, r.now);
+        left |= f.knob[4].r > 0.3f, right |= f.big_right.r > 0.3f;
+        both |= f.knob[4].r > 0.3f && f.big_right.r > 0.3f;
+    }
+    CHECK(left && right && !both);
+    // Running: from the pattern, as the bass side.
+    DemoPattern(r.m.patterns[0]);
+    r.m.Play();
+    while(r.m.CurrentStep() != 2)
+        r.Run(1);
+    r.Run(20), r.ui.NoteStep(r.now), r.ui.Draw(f, r.now);
+    CHECK(f.knob[4].r == 0.f && f.big_right.r > 0.5f);
+    r.m.Stop();
+}
+
 int main()
 {
     TestDemoTiming();
@@ -2395,6 +2426,7 @@ int main()
     TestDrumEffects();
     TestCompressorAndSidechain();
     TestDrumDistortion();
+    TestDrumBeatLights();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();
