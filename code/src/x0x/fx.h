@@ -325,101 +325,192 @@ class Fx
     float  lp_l_ = 0.f, lp_r_ = 0.f, hpl_ = 0.f, hpr_ = 0.f;
 };
 
-/** A stereo reverb: four delay lines feeding back through a Householder
- *  matrix (a feedback delay network), each damped by a low-pass, after two
- *  allpass diffusers. Size sets the room (the lines' lengths) and the
- *  decay (RT60 ~0.3 to ~6 s) together. Memory: kReverbFrames floats. */
+/** A stereo plate reverb, after Jon Dattorro ("Effect Design, Part 1",
+ *  1997): a pre-delay and a bandwidth low-pass, four allpass diffusers to
+ *  smear each hit into a dense wash, then a figure-eight tank of two halves
+ *  (each a slowly modulated allpass, a delay, damping, an allpass, a delay)
+ *  that feed each other. Left and right are each summed from seven taps
+ *  around the tank, so they're largely uncorrelated: wide.
+ *
+ *  Size sets everything together: the tank's length (0.75x to 1.25x), the
+ *  decay (RT60 ~0.4 to ~6 s), the pre-delay (10 to 40 ms) and the tone
+ *  (bigger is darker: damping ~3.5 to ~1.2 kHz, input bandwidth ~5 to
+ *  ~3 kHz, two-pole), as in real rooms. The modulation
+ *  keeps the tail from ringing. Memory: kReverbFrames floats. */
 class Reverb
 {
   public:
-    static constexpr size_t kReverbFrames = 16384;
+    static constexpr size_t kReverbFrames = 65536;
 
     void Init(float sample_rate, float* mem, size_t frames)
     {
-        sr_  = sample_rate;
+        sr_ = sample_rate;
+        k_  = sr_ / 29761.f; // the paper's lengths are at 29761 Hz
         mem_ = frames >= kReverbFrames ? mem : nullptr;
-        if(mem_)
-            for(size_t i = 0; i < kReverbFrames; i++)
-                mem_[i] = 0.f;
-        // The memory, split: two diffusers, then the four lines.
+        if(!mem_)
+            return;
+        for(size_t i = 0; i < kReverbFrames; i++)
+            mem_[i] = 0.f;
+        // Every line at its longest (size 1.25, and the modulation's swing).
         size_t at = 0;
-        for(int k = 0; k < 2; k++)
-            ap_[k] = mem_ + at, at += kApLen[k];
-        for(int k = 0; k < 4; k++)
-            line_[k] = mem_ + at, at += kLineMax;
-        damp_ = TauToCoef(1.f / (2.f * kPi * 6000.f), sr_);
+        auto take = [&](Line& l, float base) {
+            l.size = static_cast<int>(base * k_ * 1.25f) + 64;
+            l.buf  = mem_ + at;
+            at += l.size;
+        };
+        take(pre_, 0.04f * 29761.f / 1.25f + 1.f);
+        for(int d = 0; d < 4; d++)
+            take(in_ap_[d], kInAp[d]);
+        for(int h = 0; h < 2; h++)
+        {
+            take(tank_[h].mod_ap, kModAp[h]);
+            take(tank_[h].d1, kDelay1[h]);
+            take(tank_[h].ap, kTankAp[h]);
+            take(tank_[h].d2, kDelay2[h]);
+        }
+        ok_ = at <= kReverbFrames;
         Set(0.5f);
     }
 
-    /** 0..1: a small room, quick, to a big hall, long. */
+    /** 0..1: a small room, quick and bright, to a big hall, long and dark. */
     void Set(float size)
     {
-        const float scale = 0.7f + 0.6f * Clamp(size, 0.f, 1.f);
-        const float rt60  = 0.3f * FastExp2(4.3f * Clamp(size, 0.f, 1.f));
-        for(int k = 0; k < 4; k++)
+        size = Clamp(size, 0.f, 1.f);
+        if(fabsf(size - size_) < 1e-4f)
+            return;
+        size_            = size;
+        const float sc   = 0.75f + 0.5f * size;
+        const float rt60 = 0.4f * FastExp2(3.9f * size); // ~0.4 .. 6 s
+        for(int d = 0; d < 4; d++)
+            in_ap_[d].len = static_cast<int>(kInAp[d] * k_); // the diffusers stay put
+        float loop = 0.f;
+        for(int h = 0; h < 2; h++)
         {
-            len_[k] = static_cast<int>(kLineLen[k] * scale * sr_ / 48000.f);
-            if(len_[k] > static_cast<int>(kLineMax) - 1)
-                len_[k] = static_cast<int>(kLineMax) - 1;
-            g_[k] = powf(10.f, -3.f * len_[k] / (rt60 * sr_));
+            Half& t    = tank_[h];
+            t.mod_ap.len = static_cast<int>(kModAp[h] * k_ * sc);
+            t.d1.len     = static_cast<int>(kDelay1[h] * k_ * sc);
+            t.ap.len     = static_cast<int>(kTankAp[h] * k_ * sc);
+            t.d2.len     = static_cast<int>(kDelay2[h] * k_ * sc);
+            loop += t.mod_ap.len + t.d1.len + t.ap.len + t.d2.len;
         }
+        // Four decay gains around the loop: RT60 over the loop's length.
+        decay_    = fminf(powf(10.f, -3.f * loop / (4.f * rt60 * sr_)), 0.97f);
+        pre_.len  = static_cast<int>((0.01f + 0.03f * size) * sr_);
+        // Bigger is darker: the damping in the tank and the input's
+        // bandwidth both close down as the room grows.
+        damp_     = TauToCoef(1.f / (2.f * kPi * (3500.f - 2300.f * size)), sr_);
+        bw_coef_  = TauToCoef(1.f / (2.f * kPi * (5000.f - 2000.f * size)), sr_);
+        tap_k_    = k_ * sc;
     }
 
     /** Adds the reverb of `in` to left / right. */
     void Process(const float* in, float* left, float* right, size_t n)
     {
-        if(!mem_)
+        if(!mem_ || !ok_)
             return;
+        const float lfo_inc0 = 0.6f / sr_, lfo_inc1 = 0.83f / sr_;
+        const float swing    = 16.f * k_; // the modulation, samples
         for(size_t i = 0; i < n; i++)
         {
-            // Diffuse the input.
-            float x = in[i];
-            for(int k = 0; k < 2; k++)
+            // Pre-delay, bandwidth, diffusion.
+            float x = pre_.Read(pre_.len);
+            pre_.Write(in[i]);
+            bw_ += (x - bw_) * bw_coef_; // two poles: a gentle 12 dB / octave
+            bw2_ += (bw_ - bw2_) * bw_coef_;
+            x = bw2_;
+            for(int d = 0; d < 4; d++)
+                x = in_ap_[d].Allpass(x, d < 2 ? 0.75f : 0.625f);
+
+            // The tank: each half fed by the other's end.
+            lfo_[0] += lfo_inc0, lfo_[1] += lfo_inc1;
+            for(int h = 0; h < 2; h++)
+                if(lfo_[h] >= 1.f)
+                    lfo_[h] -= 1.f;
+            const float ends[2] = {tank_[0].d2.Read(tank_[0].d2.len), tank_[1].d2.Read(tank_[1].d2.len)};
+            for(int h = 0; h < 2; h++)
             {
-                float*      b = ap_[k];
-                const float d = b[ap_pos_[k]];
-                const float v = x + 0.6f * d;
-                b[ap_pos_[k]] = v;
-                x             = d - 0.6f * v;
-                ap_pos_[k]    = (ap_pos_[k] + 1) % kApLen[k];
+                Half&       t = tank_[h];
+                float       y = x + decay_ * ends[1 - h];
+                // The modulated allpass: its length swings slowly.
+                const float m = static_cast<float>(t.mod_ap.len) + swing * sinf(2.f * kPi * lfo_[h]);
+                const float d = t.mod_ap.ReadFrac(m);
+                const float v = y + 0.7f * d;
+                t.mod_ap.Write(v);
+                y = d - 0.7f * v;
+                t.d1.Write(y);
+                y = t.d1.Read(t.d1.len);
+                t.lp += (y - t.lp) * damp_;
+                y = t.ap.Allpass(t.lp * decay_, -0.5f);
+                t.d2.Write(y);
             }
-            // The lines' outputs, damped.
-            float o[4], sum = 0.f;
-            for(int k = 0; k < 4; k++)
-            {
-                int rd = pos_ - len_[k];
-                if(rd < 0)
-                    rd += static_cast<int>(kLineMax);
-                lp_[k] += (line_[k][rd] - lp_[k]) * damp_;
-                o[k] = lp_[k] * g_[k];
-                sum += o[k];
-            }
-            // Householder: each line gets its own output less half the sum,
-            // plus the input (signs alternating).
-            const float h = 0.5f * sum;
-            for(int k = 0; k < 4; k++)
-                line_[k][pos_] = o[k] - h + ((k & 1) ? -x : x);
-            pos_ = (pos_ + 1) % static_cast<int>(kLineMax);
-            left[i] += 0.5f * (o[0] + o[2]);
-            right[i] += 0.5f * (o[1] - o[3]);
+
+            // Seven taps each side.
+            const float kk = tap_k_;
+            const Half& a  = tank_[0];
+            const Half& b  = tank_[1];
+            const float l  = b.d1.Tap(266 * kk) + b.d1.Tap(2974 * kk) - b.ap.Tap(1913 * kk) + b.d2.Tap(1996 * kk)
+                            - a.d1.Tap(1990 * kk) - a.ap.Tap(187 * kk) - a.d2.Tap(1066 * kk);
+            const float r  = a.d1.Tap(353 * kk) + a.d1.Tap(3627 * kk) - a.ap.Tap(1228 * kk) + a.d2.Tap(2673 * kk)
+                            - b.d1.Tap(2111 * kk) - b.ap.Tap(335 * kk) - b.d2.Tap(121 * kk);
+            left[i] += 0.5f * l;
+            right[i] += 0.5f * r;
         }
     }
 
   private:
-    static constexpr int    kApLen[2]   = {225, 556};
-    static constexpr int    kLineLen[4] = {1557, 1871, 2311, 2803}; // at 48 kHz
-    static constexpr size_t kLineMax    = 3880;                      // 2803 x 1.3, and to spare
+    struct Line
+    {
+        float* buf  = nullptr;
+        int    size = 1, len = 1, pos = 0;
+        float  Read(int delay) const
+        {
+            int p = pos - delay;
+            while(p < 0)
+                p += size;
+            return buf[p];
+        }
+        float Tap(float delay) const { return Read(static_cast<int>(delay)); }
+        float ReadFrac(float delay) const
+        {
+            const int   di = static_cast<int>(delay);
+            const float f  = delay - di;
+            const float a = Read(di), b = Read(di + 1);
+            return a + (b - a) * f;
+        }
+        void Write(float v)
+        {
+            buf[pos] = v;
+            if(++pos >= size)
+                pos = 0;
+        }
+        float Allpass(float x, float g)
+        {
+            const float d = Read(len);
+            const float v = x + g * d;
+            Write(v);
+            return d - g * v;
+        }
+    };
+    struct Half
+    {
+        Line  mod_ap, d1, ap, d2;
+        float lp = 0.f;
+    };
 
-    float  sr_ = 48000.f;
+    static constexpr float kInAp[4]    = {142.f, 107.f, 379.f, 277.f};
+    static constexpr float kModAp[2]   = {672.f, 908.f};
+    static constexpr float kDelay1[2]  = {4453.f, 4217.f};
+    static constexpr float kTankAp[2]  = {1800.f, 2656.f};
+    static constexpr float kDelay2[2]  = {3720.f, 3163.f};
+
+    float  sr_ = 48000.f, k_ = 1.6f, tap_k_ = 1.6f;
     float* mem_ = nullptr;
-    float* ap_[2] = {};
-    float* line_[4] = {};
-    int    ap_pos_[2] = {};
-    int    pos_ = 0;
-    int    len_[4] = {};
-    float  g_[4] = {};
-    float  lp_[4] = {};
-    float  damp_ = 0.5f;
+    bool   ok_ = false;
+    Line   pre_, in_ap_[4];
+    Half   tank_[2];
+    float  size_ = -1.f, decay_ = 0.5f, damp_ = 0.5f;
+    float  bw_ = 0.f, bw2_ = 0.f, bw_coef_ = 0.5f; // the input's bandwidth (Set)
+    float  lfo_[2] = {0.f, 0.25f};
 };
 
 /** The drums' own effects, in place: drive, a one-knob filter (low-pass
@@ -560,9 +651,11 @@ class Compressor
     float att_ = 0.1f, rel_ = 0.01f, gr_ = 0.f;
 };
 
-constexpr int    Reverb::kApLen[2];
-constexpr int    Reverb::kLineLen[4];
-constexpr size_t Reverb::kLineMax;
+constexpr float  Reverb::kInAp[4];
+constexpr float  Reverb::kModAp[2];
+constexpr float  Reverb::kDelay1[2];
+constexpr float  Reverb::kTankAp[2];
+constexpr float  Reverb::kDelay2[2];
 constexpr size_t Reverb::kReverbFrames;
 
 } // namespace x0x

@@ -2188,6 +2188,54 @@ static void TestDrumEffects()
     const double small = tail_db(0.1f), big = tail_db(0.9f);
     printf("  (reverb at 1 s: size 0.1 %.0f dB, size 0.9 %.0f dB)\n", small, big);
     CHECK(big > small + 20 && small < -40);
+    // The plate: a pre-delay (silent for the first 10 ms), wide (left and
+    // right uncorrelated), bigger rooms darker; stable fed noise at full size.
+    {
+        static float mem[Reverb::kReverbFrames];
+        auto ir = [&](float size, std::vector<float>& l, std::vector<float>& r) {
+            Reverb rv;
+            rv.Init(48000.f, mem, Reverb::kReverbFrames);
+            rv.Set(size);
+            std::vector<float> in(48000, 0.f);
+            in[0] = 1.f;
+            l.assign(in.size(), 0.f), r.assign(in.size(), 0.f);
+            for(size_t i = 0; i < in.size(); i += 48)
+                rv.Process(&in[i], &l[i], &r[i], 48);
+        };
+        std::vector<float> l, r, l2, r2;
+        ir(0.1f, l, r);
+        float early = 0.f;
+        for(int i = 0; i < 480; i++)
+            early = std::max(early, std::max(fabsf(l[i]), fabsf(r[i])));
+        CHECK(early == 0.f);
+        double sl = 0, sr = 0, slr = 0;
+        for(int i = 2400; i < 24000; i++)
+            sl += l[i] * l[i], sr += r[i] * r[i], slr += l[i] * r[i];
+        CHECK(fabs(slr / sqrt(sl * sr)) < 0.2);
+        // Brightness: the tail's high (first-difference) energy against its total.
+        auto bright = [](const std::vector<float>& x) {
+            double hi = 0, tot = 0;
+            for(int i = 4800; i < 24000; i++)
+                hi += (x[i] - x[i - 1]) * (x[i] - x[i - 1]), tot += x[i] * x[i];
+            return hi / tot;
+        };
+        ir(0.9f, l2, r2);
+        CHECK(bright(l2) < bright(l) * 0.6);
+        Reverb rv;
+        rv.Init(48000.f, mem, Reverb::kReverbFrames);
+        rv.Set(1.f);
+        float in[48], L[48], R[48], peak = 0.f;
+        uint32_t seed = 7;
+        for(int b = 0; b < 20000; b++)
+        {
+            for(int i = 0; i < 48; i++)
+                seed = seed * 1664525u + 1013904223u, in[i] = static_cast<int32_t>(seed) * 2.3e-10f, L[i] = R[i] = 0.f;
+            rv.Process(in, L, R, 48);
+            for(int i = 0; i < 48; i++)
+                peak = std::max(peak, std::max(fabsf(L[i]), fabsf(R[i])));
+        }
+        CHECK(std::isfinite(peak) && peak < 2.f);
+    }
 
     // A drum part: one BD at step 1.
     Rig r;
