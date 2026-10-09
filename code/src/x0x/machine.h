@@ -727,8 +727,15 @@ class Machine
         {
             left[i]  = SoftLimit(left[i] * vol);
             right[i] = SoftLimit(right[i] * vol);
+            // Never send the codec a broken value (it plays as a crackle).
+            if(!(fabsf(left[i]) + fabsf(right[i]) <= 4.f))
+                left[i] = right[i] = 0.f, bad_out_++;
         }
     }
+
+    /** Broken values caught: at the output, and in the bass's effects. */
+    uint32_t BadOutCount() const { return bad_out_; }
+    uint32_t BadFxCount() const { return fx_.BadCount(); }
 
   private:
     static constexpr int kArpEvent = -2; // Event::step of an arpeggiator event
@@ -1055,6 +1062,7 @@ class Machine
     Drums       drums_;
     DrumFx      drum_fx_, drum_fx_send_;
     size_t      block_pos_ = 0; // where in the block a drum hit lands
+    uint32_t    bad_out_   = 0;
     float       lfo_phase_ = 0.f, lfo_held_ = 0.f, lfo_now_ = 0.f;
     uint32_t    lfo_seed_  = 12345;
     float       NextLfoRandom()

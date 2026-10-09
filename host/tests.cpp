@@ -2936,6 +2936,58 @@ static void TestDrumTimingAndLiveKeys()
     CHECK(WritePatterns(full, kPatterns, big, sizeof big) > 0);
 }
 
+static void TestFastMathAndGuards()
+{
+    printf("fast sine / log2 for LFOs and the compressor; broken values never reach the output\n");
+    double worst_sin = 0, worst_log = 0;
+    for(int i = -2000; i <= 4000; i++)
+    {
+        const float ph = i / 1000.f + 0.0001234f;
+        worst_sin      = std::max(worst_sin, static_cast<double>(fabsf(FastSin2Pi(ph) - sinf(2.f * kPi * ph))));
+    }
+    for(int i = 1; i < 4000; i++)
+    {
+        const float x = i * 0.00137f + 1e-6f * i * i;
+        worst_log     = std::max(worst_log, static_cast<double>(fabsf(FastLog2(x) - log2f(x))));
+    }
+    CHECK(worst_sin < 0.0012 && worst_log < 0.006);
+    CHECK(FastLog2(1.f) > -0.006f && FastLog2(1.f) < 0.006f && fabsf(FastLog2(1024.f) - 10.f) < 0.006f);
+
+    // A broken value planted in the delay's tape (and its loops' state)
+    // never reaches the output, and the delay carries on afterwards.
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    p.steps[0].on = true;
+    float* prm      = r.m.settings.params;
+    prm[DELAY]      = 0.5f;
+    prm[MOD]        = 0.8f;
+    r.m.Play();
+    r.Run(500);
+    for(int i = 0; i < 96000; i += 7)
+        g_delay[i].l = NAN, g_delay[i].r = INFINITY;
+    bool  finite = true;
+    float L[48], R[48];
+    for(int ms = 0; ms < 3000; ms++)
+    {
+        r.m.Process(L, R, 48);
+        for(int i = 0; i < 48; i++)
+            finite &= std::isfinite(L[i]) && std::isfinite(R[i]);
+    }
+    CHECK(finite && r.m.BadFxCount() > 0);
+    // Still echoing: energy after the note, between hits.
+    double e = 0;
+    for(int ms = 0; ms < 2000; ms++)
+    {
+        r.m.Process(L, R, 48);
+        for(int i = 0; i < 48; i++)
+            e += L[i] * L[i];
+    }
+    CHECK(e > 1.0);
+    for(int i = 0; i < 96000; i++)
+        g_delay[i] = {0.f, 0.f};
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3159,6 +3211,7 @@ int main()
     TestDrumFilterEnvelope();
     TestDrumFilterLfo();
     TestDrumTimingAndLiveKeys();
+    TestFastMathAndGuards();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

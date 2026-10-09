@@ -241,11 +241,13 @@ class Fx
                     flutter_ -= 1.f;
                 const float wobble = sr_ * (0.0012f * Sine(wow_) + 0.00015f * Sine(flutter_));
                 Frame       d      = DelayTap(head_a_ + wobble);
+                if(!(fabsf(d.l) + fabsf(d.r) < 100.f))
+                    d = {0.f, 0.f}, bad_++; // never pass on (or feed back) a broken value
                 if(fading_)
                 {
                     // Equal-power, so the level holds through the fade.
                     const Frame b  = DelayTap(head_b_ + wobble);
-                    const float gb = sinf(0.5f * kPi * fade_), ga = cosf(0.5f * kPi * fade_);
+                    const float gb = FastSin2Pi(0.25f * fade_), ga = FastSin2Pi(0.25f - 0.25f * fade_);
                     d              = {d.l * ga + b.l * gb, d.r * ga + b.r * gb};
                 }
 
@@ -273,12 +275,26 @@ class Fx
             left[i]  = l;
             right[i] = r;
         }
+        // A broken value anywhere in the loops' state: start them afresh
+        // (the delay's tape is guarded as it's read).
+        if(!(fabsf(lp_l_) + fabsf(lp_r_) + fabsf(hpl_) + fabsf(hpr_) + fabsf(hp_state_) + fabsf(pre_state_)
+                 + fabsf(tone1_) + fabsf(tone2_) + fabsf(dc_) + fabsf(held_) + fabsf(mod_buf_[mod_pos_])
+             < 1e6f))
+        {
+            lp_l_ = lp_r_ = hpl_ = hpr_ = hp_state_ = pre_state_ = tone1_ = tone2_ = dc_ = held_ = 0.f;
+            for(int i = 0; i < kModSize; i++)
+                mod_buf_[i] = 0.f;
+            bad_++;
+        }
     }
+
+    /** Broken values caught (and cleared) so far. */
+    uint32_t BadCount() const { return bad_; }
 
   private:
     static constexpr int kModSize = 2048; // ~42 ms
 
-    static float Sine(float ph) { return sinf(2.f * kPi * ph); }
+    static float Sine(float ph) { return FastSin2Pi(ph); }
 
     /** Nearly hard: straight up to 0.9, then a short knee into 1. */
     static float HardClip(float x)
@@ -344,6 +360,7 @@ class Fx
     int    delay_tail_   = 0;
     float  wow_ = 0.f, flutter_ = 0.f;
     float  lp_l_ = 0.f, lp_r_ = 0.f, hpl_ = 0.f, hpr_ = 0.f;
+    uint32_t bad_ = 0;
 };
 
 /** A stereo plate reverb, after Jon Dattorro ("Effect Design, Part 1",
@@ -453,7 +470,7 @@ class Reverb
                 Half&       t = tank_[h];
                 float       y = x + decay_ * ends[1 - h];
                 // The modulated allpass: its length swings slowly.
-                const float m = static_cast<float>(t.mod_ap.len) + swing * sinf(2.f * kPi * lfo_[h]);
+                const float m = static_cast<float>(t.mod_ap.len) + swing * FastSin2Pi(lfo_[h]);
                 const float d = t.mod_ap.ReadFrac(m);
                 const float v = y + 0.7f * d;
                 t.mod_ap.Write(v);
@@ -679,7 +696,7 @@ class Compressor
         for(size_t i = 0; i < n; i++)
         {
             const float peak = fmaxf(fabsf(left[i]), fabsf(right[i]));
-            const float db   = 20.f * log10f(peak + 1e-9f);
+            const float db   = 6.0206f * FastLog2(peak + 1e-9f); // 20 log10
             // Soft knee, 6 dB wide.
             const float over = db - thresh_;
             float       want = 0.f;
@@ -688,7 +705,7 @@ class Compressor
             else if(over > -3.f)
                 want = (1.f - 1.f / ratio_) * (over + 3.f) * (over + 3.f) / 12.f;
             gr_ += (want - gr_) * (want > gr_ ? att_ : rel_);
-            const float g = powf(10.f, (makeup_ - gr_) / 20.f);
+            const float g = FastExp2((makeup_ - gr_) * 0.16609640f); // 10^(dB / 20)
             left[i] *= g;
             right[i] *= g;
         }

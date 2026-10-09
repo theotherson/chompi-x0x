@@ -196,6 +196,18 @@ class Storage
         return n > 0 && Write("current.txt", n);
     }
 
+    /** load.txt: CPU load in percent of the audio's time (now, peak since
+     *  power-on) and broken values caught. A diagnostic. */
+    bool SaveLoad(uint32_t avg, uint32_t peak, uint32_t bad_out, uint32_t bad_fx)
+    {
+        if(!ok_)
+            return false;
+        const int n = snprintf(buf_, sizeof(buf_), "cpu_avg %lu%%\ncpu_peak %lu%%\nbad_out %lu\nbad_fx %lu\n",
+                               static_cast<unsigned long>(avg), static_cast<unsigned long>(peak),
+                               static_cast<unsigned long>(bad_out), static_cast<unsigned long>(bad_fx));
+        return n > 0 && Write("load.txt", static_cast<size_t>(n));
+    }
+
   private:
     bool SaveOptions(const x0x::Options& o)
     {

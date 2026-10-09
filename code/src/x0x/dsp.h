@@ -34,6 +34,31 @@ inline float FastExp2(float x)
     return ldexpf(p, static_cast<int>(fl));
 }
 
+/** sin(2 pi ph) for any phase (turns): a refined parabola, within 0.1% of
+ *  full scale. For LFOs and fades, where sinf's cost (hundreds of cycles on
+ *  the Cortex-M7) buys nothing audible. */
+inline float FastSin2Pi(float ph)
+{
+    ph -= floorf(ph);
+    const float t = ph < 0.5f ? 2.f * ph : 2.f * ph - 2.f; // -1..1, x = pi t
+    const float y = 4.f * t * (1.f - fabsf(t));
+    return 0.225f * (y * fabsf(y) - y) + y;
+}
+
+/** log2(x) for x > 0, to about 0.005 (0.03 dB). */
+inline float FastLog2(float x)
+{
+    union
+    {
+        float    f;
+        uint32_t i;
+    } u{x};
+    const float e = static_cast<float>(static_cast<int>((u.i >> 23) & 255) - 127);
+    u.i           = (u.i & 0x007fffffu) | 0x3f800000u; // the mantissa, 1..2
+    const float m = u.f;
+    return e + (-0.34484843f * m + 2.02466578f) * m - 1.67487759f;
+}
+
 /** Pade tanh, clamped where it would turn back. */
 inline float FastTanh(float x)
 {

@@ -20,6 +20,7 @@
 #include "storage.h"
 #include "x0x/machine.h"
 #include "x0x/ui.h"
+#include "util/CpuLoadMeter.h"
 
 using namespace daisy;
 using namespace chompi;
@@ -30,6 +31,7 @@ x0x::Ui      ui;
 Panel        panel;
 MidiIo       midi;
 Storage      storage;
+CpuLoadMeter load_meter; // the audio callback's share of its time (load.txt)
 
 // The delay's memory: 2 s of stereo, in SDRAM.
 static constexpr size_t kDelayFrames = 96000;
@@ -58,6 +60,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
             out[0][i] = out[1][i] = out[2][i] = out[3][i] = 0.f;
         return;
     }
+    load_meter.OnBlockStart();
 
     const uint32_t now = System::GetNow();
     hw.ProcessAllControls();
@@ -77,6 +80,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
     }
 
     midi.PumpUart(machine);
+    load_meter.OnBlockEnd();
 }
 
 int main(void)
@@ -145,6 +149,7 @@ int main(void)
     System::Delay(1);
     hw.usb_sw.Write(true);        // take USB control
 
+    load_meter.Init(hw.seed.AudioSampleRate(), static_cast<int>(hw.seed.AudioBlockSize()));
     running = true;
 
     uint32_t last_draw = 0, last_batt = 0;
@@ -152,6 +157,9 @@ int main(void)
     uint32_t pattern_seen = saved_patterns, settings_seen = saved_settings;
     uint32_t pattern_at = 0, settings_at = 0;
     uint32_t export_seen = machine.export_requests;
+    // load.txt: the audio's CPU load (average, peak) and any broken values
+    // caught, written when the peak rises or something is caught.
+    uint32_t load_at = 0, load_written = 0, bad_written = 0;
     while(1)
     {
         const uint32_t now = System::GetNow();
@@ -189,6 +197,19 @@ int main(void)
         {
             saved_settings = settings_seen;
             storage.SaveSettings(machine);
+        }
+
+        if(now - load_at > 5000)
+        {
+            load_at            = now;
+            const uint32_t pk  = static_cast<uint32_t>(load_meter.GetMaxCpuLoad() * 100.f + 0.5f);
+            const uint32_t bad = machine.BadOutCount() + machine.BadFxCount();
+            if(pk > load_written || bad != bad_written)
+            {
+                load_written = pk, bad_written = bad;
+                storage.SaveLoad(static_cast<uint32_t>(load_meter.GetAvgCpuLoad() * 100.f + 0.5f), pk,
+                                 machine.BadOutCount(), machine.BadFxCount());
+            }
         }
 
         if(now - last_batt > 20)
