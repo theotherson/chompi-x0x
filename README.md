@@ -4,6 +4,8 @@ A TB-303 / x0xb0x-style bass line machine for the CHOMPI, with a TR-606-style dr
 
 **Download:** get the latest `.bin` from the [Releases page](https://github.com/theotherson/chompi-x0x/releases/latest), copy it to the root of the SD card (the only `.bin` there) and power on. See [Flashing](#flashing) below for more.
 
+**Cheat sheet:** every control on two pages, [bass](docs/cheatsheet-bass.png) and [drums](docs/cheatsheet-drums.png) (or both as a [PDF](docs/cheatsheet.pdf) to print).
+
 Built from scratch on top of CHOMPI Club's TEMPO firmware, whose hardware layer, libraries and startup it keeps.
 
 > Status: **in use on a CHOMPI.** The filter and envelopes are fitted to recordings of authentic TB-303 circuitry (from an RE-303 I built a few months ago). The voice, sequencer and every panel behaviour are tested on the desktop (`host/`), and the firmware builds without warnings. Recently added features (A/B patterns, MIDI import and export, write protect, the delay's free time) are tested on the desktop but have had less time on the hardware. The drums' side (a TR-606: LOOP in step mode, or a CHOMPI double tap) is the newest part and has had the least time on the hardware.

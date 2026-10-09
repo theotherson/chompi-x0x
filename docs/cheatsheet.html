@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>x0x Cheat Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* In the spirit of CHOMPI's own mini guide: Poppins, charcoal line work,
+     rounded keys and panels, pastel accents; each side on its own tint. */
+  :root {
+    --ink: #333633;
+    --soft: #6b6a66;
+    --teal: #2f9c90;
+    --purple: #9156b0;
+    --salmon: #e8796a;
+    --white: #fffdf8;
+    /* LED colours, as the firmware lights them */
+    --red: #ff2a1f; --orange: #ff6a00; --amber: #ff9a1a; --yellow: #ffd400; --lime: #66e600;
+    --green: #16c94a; --mint: #00e68a; --cyan: #00d6ff; --sky: #4d99ff; --blue: #2f5dff;
+    --violet: #8c00ff; --lavender: #9a6bff; --pink: #ff1f99; --rose: #ff66b3; --magenta: #ff00ff;
+    --grey: #9a9a9a; --wht: #ffffff;
+    --bd: #ff1414; --sd: #ff8000; --lt: #f2c500; --ht: #66e600; --cy: #00d9ff; --oh: #9a4dff; --ch: #ff00ff;
+    --dacc: #0050ff; --pattA: #4aa8ff; --pattB: #f2c200;
+  }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: 2000px 1720px; margin: 0; }
+  html, body { margin: 0; background: #ddd; }
+  body { font-family: "Poppins", "Helvetica Neue", Arial, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .sheet { width: 2000px; height: 1720px; padding: 50px 60px 0; overflow: hidden; position: relative; background: var(--page); page-break-after: always; break-after: page; }
+  .sheet:last-child { page-break-after: auto; break-after: auto; }
+  body.only-bass #drums, body.only-drums #bass { display: none; }
+  #bass  { --page: #ece4f7; --card: #e1d4f2; --line: #cdbbe6; --hi: var(--violet); }
+  #drums { --page: #f8efcf; --card: #f0e2b2; --line: #e0cd90; --hi: #e88a00; }
+
+  /* Header, as the guide's: a title over a full-width rule */
+  .top { display: flex; align-items: flex-end; gap: 22px; }
+  .top h1 { margin: 0; font-size: 64px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .top h1 span { color: var(--hi); }
+  .top .sub { margin-left: auto; text-align: right; font-size: 21px; line-height: 1.4; font-weight: 500; max-width: 1080px; }
+  .top .sub b { font-weight: 700; }
+  .top .sub .p { color: var(--purple); font-weight: 700; }
+  .hr { height: 4px; background: var(--ink); margin: 22px 0 26px; border-radius: 2px; }
+
+  /* Knobs: six columns, each a guide-style block */
+  .knobs { display: grid; gap: 22px; margin-bottom: 18px; }
+  #bass .knobs  { grid-template-columns: 1fr 1fr 1fr 1.35fr 0.95fr 1.4fr; }
+  #drums .knobs { grid-template-columns: 1.4fr 1.15fr 1.15fr 1.2fr 0.85fr 1.3fr; }
+  .kh { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .kb { width: 46px; height: 46px; flex: none; border-radius: 50%; background: var(--ink); color: var(--white); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; }
+  .kb.big { background: #a77bb4; }
+  .kh h3 { margin: 0; font-size: 21px; font-weight: 700; color: var(--teal); letter-spacing: .6px; text-transform: uppercase; line-height: 1.1; }
+  .kline { height: 3px; background: var(--ink); border-radius: 2px; margin-bottom: 12px; opacity: .85; }
+  .fn { display: grid; grid-template-columns: 50px 24px 1fr; column-gap: 8px; align-items: start; margin: 0 0 11px; font-size: 18px; line-height: 1.28; }
+  .fn .pg { font-weight: 700; color: var(--teal); font-size: 17px; padding-top: 1px; }
+  .led { width: 21px; height: 21px; margin-top: 1px; border-radius: 50%; border: 2.5px solid var(--ink); background: var(--white); position: relative; }
+  .led::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--c, var(--white)); }
+  .fn b { font-weight: 700; }
+  .fn .sh { color: var(--purple); font-weight: 700; }
+  .fn .v { font-weight: 500; }
+  .tip { font-size: 15.5px; line-height: 1.35; color: var(--soft); font-weight: 500; margin-top: 4px; }
+  .knobnote { font-size: 17px; font-weight: 500; color: var(--soft); margin: 4px 0 22px; }
+  .knobnote b { color: var(--ink); font-weight: 700; }
+  .knobnote .p { color: var(--purple); font-weight: 700; }
+
+  /* The two modes: rounded outlined panels */
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .panel { background: var(--card); border: 3px solid var(--ink); border-radius: 28px; padding: 22px 26px 18px; }
+  .panel h2 { margin: 0; font-size: 30px; font-weight: 800; display: flex; align-items: baseline; gap: 14px; }
+  .panel h2 small { font-size: 17px; font-weight: 600; color: var(--soft); }
+  .tog { display: inline-block; font-size: 14px; font-weight: 700; color: var(--white); background: var(--ink); border-radius: 999px; padding: 3px 11px; transform: translateY(-4px); }
+
+  /* The keybed, as on CHOMPI: a row of 15 keys and 10 above, set where
+     a piano's black keys would be; each key with its LED pill. */
+  .kbd { position: relative; width: 850px; height: 196px; margin: 78px auto 14px; }
+  .key { position: absolute; width: 50px; height: 54px; border: 2.5px solid var(--ink); border-radius: 11px; background: var(--white); }
+  .key i { position: absolute; left: 13px; right: 13px; top: 6px; height: 9px; border-radius: 5px; background: var(--c, #d8d4cc); }
+  .key.mid { background: #f3e9ff; }
+  #drums .key.mid { background: #fff3c8; }
+  .num { position: absolute; width: 50px; text-align: center; font-size: 16px; font-weight: 700; color: var(--salmon); }
+  .lab { position: absolute; transform: translateX(-50%); font-size: 13.5px; font-weight: 700; letter-spacing: .3px; white-space: nowrap; padding: 2px 10px; border-radius: 999px; color: #fff; }
+  .lab::after { content: ""; position: absolute; left: 50%; width: 2px; background: var(--ink); opacity: .35; transform: translateX(-50%); top: 100%; }
+  .lab.hi { top: -66px; } .lab.hi::after { height: 42px; }
+  .lab.lo { top: -34px; } .lab.lo::after { height: 10px; }
+  .dk { color: var(--ink) !important; }
+
+  .acts { display: grid; grid-template-columns: 206px 1fr; column-gap: 16px; font-size: 17.5px; line-height: 1.32; }
+  .acts > div { padding: 6px 0; border-top: 2px dotted var(--line); }
+  .acts > div:nth-child(1), .acts > div:nth-child(2) { border-top: 0; }
+  .acts .a { font-weight: 700; }
+  .acts b { font-weight: 700; }
+  .acts .p { color: var(--purple); font-weight: 700; }
+  .chip { display: inline-block; font-size: 12.5px; font-weight: 700; letter-spacing: .3px; padding: 1px 9px; border-radius: 999px; color: #fff; vertical-align: 1px; }
+
+  /* Bottom: three boxes, like the guide's Quick Tips */
+  .bottom { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 22px; }
+  .box { border: 3px solid var(--teal); border-radius: 26px; padding: 18px 24px 16px; background: var(--card); }
+  .box h4 { margin: 0 0 8px; font-size: 19px; font-weight: 700; color: var(--teal); letter-spacing: .6px; text-transform: uppercase; }
+  .list { font-size: 17px; line-height: 1.36; font-weight: 500; }
+  .list > div { padding: 5px 0; }
+  .list b { font-weight: 700; }
+  .list .p { color: var(--purple); font-weight: 700; }
+  .dot { display: inline-block; width: 15px; height: 15px; border-radius: 50%; vertical-align: -2px; margin-right: 7px; border: 2px solid var(--ink); }
+  .vc { display: inline-block; font-size: 13px; font-weight: 700; padding: 0 8px; border-radius: 999px; color: #fff; margin-right: 2px; }
+  code { font-family: "SF Mono", Menlo, monospace; font-size: 14.5px; background: var(--white); padding: 1px 6px; border-radius: 6px; border: 1.5px solid var(--line); }
+
+  .foot { position: absolute; left: 60px; right: 60px; bottom: 34px; display: flex; justify-content: space-between; font-size: 16px; font-weight: 600; color: var(--purple); }
+  .foot span:last-child { color: var(--soft); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<!-- ======================================================================= BASS -->
+<div class="sheet" id="bass">
+  <div class="top">
+    <h1>x0x <span>bass</span></h1>
+    <div class="sub">A 303-style voice: diode ladder filter, accent, slide and tie · the TR-606 is <b>overleaf</b><br>Toggle up: <b>step mode</b> · down: <b>live mode</b> · <span class="p">CHOMPI held:</span> every second control</div>
+  </div>
+  <div class="hr"></div>
+
+  <div class="knobs">
+    <div>
+      <div class="kh"><span class="kb">1</span><h3>Wave</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:var(--amber)"></span><div><b>Saw / Square</b><br><span class="sh">CHOMPI + Turn:</span> <span class="v">Pulse Width</span></div></div>
+      <div class="fn"><span class="pg">Pg 2</span><span class="led" style="--c:var(--wht)"></span><div><b>Pattern Length</b><br><span class="sh">CHOMPI + Turn:</span> <span class="v">Tuning ±1 st</span></div></div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">2</span><h3>Env Mod</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Turn</span><span class="led" style="--c:var(--green)"></span><div><b>Env Mod</b>: how far the filter sweeps</div></div>
+      <div class="fn"><span class="pg"></span><span class="led" style="--c:var(--orange)"></span><div><span class="sh">CHOMPI + Turn:</span> <span class="v">Accent Level</span></div></div>
+      <div class="tip">As on a 303: little below 12 o'clock, a lot above.</div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">3</span><h3>Decay</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Turn</span><span class="led" style="--c:var(--violet)"></span><div><b>Decay</b>: the sweep's length</div></div>
+      <div class="fn"><span class="pg"></span><span class="led" style="--c:var(--blue)"></span><div><span class="sh">CHOMPI + Turn:</span> <span class="v">Slide Time</span></div></div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">4</span><h3>Effects</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:var(--cyan)"></span><div><b>Delay Mix</b> · <span class="sh">CHOMPI:</span> synced time<br><span class="v">Push + turn: free time, with a tape swoop</span></div></div>
+      <div class="fn"><span class="pg">Pg 2</span><span class="led" style="--c:var(--amber)"></span><div><b>Tape Feedback</b> · <span class="sh">CHOMPI:</span> tone</div></div>
+      <div class="fn"><span class="pg">Pg 3</span><span class="led" style="--c:var(--pink)"></span><div><b>Chorus → Flanger</b> · <span class="sh">CHOMPI:</span> width</div></div>
+      <div class="fn"><span class="pg">Pg 4</span><span class="led" style="--c:var(--lime)"></span><div><b>Bit Crush</b> · <span class="sh">CHOMPI:</span> rate</div></div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb big">5</span><h3>Filter</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Turn</span><span class="led" style="--c:#b233ff"></span><div><b>Cutoff</b></div></div>
+      <div class="fn"><span class="pg"></span><span class="led" style="--c:#ff0033"></span><div><span class="sh">CHOMPI:</span> <span class="v">Resonance</span></div></div>
+      <div class="fn"><span class="pg">Press</span><span class="led"></span><div><b>Tap Tempo</b></div></div>
+      <div class="tip">Its two lights flash the eighth notes, left and right.</div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">6</span><h3>Volume</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:var(--wht)"></span><div><b>Volume</b> · <span class="sh">CHOMPI:</span> drive</div></div>
+      <div class="fn"><span class="pg">Pg 2</span><span class="led" style="--c:var(--yellow)"></span><div><b>Tempo</b> · <span class="sh">CHOMPI:</span> swing</div></div>
+      <div class="fn"><span class="pg">Pg 3</span><span class="led" style="--c:#ff7a8a"></span><div><b>Mix</b> drums ↔ bass · <span class="sh">CHOMPI:</span> effects balance</div></div>
+      <div class="fn"><span class="pg">Pg 4</span><span class="led" style="--c:var(--mint)"></span><div><b>Compressor</b> · <span class="sh">CHOMPI:</span> kick sidechain</div></div>
+    </div>
+  </div>
+  <div class="knobnote">Press a knob: next page · <span class="p">CHOMPI + Press:</span> reset that page · <span class="p">CHOMPI + Push 2 s:</span> reset every page (knobs 1–3) · Knobs <b>accelerate</b>: click slowly for fine steps, spin for the whole range.</div>
+
+  <div class="modes">
+    <div class="panel">
+      <h2>Step Mode <span class="tog">toggle up</span> <small>build the pattern one step at a time</small></h2>
+      <div class="kbd" id="kbd-step"></div>
+      <div class="acts">
+        <div class="a">Step key</div><div>select a step; again: on / off. Middle C is step 8 or 9</div>
+        <div class="a">CHOMPI + any key</div><div>set the selected step's note (the keybed is a keyboard)</div>
+        <div class="a"><span class="chip" style="background:var(--violet)">DOWN</span> … <span class="chip" style="background:var(--green)">TIE</span></div><div>a page: step keys toggle octave down / up, accent, slide, tie</div>
+        <div class="a"><span class="chip dk" style="background:var(--yellow)">TRANSPOSE</span></div><div>keys set the transpose. Leave: tap a key twice, or hold 2 s</div>
+        <div class="a"><span class="chip" style="background:var(--pattA)">PATTERN</span></div><div>the bass's pattern page: <b style="color:#1f7fd6">A</b>, or <b style="color:#b98a00">B</b> with CHOMPI held. Running, a pick waits for the bar; again: now</div>
+        <div class="a">PATTERN held + key</div><div>on the page: <b>both</b> bass and drums there, together at the bar</div>
+        <div class="a">PATTERN held 2 s</div><div><b>write protect</b>, while stopped: play freely, nothing saves</div>
+        <div class="a">Pattern key held 2 s</div><div>export every pattern as MIDI to <code>/X0X/MIDI</code></div>
+        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + step key</div><div>copy the pattern there · <b>+ PATTERN</b>: to its other side, A ⇄ B</div>
+        <div class="a"><span class="chip" style="background:var(--red)">CLEAR</span></div><div>tap: the selected step · hold 1 s: the pattern</div>
+        <div class="a">LOOP</div><div>switch to the <b style="color:#d98200">drums</b> · <span class="p">CHOMPI + LOOP:</span> mute / unmute the bass</div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Live Mode <span class="tog">toggle down</span> <small>play, record, arpeggiate</small></h2>
+      <div class="kbd" id="kbd-live"></div>
+      <div class="acts">
+        <div class="a">Keys</div><div>play; overlapping notes <b>slide</b>. Top-row functions: with CHOMPI held</div>
+        <div class="a">LOOP</div><div>record on / off · hold 2 s: clear the pattern</div>
+        <div class="a">Recording, running</div><div>notes go in, held notes tie. CHOMPI + accent / slide / tie: on the step playing</div>
+        <div class="a">Recording, stopped</div><div><b>note entry</b>: each note fills the next step. CHOMPI + the blinking step: a rest</div>
+        <div class="a"><span class="chip" style="background:var(--sky)">QUANTIZE</span></div><div>on / off · CHOMPI + white key 1–3: grid 1/16, 1/8, 1/4 · hold 2 s: for good</div>
+        <div class="a">CHOMPI + PLAY</div><div><b>arpeggiator</b> on / off · <span class="p">CHOMPI + LOOP:</span> latch</div>
+        <div class="a"><span class="chip" style="background:var(--violet)">ARP OCT</span> <span class="chip" style="background:#00b38a">PATT</span></div><div>octaves below / above (0–2); up, down, up-down, random, as played</div>
+        <div class="a"><span class="chip dk" style="background:var(--yellow)">TRANSPOSE</span></div><div>keys transpose the pattern (or the arp); tap a key twice to leave</div>
+        <div class="a">CHOMPI, tapped twice</div><div>switch to the <b style="color:#d98200">drums</b> (in either mode)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="box">
+      <h4>Patterns &amp; the Card</h4>
+      <div class="list">
+        <div>16 patterns, <b style="color:#1f7fd6">A</b> and <b style="color:#b98a00">B</b> sides; each holds a bassline <b>and</b> a drum part, and the two sides can play <b>different patterns</b></div>
+        <div>Edits save to <code>/X0X</code> by themselves, unless write-protected</div>
+        <div><b>Import</b>: <code>3B.mid</code> into <code>/X0X/IMPORT</code>, then power on (drums: channel 10)</div>
+      </div>
+    </div>
+    <div class="box">
+      <h4>Bass &amp; Drums</h4>
+      <div class="list">
+        <div>Both always play: <b>LOOP</b> (step mode) or <b>CHOMPI tapped twice</b> picks which you edit</div>
+        <div><span class="p">CHOMPI + LOOP</span> (step mode): mute the side you're on</div>
+        <div>Volume Pg 3: <b>mix</b> · <span class="p">CHOMPI:</span> <b>effects balance</b> &nbsp;·&nbsp; Pg 4: <b>compressor</b> · <span class="p">CHOMPI:</span> each kick ducks the rest</div>
+      </div>
+    </div>
+    <div class="box">
+      <h4>Lights</h4>
+      <div class="list">
+        <div><span class="dot" style="background:var(--red)"></span><b>Steps</b> red; accent bright, tie dim · <b>patterns</b> <b style="color:#1f7fd6">A</b> / <b style="color:#b98a00">B</b>, <b style="color:#d400d4">magenta</b> / <b style="color:#e06a00">orange</b> protected</div>
+        <div><span class="dot" style="background:var(--violet)"></span><b>CHOMPI</b> and <b>LOOP</b> purple on the bass, amber on the drums; LOOP blinks if muted</div>
+        <div><span class="dot" style="background:var(--green)"></span><b>PLAY</b> green while running · <b>LOOP</b> red while recording</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot"><span>x0x · github.com/theotherson/chompi-x0x · a community firmware for CHOMPI</span><span>Not an official CHOMPI Club release</span></div>
+</div>
+
+<!-- ====================================================================== DRUMS -->
+<div class="sheet" id="drums">
+  <div class="top">
+    <h1>x0x <span>drums</span></h1>
+    <div class="sub">A TR-606: <span class="vc" style="background:var(--bd)">BD</span><span class="vc" style="background:var(--sd)">SD</span><span class="vc dk" style="background:var(--lt)">LT</span><span class="vc dk" style="background:var(--ht)">HT</span><span class="vc dk" style="background:var(--cy)">CY</span><span class="vc" style="background:var(--oh)">OH</span><span class="vc" style="background:var(--ch)">CH</span> Knobs act on the <b>selected voice</b> (the last voice key) unless noted.<br>Get here: <b>LOOP</b> in step mode, or <b>CHOMPI tapped twice</b> · <span class="p">CHOMPI held:</span> every second control</div>
+  </div>
+  <div class="hr"></div>
+
+  <div class="knobs">
+    <div>
+      <div class="kh"><span class="kb">1</span><h3>Voice &amp; LFO</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:var(--bd)"></span><div><b>Level</b> · <span class="sh">CHOMPI:</span> pan</div></div>
+      <div class="fn"><span class="pg">Pg 2</span><span class="led" style="--c:var(--dacc)"></span><div><b>Accent Level</b> · <span class="sh">CHOMPI:</span> drum part length</div></div>
+      <div class="fn"><span class="pg">Pg 3</span><span class="led" style="--c:var(--mint)"></span><div><b>LFO Shape</b> · <span class="sh">CHOMPI:</span> rate, 4 bars … 1/32</div></div>
+      <div class="fn"><span class="pg">Pg 4</span><span class="led" style="--c:var(--sd)"></span><div><b>LFO Target</b>, this voice · <span class="sh">CHOMPI:</span> depth</div></div>
+      <div class="tip">One LFO, in time; each voice picks what it moves (below).</div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">2</span><h3>Attack</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:var(--bd)"></span><div><b>Attack</b>: click / snap<br><span class="sh">CHOMPI + Turn:</span> <span class="v">Tuning ±24 st</span></div></div>
+      <div class="fn"><span class="pg">Pg 2</span><span class="led" style="--c:var(--wht)"></span><div><b>Kit Filter</b>: low-pass left, high-pass right, off in the middle<br><span class="sh">CHOMPI + Turn:</span> <span class="v">Resonance</span></div></div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">3</span><h3>Decay</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:var(--bd)"></span><div><b>Decay</b><br><span class="sh">CHOMPI + Turn:</span> <span class="v">Feedback FM, grit to glitch</span></div></div>
+      <div class="fn"><span class="pg">Pg 2</span><span class="led" style="--c:var(--rose)"></span><div><b>Filter Envelope</b>: each hit sweeps the kit filter<br><span class="sh">CHOMPI + Turn:</span> <span class="v">its Decay</span></div></div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">4</span><h3>Effects</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:#4d66ff"></span><div><b>Reverb Send</b> · <span class="sh">CHOMPI:</span> size</div></div>
+      <div class="fn"><span class="pg">Pg 2</span><span class="led" style="--c:var(--cyan)"></span><div><b>Delay Send</b> · <span class="sh">CHOMPI:</span> delay time</div></div>
+      <div class="fn"><span class="pg">Pg 3</span><span class="led" style="--c:var(--lime)"></span><div><b>Bit Crush</b> · <span class="sh">CHOMPI:</span> rate</div></div>
+      <div class="fn"><span class="pg">Hold</span><span class="led"></span><div><b>+ a voice key</b>: that voice in / out of the reverb &amp; delay</div></div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb big">5</span><h3>Tempo</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Turn</span><span class="led" style="--c:var(--yellow)"></span><div><b>Tempo</b></div></div>
+      <div class="fn"><span class="pg"></span><span class="led" style="--c:var(--pink)"></span><div><span class="sh">CHOMPI:</span> <span class="v">Swing</span></div></div>
+      <div class="fn"><span class="pg">Press</span><span class="led"></span><div><b>Tap Tempo</b></div></div>
+    </div>
+    <div>
+      <div class="kh"><span class="kb">6</span><h3>Volume</h3></div><div class="kline"></div>
+      <div class="fn"><span class="pg">Pg 1</span><span class="led" style="--c:var(--wht)"></span><div><b>Volume</b> · <span class="sh">CHOMPI:</span> drum distortion</div></div>
+      <div class="fn"><span class="pg">Pg 3</span><span class="led" style="--c:#ff7a8a"></span><div><b>Mix</b> drums ↔ bass · <span class="sh">CHOMPI:</span> effects balance</div></div>
+      <div class="fn"><span class="pg">Pg 4</span><span class="led" style="--c:var(--mint)"></span><div><b>Compressor</b> · <span class="sh">CHOMPI:</span> kick sidechain</div></div>
+      <div class="tip">No tempo page on this side: the purple knob has it.</div>
+    </div>
+  </div>
+  <div class="knobnote">Voice pages light in the <b>voice's colour</b>. The kit filter, its envelope, the effects and the volume knob act on <b>all</b> the drums · <span class="p">CHOMPI + Push 2 s:</span> reset every page of knobs 1–3.</div>
+
+  <div class="modes">
+    <div class="panel">
+      <h2>Step Mode <span class="tog">toggle up</span> <small>program each voice on its page</small></h2>
+      <div class="kbd" id="kbd-dstep"></div>
+      <div class="acts">
+        <div class="a">Voice key</div><div>that voice's page; the toms' and hats' keys alternate (again: the other)</div>
+        <div class="a">Step key</div><div>the voice's hit on / off; others' hits dim, accented ones tinted blue</div>
+        <div class="a"><span class="chip" style="background:var(--dacc)">ACCENT</span></div><div>the accent page · <b>hold 2 s</b>: unmute every voice</div>
+        <div class="a">CHOMPI + voice</div><div><b>mute</b> / unmute (it blinks)</div>
+        <div class="a">Voice held 2 s</div><div><b>solo</b>: the rest muted; bring them back with CHOMPI. Again when it's the only one: all back</div>
+        <div class="a"><span class="chip" style="background:var(--pattA)">PATTERN</span></div><div>the <b>drums'</b> pattern page (lit: slots with drum parts) · <b>held + key</b>: both sides</div>
+        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + step key</div><div>copy the <b>drum part</b> there (its bassline kept) · <b>+ PATTERN</b>: A ⇄ B</div>
+        <div class="a"><span class="chip" style="background:var(--red)">CLEAR</span></div><div>tap: this voice's hits (or the accents) · hold 1 s: the whole drum part</div>
+        <div class="a">LOOP</div><div>switch to the <b style="color:var(--violet)">bass</b> · <span class="p">CHOMPI + LOOP:</span> mute / unmute the drums</div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Live Mode <span class="tog">toggle down</span> <small>every voice its own key</small></h2>
+      <div class="kbd" id="kbd-dlive"></div>
+      <div class="acts">
+        <div class="a">Voice keys</div><div>play, and record. Mute and solo as in step mode</div>
+        <div class="a">Bottom row</div><div>the last voice <b>pitched</b>, C major an octave either way; recorded at that pitch</div>
+        <div class="a">LOOP</div><div>record on / off · hold 2 s: clear the drum part · <span class="p">CHOMPI + LOOP:</span> accent your hits</div>
+        <div class="a"><span class="chip" style="background:var(--sky)">QUANTIZE</span></div><div>tap: on / off (off keeps your timing) · held + key 1–3: grid 1/16, 1/8, 1/4</div>
+        <div class="a"><span class="chip dk" style="background:var(--mint)">ROLL</span></div><div>held + voice keys: they repeat in time · held + key 1–5: 1/8, 1/8T, 1/16, 1/16T, 1/32</div>
+        <div class="a"><span class="chip" style="background:var(--red)">ERASE</span></div><div>held + voice keys while it runs: their hits wiped as they pass</div>
+        <div class="a">CHOMPI, tapped twice</div><div>switch to the <b style="color:var(--violet)">bass</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="box">
+      <h4>LFO Targets · Knob 1, Pg 4</h4>
+      <div class="list">
+        <div><b>1</b> off · <b>2</b> level: dips it, as far as silent · <b>3</b> pan: swings it either side</div>
+        <div><b>4</b> tuning: an octave either way · <b>5</b> filter: its own low-pass, swept down from open</div>
+        <div><b>6</b> feedback FM: adds grit · <b>7</b> decay: longer or shorter, hit by hit</div>
+        <div>Shapes: off, triangle, ramp up, ramp down, sample &amp; hold; from the top of the bar on PLAY</div>
+      </div>
+    </div>
+    <div class="box">
+      <h4>Sound</h4>
+      <div class="list">
+        <div>A drum part in every pattern, with its <b>own length</b> (polymeters) and its own pattern</div>
+        <div>Accent: up to 3× as loud · a closed hat chokes the open one</div>
+        <div>A plate reverb; the delay is the bass's, so the echoes line up</div>
+        <div>MIDI channel 10, GM notes: BD 36 · SD 38 · LT 45 · HT 50 · CY 49 · OH 46 · CH 42</div>
+      </div>
+    </div>
+    <div class="box">
+      <h4>Lights</h4>
+      <div class="list">
+        <div><span class="dot" style="background:var(--bd)"></span><b>Voice keys</b> in their colours; the selected one bright; each flashes as it plays</div>
+        <div><span class="dot" style="background:var(--white)"></span><b>Muted</b>: blinks slowly · <b>whole kit back</b>: all flash white</div>
+        <div><span class="dot" style="background:var(--dacc)"></span><b>Accent</b> blue · <b style="color:#00a35a">roll</b> green · <b style="color:#e01010">erase</b> red, with the voices it's erasing</div>
+        <div><span class="dot" style="background:var(--amber)"></span><b>CHOMPI</b> amber on this side; it flashes on the beat</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot"><span>x0x · github.com/theotherson/chompi-x0x · a community firmware for CHOMPI</span><span>Not an official CHOMPI Club release</span></div>
+</div>
+
+<script>
+  // ?bass or ?drums (or #bass / #drums): just that page, for screenshots.
+  const which = (location.search + location.hash).replace(/[?#]/g, "");
+  if (which === "bass") document.body.classList.add("only-bass");
+  if (which === "drums") document.body.classList.add("only-drums");
+  if (which === "bass" || which === "drums") document.documentElement.style.overflow = "hidden";
+
+  // The keybed: 15 keys along the bottom, 10 above (where a piano's black
+  // keys sit), each with its LED; top-row keys labelled in their colours.
+  const W = 56.6;                                     // one bottom key's pitch (850 / 15)
+  const topAfter = [0, 1, 3, 4, 5, 7, 8, 10, 11, 12]; // the bottom key each top key follows
+  const steps = ["1","2","3","4","5","6","7","8/9","10","11","12","13","14","15","16"];
+  const notes = ["C","D","E","F","G","A","B","C","D","E","F","G","A","B","C"];
+  const layouts = {
+    "kbd-step": [steps, [
+      ["DOWN","--violet"],["UP","--cyan",1],["ACCENT","--orange"],["SLIDE","--blue"],["TIE","--green"],
+      ["TRANSPOSE","--yellow",1],["VIEW","--grey"],["PATTERN","--pattA"],["COPY","--grey"],["CLEAR","--red"]]],
+    "kbd-live": [null, [
+      ["OCT −","--violet"],["OCT +","--cyan",1],["ACCENT","--orange"],["SLIDE","--blue"],["TIE","--green"],
+      ["TRANSPOSE","--yellow",1],["QUANTIZE","--sky"],["ARP OCT −","--violet"],["ARP PATT","--mint",1],["ARP OCT +","--cyan",1]]],
+    "kbd-dstep": [steps, [
+      ["BD","--bd"],["SD","--sd"],["LT / HT","--lt",1],["CY","--cy",1],["CH / OH","--ch"],
+      ["ACCENT","--dacc"],["VIEW","--grey"],["PATTERN","--pattA"],["COPY","--grey"],["CLEAR","--red"]]],
+    "kbd-dlive": [notes, [
+      ["BD","--bd"],["SD","--sd"],["LT","--lt",1],["HT","--ht",1],["CY","--cy",1],
+      ["CH","--ch"],["OH","--oh"],["QUANTIZE","--sky"],["ROLL","--mint",1],["ERASE","--red"]]],
+  };
+  for (const [id, [bottomLabels, top]] of Object.entries(layouts)) {
+    const kbd = document.getElementById(id);
+    for (let i = 0; i < 15; i++) {
+      const k = document.createElement("div");
+      k.className = "key" + (i === 7 ? " mid" : "");
+      k.style.left = (i * W + 3) + "px";
+      k.style.top = "118px";
+      k.appendChild(document.createElement("i"));
+      kbd.appendChild(k);
+      if (bottomLabels) {
+        const n = document.createElement("div");
+        n.className = "num";
+        n.style.left = (i * W + 3) + "px";
+        n.style.top = "176px";
+        n.textContent = bottomLabels[i];
+        kbd.appendChild(n);
+      }
+    }
+    topAfter.forEach((after, n) => {
+      const x = (after + 1) * W; // centred on the boundary between two bottom keys
+      const k = document.createElement("div");
+      k.className = "key";
+      k.style.left = (x - 25) + "px";
+      k.style.top = "50px";
+      const led = document.createElement("i");
+      led.style.setProperty("--c", `var(${top[n][1]})`);
+      k.appendChild(led);
+      kbd.appendChild(k);
+      const l = document.createElement("div");
+      l.className = "lab " + (n % 2 ? "lo" : "hi") + (top[n][2] ? " dk" : "");
+      l.style.left = x + "px";
+      l.style.marginTop = "50px";
+      l.style.background = `var(${top[n][1]})`;
+      l.textContent = top[n][0];
+      kbd.appendChild(l);
+    });
+  }
+</script>
+</body>
+</html>
