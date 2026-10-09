@@ -204,7 +204,16 @@ class Ui
     bool OnDrums() const { return drums_; }
     Page GetPage() const { return page_; }
     int  Selected() const { return selected_; }
-    int  KnobPage(int knob) const { return knob >= 0 && knob < 6 ? knob_page_[knob] : 0; }
+    int KnobPage(int knob) const
+    {
+        if(knob < 0 || knob >= 6)
+            return 0;
+        // The drums' side has no tempo / swing page on the volume knob (its
+        // purple knob has them): from there it's the mix.
+        if(drums_ && knob == 5 && knob_page_[5] == 1)
+            return 2;
+        return knob_page_[knob];
+    }
     int  KeyboardOctave() const { return kbd_octave_; }
     bool NoteEntry() const { return mode_ == Mode::PITCH && m_->Recording() && !m_->Running(); }
     int  Cursor() const { return cursor_; }
@@ -508,7 +517,11 @@ class Ui
         if(knob == 4)
             m_->Tap(now);
         else
-            knob_page_[knob] = (knob_page_[knob] + 1) % kKnobPages[knob];
+        {
+            knob_page_[knob] = (KnobPage(knob) + 1) % kKnobPages[knob];
+            if(drums_ && knob == 5 && knob_page_[5] == 1)
+                knob_page_[5] = 2; // the drums' side skips tempo / swing
+        }
         if(knob == 5)
         {
             // The volume knob's click also ends any stuck notes.

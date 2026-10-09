@@ -45,6 +45,7 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | Knob 4, page 4 | Filter: low-pass turned left, high-pass turned right, off in the middle (yellow) | Distortion mix: dry to wet, for parallel distortion (default all wet) |
 | Purple | Tempo (flashing the beat) | Swing |
 | Volume | Volume (shared) | **The drums' own distortion**, as the bass's drive but separate from it (orange to red) |
+| Volume, pages | Click: volume, the mix, the compressor (shared). No tempo / swing page here: the purple knob has them on this side | |
 
 Knob 4's click steps through its pages; CHOMPI + click resets all the drums' effects (not the shared delay time). The delay is shared: the bass reaches it through its own delay knob, the drums through their send, so their echoes always line up; its feedback and tone (the bass's knob 4, page 2) set it for both. The mix knob (volume, page 3) acts before the effects, so muting a side mutes its echoes too. MIDI out sends them on channel 10 (GM notes: BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42), and MIDI files export and import the drum part on channel 10.
 

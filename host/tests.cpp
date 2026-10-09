@@ -2125,8 +2125,15 @@ static void TestDrumMuteSoloMix()
     CHECK(b == 0.f && d == 1.f);
     MixGains(0.5f, 1.f, &b, &d);
     CHECK(b == 1.f && d == 0.f);
-    // On the panel: volume knob page 3, turned and CHOMPI-turned.
-    r.ui.KnobClick(5, r.now), r.ui.KnobClick(5, r.now);
+    // On the panel (the drums' side): the volume knob's pages are volume,
+    // the mix and the compressor; no tempo / swing (the purple knob has them).
+    r.ui.KnobClick(5, r.now);
+    CHECK(r.ui.KnobPage(5) == 2);
+    r.ui.KnobClick(5, r.now);
+    CHECK(r.ui.KnobPage(5) == 3);
+    r.ui.KnobClick(5, r.now);
+    CHECK(r.ui.KnobPage(5) == 0);
+    r.ui.KnobClick(5, r.now);
     CHECK(r.ui.KnobPage(5) == 2);
     r.ui.KnobTurn(5, -10, false);
     CHECK(r.m.settings.params[MIX] < 0.5f);
