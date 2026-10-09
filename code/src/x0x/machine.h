@@ -697,6 +697,10 @@ class Machine
                 dsrc[i] = 0.f;
             send_src = dsrc;
         }
+        // Down 2.5 dB after their effects (the distortion keeps its input):
+        // even with the bass, loudness-weighted, at its usual settings.
+        for(size_t i = 0; i < n; i++)
+            drum[i] *= kDrumTrim, dsrc[i] *= kDrumTrim;
         reverb_.Set(p[REVERB_SIZE]);
         const float dly_send = p[DRUM_DELAY] * p[DRUM_DELAY];
         const float rev_send = p[DRUM_REVERB] * p[DRUM_REVERB];
@@ -749,7 +753,8 @@ class Machine
 
   private:
     static constexpr int kArpEvent = -2; // Event::step of an arpeggiator event
-    static constexpr int kHitQueue = 16;
+    static constexpr int   kHitQueue = 16;
+    static constexpr float kDrumTrim = 0.75f;
 
     /** GM drum notes, for MIDI out (channel 10). */
     static constexpr uint8_t kDrumMidi[kDrumVoices] = {36, 38, 45, 50, 49, 46, 42};

@@ -732,7 +732,7 @@ class Ui
         else if(NoteEntry())
             f.chompi = {.6f, 0.f, .5f};
         else if(mode_ == Mode::STEP)
-            f.chompi = {.5f, 0.f, 0.f};
+            f.chompi = Scale(kBassColour, .5f); // the bass's side: purple
         else
             f.chompi = m_->ArpOn() ? Rgb{0.f, .5f, .35f} : Rgb{0.f, .15f, .5f}; // teal = arp on
         if(drums_)
@@ -782,7 +782,7 @@ class Ui
         {
             const float k = 1.f - (now - swapped_at_) / static_cast<float>(kSwapFlashMs);
             for(int i = 0; i < kKeyNotes; i++)
-                f.key[i] = Scale(drums_ ? kDrumColour : kRed, k);
+                f.key[i] = Scale(drums_ ? kDrumColour : kBassColour, k);
         }
     }
 
@@ -1394,6 +1394,7 @@ class Ui
     static constexpr Rgb kQuantizeColour     = {0.f, .5f, 1.f};   // blue
     static constexpr Rgb kRollColour         = {0.f, 1.f, .3f};   // drum rolls: green
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
+    static constexpr Rgb kBassColour         = {.55f, 0.f, 1.f};  // the bass's side: purple
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
     static constexpr Rgb kProtectColour      = {1.f, 0.f, 1.f};   // write protect on, side A: magenta
     static constexpr Rgb kUnprotectColour    = {.25f, .65f, 1.f}; // write protect off, side A: light blue
@@ -1632,11 +1633,11 @@ class Ui
         chompi_taps_  = 0;
     }
 
-    /** Step mode's LOOP: the side shown, red (the bass) or amber (the
+    /** Step mode's LOOP: the side shown, purple (the bass) or amber (the
      *  drums), dim; blinking slowly while that side is muted. */
     Rgb StepLoopLed(uint32_t now) const
     {
-        const Rgb c = drums_ ? kDrumColour : kRed;
+        const Rgb c = drums_ ? kDrumColour : kBassColour;
         if(m_->SideMuted(drums_))
             return Scale(c, (now / 400) % 2 ? 0.5f : 0.f);
         return Scale(c, 0.3f);
@@ -2279,12 +2280,12 @@ class Ui
             }
             else if(sel == MIX || sel == MIX_MUTE)
             {
-                // The balance: amber (all drums) .. white .. red (all bass);
-                // CHOMPI: amber (bass muted) / white / red (drums muted).
+                // The balance: amber (all drums) .. pink (both) .. purple (all
+                // bass); CHOMPI: amber (bass muted) / pink / purple (drums muted).
                 static constexpr float kMuteShown[4] = {0.5f, 0.f, 1.f, 0.5f}; // none, bass, drums, both
                 const int   mutes = StepIndex(m_->settings.params[MIX_MUTE], 4);
                 const float m     = sel == MIX ? m_->settings.params[MIX] : kMuteShown[mutes];
-                const Rgb drums = kDrumColour, bass = {1.f, 0.f, 0.f}, mid = {1.f, 1.f, 1.f};
+                const Rgb drums = kDrumColour, bass = kBassColour, mid = {1.f, .35f, .45f};
                 const float k   = m < 0.5f ? m * 2.f : (m - 0.5f) * 2.f;
                 const Rgb   a   = m < 0.5f ? drums : mid, b = m < 0.5f ? mid : bass;
                 c = {a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k};
@@ -2404,6 +2405,7 @@ constexpr Rgb Ui::kClearColour;
 constexpr Rgb Ui::kUnprotectColour;
 constexpr Rgb Ui::kQuantizedColour;
 constexpr Rgb Ui::kDrumColour;
+constexpr Rgb Ui::kBassColour;
 constexpr Rgb Ui::kRollColour;
 constexpr Rgb Ui::kQuantizeColour;
 constexpr Rgb Ui::kLatchColour;

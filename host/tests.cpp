@@ -3037,7 +3037,9 @@ static void TestLoopSidesAndMutes()
     r.ui.Chompi(true), r.ui.Loop(r.now), r.Run(60), r.ui.Chompi(false);
     CHECK(!r.m.SideMuted(false) && r.m.SideMuted(true));
     r.Run(500), r.ui.Draw(f, r.now);
-    CHECK(f.loop.r > 0.2f && f.loop.g == 0.f); // the bass's side: steady red
+    CHECK(f.loop.b > 0.2f && f.loop.b > f.loop.r && f.loop.g == 0.f); // the bass's side: steady purple
+    r.ui.Draw(f, r.now);
+    CHECK(f.chompi.b > f.chompi.r && f.chompi.g == 0.f); // CHOMPI too
     // Live mode: LOOP still records, CHOMPI + LOOP the arpeggiator's latch.
     r.ui.SetMode(Ui::Mode::PITCH);
     r.ui.Loop(r.now);
@@ -3298,8 +3300,9 @@ static void TestEngineBalance()
     };
     const double drums = loud({}, true);
     const double bass  = loud({{RESONANCE, 0.8f}, {ENV_MOD, 0.6f}}, false);
-    printf("  (resonance 0.8: bass %.1f dB, drums %.1f dB)\n", bass, drums);
-    CHECK(fabs(bass - drums) < 3.0); // about equal with resonance up
+    const double plain = loud({}, false);
+    printf("  (bass: resonance 0.8 %.1f dB, defaults %.1f dB; drums %.1f dB)\n", bass, plain, drums);
+    CHECK(fabs(bass - drums) < 1.5 && fabs(plain - drums) < 3.0); // about equal
     // The drives change the tone, not (much) the loudness.
     const double b0 = loud({{RESONANCE, 1.f}, {ENV_MOD, 0.7f}}, false);
     for(float d : {0.2f, 0.5f, 1.f})

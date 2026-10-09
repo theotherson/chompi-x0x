@@ -15,9 +15,9 @@ PLAY runs and stops the pattern in both.
 
 ## Bass and drums: LOOP in step mode, or double-tap CHOMPI
 
-In step mode, **LOOP** swaps the panel between the bass and the drums, and **CHOMPI + LOOP** mutes or unmutes the side you're on (the bass or the drums, effects and all). LOOP lights dim in that side's colour, and blinks slowly while it's muted. Both sides can be muted at once. The mutes are the same as the mix page's (volume knob, page 3, with CHOMPI) and are saved with your settings. Tap tempo is on the purple knob's click.
+In step mode, **LOOP** swaps the panel between the bass and the drums, and **CHOMPI + LOOP** mutes or unmutes the side you're on (the bass or the drums, effects and all). LOOP lights dim in that side's colour (purple for the bass, amber for the drums), and blinks slowly while it's muted. Both sides can be muted at once. The mutes are the same as the mix page's (volume knob, page 3, with CHOMPI) and are saved with your settings. Tap tempo is on the purple knob's click.
 
-In either mode, tap CHOMPI twice quickly (each tap short, nothing else touched in between) to swap the panel between the bass and the drums. Both always play; the swap only picks which one the keys and knobs edit. The keybed flashes the new side's colour (red for the bass, amber for the drums), and the CHOMPI light stays amber while you're on the drums. A shift combination never counts, however fast: a press only counts as a tap if no key, knob or button was used during it.
+In either mode, tap CHOMPI twice quickly (each tap short, nothing else touched in between) to swap the panel between the bass and the drums. Both always play; the swap only picks which one the keys and knobs edit. The keybed flashes the new side's colour (purple for the bass, amber for the drums), and the CHOMPI light stays amber while you're on the drums. A shift combination never counts, however fast: a press only counts as a tap if no key, knob or button was used during it.
 
 ## The drums (TR-606)
 
@@ -126,7 +126,7 @@ Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has 
 | Knob 4, page 4 | Bit depth (green) | Sample-rate reduction (red) | | |
 | Big purple | Cutoff (purple) | Resonance (red) | | |
 | Volume | Volume (white) | Drive (light orange to red) | Tempo, 40-240 (1 BPM a click turned slowly; yellow, flashing the beat) | Swing (pink) |
-| Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through white to red (bass) | Mute the bass (left) / neither (middle) / the drums (right): amber, white or red. With both muted (CHOMPI + LOOP can do that) it's dim, and a turn goes from the middle |
+| Volume, page 3 | **Mix**: centre both at full; left fades the bass out (full left: drums only), right fades the drums out (full right: bass only). Lit amber (drums) through pink to purple (bass) | Mute the bass (left) / neither (middle) / the drums (right): amber, pink or purple. With both muted (CHOMPI + LOOP can do that) it's dim, and a turn goes from the middle |
 | Volume, page 4 | **Compressor** on the whole mix, after every effect: off to heavy (threshold down and ratio up together, about 1.5:1 to 8:1, soft knee, automatic make-up gain; about 8 ms attack, 120 ms release). Teal, dimming as it compresses | **Sidechain** from the kick: each BD hit ducks the bass, the delay echoes and the reverb (not the drums) by up to about 20 dB, recovering by the next beat. Red, pulsing with each duck |
 
 The two lights above the big purple knob show cutoff (resonance with CHOMPI held). While the pattern plays they flash yellow instead, on the eighth notes, alternating sides: left on step 1, right on step 3, left on step 5, and so on; the side of the current eighth flashes red when a note is recorded. For a moment after you turn the knob they show its value again. PLAY is steady green while running, and the CHOMPI button's light flashes brighter on each step that plays a note (brightest on the beat); the transpose mode key (C#4) is dim yellow, the transpose amount bright yellow.
