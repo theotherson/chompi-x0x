@@ -2029,6 +2029,22 @@ static void TestDrumPanel()
     r.Run(400); // past the swap's flash
     r.ui.Draw(f, r.now);
     CHECK(f.key[Ui::kBlack[0]].r > 0.5f && f.key[Ui::kBlack[1]].r < 0.3f);
+    // The step lights: the page's voice in its colour, other voices dim
+    // grey; the accent page, the accents blue. (BD on 1, 5, 11, 13; SD
+    // cleared above; OH / CH on 3.)
+    r.Black(0); // the BD page
+    r.ui.Draw(f, r.now);
+    const Rgb bd = f.key[Ui::kWhite[0]], other = f.key[Ui::kWhite[2]];
+    CHECK(bd.r > 0.5f && bd.g < 0.2f && bd.b < 0.2f);                         // red
+    CHECK(other.r > 0.f && other.r < 0.1f && other.r == other.g && other.g == other.b); // dim grey
+    r.Black(5); // the accent page; accent step 5
+    r.White(4);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[4]].b > 0.5f && f.key[Ui::kWhite[4]].r < 0.1f);     // blue
+    CHECK(f.key[Ui::kWhite[0]].r < 0.1f);                                       // a plain hit: dim
+    r.White(4);
+    r.Black(0);
+
     // CLEAR held 1 s: the whole drum part.
     r.ui.KeyDown(Ui::kKeyClear, r.now);
     r.Run(1100);

@@ -791,13 +791,22 @@ class Ui
                     const float   past = step >= pat.drum_length ? 0.3f : 1.f;
                     Rgb           c;
                     if(drum_acc_page_)
-                        c = (b & kDrumAccent) ? Scale(kDrumAccentCol, past) : (b & 0x7f) ? Rgb{.05f, .05f, .05f} : Rgb{};
+                    {
+                        // The accent page: accented steps blue, other hits dim.
+                        if(b & kDrumAccent)
+                            c = Scale(kDrumAccentCol, past);
+                        else if(b & 0x7f)
+                            c = {.05f, .05f, .05f};
+                    }
                     else if((b >> drum_sel_) & 1)
+                    {
+                        // This voice's hits in its colour; accented ones tinted blue.
                         c = Scale(kDrumCol[drum_sel_], past);
-                    if(!drum_acc_page_ && ((b >> drum_sel_) & 1) && (b & kDrumAccent))
-                        c = {c.r * 0.6f, c.g * 0.6f, Clamp(c.b * 0.6f + 0.5f * past, 0.f, 1.f)}; // accented: a blue tint
+                        if(b & kDrumAccent)
+                            c = {c.r * 0.6f, c.g * 0.6f, Clamp(c.b * 0.6f + 0.5f * past, 0.f, 1.f)};
+                    }
                     else if(b & 0x7f)
-                        c = {.05f, .05f, .05f};
+                        c = {.05f, .05f, .05f}; // other voices' hits, dim
                     if(lit && ds == step)
                         c = {1.f, 1.f, 1.f};
                     return c;
