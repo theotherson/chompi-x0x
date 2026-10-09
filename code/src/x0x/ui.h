@@ -824,6 +824,7 @@ class Ui
             if(knob == 0)
             {
                 def(pv), def(DRUM_PAN + drum_sel_), def(DRUM_ACCENT);
+                def(DRUM_LFO_SHAPE), def(DRUM_LFO_RATE), def(DRUM_LFO_TARGET + drum_sel_), def(DRUM_LFO_DEPTH + drum_sel_);
                 m_->SetDrumLength(kSteps);
                 drum_len_shown_at_ = last_tick_;
             }
@@ -972,7 +973,16 @@ class Ui
         // yet; the purple one tempo (flashing the beat) or swing.
         const Rgb   vc = kDrumCol[drum_sel_];
         const int   pv = DRUM_PARAMS + 3 * drum_sel_;
-        if(drum_knob1_page_ == 1) // the accent (blue); CHOMPI, the length (white)
+        const bool lfo_on = StepIndex(p[DRUM_LFO_SHAPE], kLfoShapes) > 0;
+        const int  target = StepIndex(p[DRUM_LFO_TARGET + drum_sel_], kLfoTargets);
+        if(drum_knob1_page_ == 2) // the LFO (green, moving with it); CHOMPI, its rate (white)
+            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_LFO_RATE])
+                                : Scale(Rgb{0.f, 1.f, .6f}, lfo_on ? 0.3f + 0.7f * (0.5f + 0.5f * m_->DrumLfo()) : 0.15f);
+        else if(drum_knob1_page_ == 3) // the voice's target (its colour, moving with the LFO); CHOMPI, the depth (white)
+            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_LFO_DEPTH + drum_sel_])
+                                : Scale(vc, target == LFO_OFF ? 0.1f
+                                                              : lfo_on ? 0.3f + 0.7f * (0.5f + 0.5f * m_->DrumLfo()) : 0.5f);
+        else if(drum_knob1_page_ == 1) // the accent (blue); CHOMPI, the length (white)
             f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * pat.drum_length / static_cast<float>(kSteps))
                                 : Scale(kDrumAccentCol, 0.2f + 0.8f * p[DRUM_ACCENT]);
         else // the level, in the voice's colour; CHOMPI, its pan (white, brighter off centre)
@@ -994,16 +1004,13 @@ class Ui
             f.knob[2] = Scale(vc, 0.2f + 0.8f * p[pv + 2]);
         {
             // Knob 4: the effects page's colour; CHOMPI, its second control's.
-            static constexpr Rgb kFxCol[4][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},  // reverb | size
-                                                 {{0.f, .9f, 1.f}, {1.f, 1.f, 1.f}},  // delay send | time
-                                                 {{.3f, 1.f, 0.f}, {1.f, .15f, 0.f}}, // crush | rate
-                                                 {{0.f, 1.f, .6f}, {1.f, 1.f, 1.f}}}; // LFO | its rate
-            static constexpr int kFxP[4][2] = {{DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME},
-                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_LFO_SHAPE, DRUM_LFO_RATE}};
-            const int q = kFxP[drum_knob4_page_][chompi_ ? 1 : 0];
-            float     v = p[q];
-            if(q == DRUM_LFO_SHAPE) // the LFO: dim off, otherwise moving with it
-                v = StepIndex(v, kLfoShapes) == 0 ? 0.f : 0.5f + 0.5f * m_->DrumLfo();
+            static constexpr Rgb kFxCol[3][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},   // reverb | size
+                                                 {{0.f, .9f, 1.f}, {1.f, 1.f, 1.f}},   // delay send | time
+                                                 {{.3f, 1.f, 0.f}, {1.f, .15f, 0.f}}}; // crush | rate
+            static constexpr int kFxP[3][2] = {
+                {DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME}, {DRUM_CRUSH, DRUM_CRUSH_RATE}};
+            const int   q = kFxP[drum_knob4_page_][chompi_ ? 1 : 0];
+            const float v = p[q];
             f.knob[3] = Scale(kFxCol[drum_knob4_page_][chompi_ ? 1 : 0], 0.2f + 0.8f * v);
         }
         if(now - delay_shown_at_ < kShowValueMs)
@@ -1019,12 +1026,15 @@ class Ui
         if(now - lfo_shown_at_ < kShowValueMs)
         {
             // After turning the LFO: white keys 1-5 its shape (1 = off),
-            // or 1-11 its rate, slow to fast.
-            const bool rate  = lfo_shown_ == DRUM_LFO_RATE;
-            const int  steps = rate ? kLfoRates : kLfoShapes;
-            const int  sel   = StepIndex(p[lfo_shown_], steps);
+            // 1-11 its rate, slow to fast, or 1-7 a voice's target (off,
+            // level, pan, tuning, filter, FM, decay) in its colour.
+            const bool rate   = lfo_shown_ == DRUM_LFO_RATE;
+            const bool target = lfo_shown_ >= DRUM_LFO_TARGET && lfo_shown_ < DRUM_LFO_TARGET + kDrumVoices;
+            const int  steps  = rate ? kLfoRates : target ? kLfoTargets : kLfoShapes;
+            const Rgb  col    = rate ? Rgb{1.f, 1.f, 1.f} : target ? kDrumCol[lfo_shown_ - DRUM_LFO_TARGET] : Rgb{0.f, 1.f, .6f};
+            const int  sel    = StepIndex(p[lfo_shown_], steps);
             for(int i = 0; i < kWhiteKeys; i++)
-                f.key[kWhite[i]] = i < steps ? Scale(rate ? Rgb{1.f, 1.f, 1.f} : Rgb{0.f, 1.f, .6f}, i == sel ? 1.f : 0.06f) : Rgb{};
+                f.key[kWhite[i]] = i < steps ? Scale(col, i == sel ? 1.f : 0.06f) : Rgb{};
         }
         // The purple knob's two lights: the swing with CHOMPI held; otherwise
         // the tempo, in eighth notes alternating left and right, as on the
@@ -1331,7 +1341,26 @@ class Ui
         {
             case 0:
                 // Knob 1: the voice's level (CHOMPI: its pan); page 2 the
-                // accent level (CHOMPI: the drum part's length).
+                // accent level (CHOMPI: the drum part's length); page 3 the
+                // LFO's shape (CHOMPI: its rate); page 4 what it moves on
+                // this voice (CHOMPI: how far). Steps shown on the white keys.
+                if(drum_knob1_page_ >= 2)
+                {
+                    int q, steps;
+                    if(drum_knob1_page_ == 2)
+                        q = chompi_ ? DRUM_LFO_RATE : DRUM_LFO_SHAPE, steps = chompi_ ? kLfoRates : kLfoShapes;
+                    else if(chompi_)
+                    {
+                        m_->SetParam(DRUM_LFO_DEPTH + drum_sel_, p[DRUM_LFO_DEPTH + drum_sel_] + inc * step);
+                        return;
+                    }
+                    else
+                        q = DRUM_LFO_TARGET + drum_sel_, steps = kLfoTargets;
+                    m_->SetParam(q, StepValue(StepIndex(p[q], steps) + (inc > 0 ? 1 : -1), steps));
+                    lfo_shown_    = q;
+                    lfo_shown_at_ = last_tick_;
+                    return;
+                }
                 if(drum_knob1_page_ == 1)
                 {
                     if(chompi_)
@@ -1383,21 +1412,10 @@ class Ui
                 break;
             case 3:
             {
-                // Knob 4: the drums' effects, four pages.
-                static constexpr int kFx[4][2] = {{DRUM_REVERB, REVERB_SIZE},
-                                                  {DRUM_DELAY, DELAY_TIME},
-                                                  {DRUM_CRUSH, DRUM_CRUSH_RATE},
-                                                  {DRUM_LFO_SHAPE, DRUM_LFO_RATE}};
+                // Knob 4: the drums' effects, three pages.
+                static constexpr int kFx[3][2] = {
+                    {DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME}, {DRUM_CRUSH, DRUM_CRUSH_RATE}};
                 param = kFx[drum_knob4_page_][chompi_ ? 1 : 0];
-                if(param == DRUM_LFO_SHAPE || param == DRUM_LFO_RATE)
-                {
-                    // The filter's LFO: a step a click, shown on the white keys.
-                    const int steps = param == DRUM_LFO_SHAPE ? kLfoShapes : kLfoRates;
-                    m_->SetParam(param, StepValue(StepIndex(p[param], steps) + (inc > 0 ? 1 : -1), steps));
-                    lfo_shown_    = param;
-                    lfo_shown_at_ = last_tick_;
-                    return;
-                }
                 if(param == DELAY_TIME)
                 {
                     // The shared delay's synced time, as on the bass side.
@@ -1423,9 +1441,9 @@ class Ui
         if(!chompi_)
         {
             if(knob == 0)
-                drum_knob1_page_ ^= 1;
+                drum_knob1_page_ = (drum_knob1_page_ + 1) % 4;
             else if(knob == 3)
-                drum_knob4_page_ = (drum_knob4_page_ + 1) % 4;
+                drum_knob4_page_ = (drum_knob4_page_ + 1) % 3;
             else if(knob == 1)
                 drum_knob2_page_ ^= 1;
             else if(knob == 2)
@@ -1436,14 +1454,20 @@ class Ui
         {
             // CHOMPI + click on knob 4: all the drums' effects back to their
             // defaults (the shared delay's time stays).
-            static constexpr int kDrumFx[7] = {DRUM_REVERB,     REVERB_SIZE,    DRUM_DELAY,   DRUM_CRUSH,
-                                               DRUM_CRUSH_RATE, DRUM_LFO_SHAPE, DRUM_LFO_RATE};
+            static constexpr int kDrumFx[5] = {DRUM_REVERB, REVERB_SIZE, DRUM_DELAY, DRUM_CRUSH, DRUM_CRUSH_RATE};
             for(int q : kDrumFx)
                 m_->SetParam(static_cast<Param>(q), kParams[q].def);
             return;
         }
         // CHOMPI + click: back to defaults.
-        if(knob == 0 && drum_knob1_page_ == 1)
+        if(knob == 0 && drum_knob1_page_ >= 2)
+        {
+            const int a = drum_knob1_page_ == 2 ? DRUM_LFO_SHAPE : DRUM_LFO_TARGET + drum_sel_;
+            const int b = drum_knob1_page_ == 2 ? DRUM_LFO_RATE : DRUM_LFO_DEPTH + drum_sel_;
+            m_->SetParam(static_cast<Param>(a), kParams[a].def);
+            m_->SetParam(static_cast<Param>(b), kParams[b].def);
+        }
+        else if(knob == 0 && drum_knob1_page_ == 1)
         {
             m_->SetParam(DRUM_ACCENT, kParams[DRUM_ACCENT].def);
             m_->SetDrumLength(kSteps);
@@ -2434,8 +2458,8 @@ class Ui
     int      voice_key_voice_       = 0;
     uint32_t solo_at_               = 0x80000000u;
     bool     drum_acc_page_         = false; // step mode: the accent page
-    int      drum_knob1_page_       = 0;
-    int      drum_knob4_page_       = 0;     // reverb, delay, crush, the filter's LFO
+    int      drum_knob1_page_       = 0;     // level / pan, accent / length, the LFO, its target / depth
+    int      drum_knob4_page_       = 0;     // reverb, delay, crush
     int      drum_knob2_page_       = 0;     // attack, the filter
     int      drum_knob3_page_       = 0;     // decay, the filter's envelope
     int      lfo_shown_             = DRUM_LFO_SHAPE;

@@ -75,7 +75,10 @@ enum Param : uint8_t
     DRUM_TUNE,
     DRUM_FM = DRUM_TUNE + 7,
     DRUM_PAN = DRUM_FM + 7, // each voice's pan (CHOMPI + knob 1), centre 0.5
-    NUM_PARAMS = DRUM_PAN + 7
+    // Each voice's LFO target (kLfoTargets) and depth (knob 1, page 4).
+    DRUM_LFO_TARGET = DRUM_PAN + 7,
+    DRUM_LFO_DEPTH  = DRUM_LFO_TARGET + 7,
+    NUM_PARAMS      = DRUM_LFO_DEPTH + 7
 };
 
 struct ParamInfo
@@ -166,6 +169,10 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"cy_fm", 0.f, 0, 0}, {"oh_fm", 0.f, 0, 0}, {"ch_fm", 0.f, 0, 0},
     {"bd_pan", .5f, 0, 0}, {"sd_pan", .5f, 0, 0}, {"lt_pan", .5f, 0, 0}, {"ht_pan", .5f, 0, 0},
     {"cy_pan", .5f, 0, 0}, {"oh_pan", .5f, 0, 0}, {"ch_pan", .5f, 0, 0},
+    {"bd_lfo", 0.f, 7, 0}, {"sd_lfo", 0.f, 7, 0}, {"lt_lfo", 0.f, 7, 0}, {"ht_lfo", 0.f, 7, 0},
+    {"cy_lfo", 0.f, 7, 0}, {"oh_lfo", 0.f, 7, 0}, {"ch_lfo", 0.f, 7, 0},
+    {"bd_lfo_depth", .5f, 0, 0}, {"sd_lfo_depth", .5f, 0, 0}, {"lt_lfo_depth", .5f, 0, 0}, {"ht_lfo_depth", .5f, 0, 0},
+    {"cy_lfo_depth", .5f, 0, 0}, {"oh_lfo_depth", .5f, 0, 0}, {"ch_lfo_depth", .5f, 0, 0},
 };
 // clang-format on
 

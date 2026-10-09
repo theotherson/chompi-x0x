@@ -41,7 +41,19 @@ constexpr float kDelayBeats[kDelayDivisions] = {1.f / 6, 0.25f, 1.f / 3, 0.5f, 2
 constexpr int   kLfoShapes = 5;
 constexpr int   kLfoRates  = 11;
 constexpr float kLfoBeats[kLfoRates] = {16.f, 8.f, 4.f, 2.f, 1.f, 2.f / 3, 0.5f, 1.f / 3, 0.25f, 1.f / 6, 0.125f};
-constexpr float kLfoOctaves = 2.f; // its depth: the cutoff moves +-2 octaves
+/** What the LFO moves on a voice: nothing, its level, pan, tuning, its own
+ *  filter, feedback FM or decay. */
+enum LfoTarget
+{
+    LFO_OFF,
+    LFO_LEVEL,
+    LFO_PAN,
+    LFO_TUNE,
+    LFO_FILTER,
+    LFO_FM,
+    LFO_DECAY,
+    kLfoTargets
+};
 
 /** The LFO's value (-1..1) at phase 0..1; `held` for sample and hold. */
 inline float LfoValue(int shape, float phase, float held)
@@ -581,8 +593,7 @@ class DrumFx
         trig_depth_ = depth;
     }
 
-    /** mod: if given, the LFO, in octaves, for each sample. */
-    void Process(float* x, size_t n, const float* mod = nullptr)
+    void Process(float* x, size_t n)
     {
         // Distortion, as the bass's drive: a treble lift into a nearly hard
         // clip, then a tone low-pass (8 to 6 kHz).
@@ -606,7 +617,7 @@ class DrumFx
         // high-pass down) by up to 6 octaves, then falls back, 10 ms to 1 s.
         const float env_oct = 6.f * Clamp(s_.env_amount, 0.f, 1.f) * (lp ? 1.f : -1.f);
         const float env_k   = TauToCoef(0.01f * FastExp2(6.64f * Clamp(s_.env_decay, 0.f, 1.f)), sr_);
-        const bool  env_on  = (lp || hp) && (s_.env_amount > 0.005f || mod);
+        const bool  env_on  = (lp || hp) && s_.env_amount > 0.005f;
         const bool  crush = s_.crush_bits > 0.005f;
         const float levels = FastExp2(15.f - 12.f * s_.crush_bits);
         const int   hold   = 1 + static_cast<int>(31.f * s_.crush_rate * s_.crush_rate);
@@ -618,7 +629,7 @@ class DrumFx
             if(env_on && (i & 3) == 0)
             {
                 // The cutoff, moved: every 4 samples.
-                const float hz_e = Clamp(hz * FastExp2(env_oct * env_ + (mod ? mod[i] : 0.f)), 20.f, 0.45f * sr_);
+                const float hz_e = Clamp(hz * FastExp2(env_oct * env_), 20.f, 0.45f * sr_);
                 const float ge   = tanf(kPi * hz_e / sr_);
                 a1 = 1.f / (1.f + ge * (ge + kq)), a2 = ge * a1, a3 = ge * a2;
             }

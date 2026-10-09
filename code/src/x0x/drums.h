@@ -50,6 +50,42 @@ struct DrumParams
     float fm     = 0.f;  // feedback FM: the voice's pitch pushed by its own output
 };
 
+/** The drums' LFO on one voice, set once a block (Drums::SetMod): its
+ *  level and pitch scaled, its pan and FM moved, its own low-pass closed
+ *  (octaves below fully open; 0 = off). Neutral by default. */
+struct VoiceMod
+{
+    float level  = 1.f;
+    float pan    = 0.f;
+    float pitch  = 1.f;
+    float fm     = 0.f;
+    float cutoff = 0.f;
+};
+
+/** A 2-pole low-pass (state-variable, trapezoidal), for a voice's own
+ *  filter; its coefficients set once a block. */
+class VoiceLowPass
+{
+  public:
+    void Set(float hz, float sr)
+    {
+        const float g = tanf(kPi * Clamp(hz, 30.f, 0.45f * sr) / sr);
+        a1_ = 1.f / (1.f + g * (g + kK)), a2_ = g * a1_, a3_ = g * a2_;
+    }
+    float Process(float x)
+    {
+        const float v3 = x - ic2_;
+        const float v1 = a1_ * ic1_ + a2_ * v3, v2 = ic2_ + a2_ * ic1_ + a3_ * v3;
+        ic1_ = 2.f * v1 - ic1_, ic2_ = 2.f * v2 - ic2_;
+        return v2;
+    }
+    void Reset() { ic1_ = ic2_ = 0.f; }
+
+  private:
+    static constexpr float kK = 1.2f; // 1 / Q: a touch of a peak
+    float a1_ = 1.f, a2_ = 0.f, a3_ = 0.f, ic1_ = 0.f, ic2_ = 0.f;
+};
+
 /** A resonator, pinged: a two-pole filter whose impulse response is a
  *  decaying sine of amplitude `amp` (the 606's twin-T, rung by a pulse). */
 class Resonator
@@ -147,6 +183,7 @@ class Drums
     }
 
     DrumParams& Params(Drum d) { return params_[d]; }
+    void        SetMod(Drum d, const VoiceMod& m) { mod_[d] = m; }
 
     /** A hit; accent 0 (none) .. 1 (full, at the accent knob's level);
      *  semitones: played pitched (the live keyboard), 0 = as the 606. */
@@ -155,7 +192,8 @@ class Drums
         const DrumParams& p  = params_[d];
         const float       st = semitones + 48.f * (Clamp(p.tune, 0.f, 1.f) - 0.5f); // +-24 from the knob
         const float       pr = fabsf(st) > 0.01f ? FastExp2(st / 12.f) : 1.f;
-        const float       fm = 3.f * p.fm * p.fm; // feedback FM depth
+        const float       mp = pr * mod_[d].pitch; // with the LFO's
+        applied_pitch_[d]   = mod_[d].pitch;
         // Accent raises the trigger voltage: up to 3x as loud (the service
         // notes: 2 Vp-p at accent minimum, 6 at maximum), the shape the same
         // (plain and accented hits of one 606 decay alike).
@@ -166,48 +204,47 @@ class Drums
         switch(d)
         {
             case BD:
-                bd_body_.Set(60.f * pr, 0.040f * dk, sr_);
-                bd_knock_.Set(124.f * pr, 0.007f * dk, sr_);
+                bd_pr_ = pr;
+                bd_body_.Set(60.f * mp, 0.040f * dk, sr_);
+                bd_knock_.Set(124.f * mp, 0.007f * dk, sr_);
                 bd_body_.Ping(hit);
                 bd_knock_.Ping(0.3f * hit);
                 bd_click_ = 0.35f * ck * hit;
-                bd_fm_    = fm;
                 break;
             case SD:
-                sd_tone_.Set(212.f * pr, 0.024f * dk, sr_);
+                sd_pr_ = pr;
+                sd_tone_.Set(212.f * mp, 0.024f * dk, sr_);
                 sd_tone_.Ping(0.55f * hit);
                 sd_noise_env_ = hit;
                 sd_noise_tau_ = 0.033f * dk;
                 sd_click_     = 0.4f * ck * hit;
-                sd_fm_        = fm;
                 break;
             case LT:
-                lt_.Set(176.f * pr, 0.047f * dk, sr_);
+                lt_.Set(176.f * mp, 0.047f * dk, sr_);
                 lt_.Ping(hit);
                 lt_glide_ = 1.f;
                 lt_pitch_ = pr;
                 tom_click_ = 0.3f * ck * hit;
                 click_lt_  = true;
                 tom_noise_ = 0.06f * hit;
-                lt_fm_     = fm;
                 break;
             case HT:
-                ht_.Set(208.f * pr, 0.035f * dk, sr_);
+                ht_pr_ = pr;
+                ht_.Set(208.f * mp, 0.035f * dk, sr_);
                 ht_.Ping(hit);
                 tom_click_ = 0.3f * ck * hit;
                 click_lt_  = false;
                 tom_noise_ = 0.06f * hit;
-                ht_fm_     = fm;
                 break;
             case CY:
-                metal_pitch_ = pr, metal_fm_ = fm;
+                metal_pitch_ = pr, metal_voice_ = d;
                 cy_env_fast_ = 0.78f * hit, cy_env_slow_ = 0.22f * hit;
                 cy_time_     = 0.f;
                 cy_tau_      = mk;
                 cy_click_    = 0.3f * ck * hit;
                 break;
             case OH:
-                metal_pitch_ = pr, metal_fm_ = fm;
+                metal_pitch_ = pr, metal_voice_ = d;
                 oh_env_   = hit;
                 oh_tau_   = 0.25f * mk;
                 oh_time_  = 0.f;
@@ -215,7 +252,7 @@ class Drums
                 click_oh_  = true;
                 break;
             case CH:
-                metal_pitch_ = pr, metal_fm_ = fm;
+                metal_pitch_ = pr, metal_voice_ = d;
                 oh_env_    = 0.f; // the choke: a closed hat cuts the open one
                 ch_env_    = hit;
                 ch_tau_    = 0.017f * mk;
@@ -256,12 +293,40 @@ class Drums
         const uint8_t sm      = send_mask_;
         const bool    in[NUM_DRUMS] = {(sm & 1) != 0, (sm & 2) != 0, (sm & 4) != 0, (sm & 8) != 0,
                                        (sm & 16) != 0, (sm & 32) != 0, (sm & 64) != 0};
-        const float lv[NUM_DRUMS] = {
-            Level(BD), Level(SD), Level(LT), Level(HT), Level(CY), Level(OH), Level(CH)};
+        const float lv[NUM_DRUMS] = {Level(BD) * mod_[BD].level, Level(SD) * mod_[SD].level, Level(LT) * mod_[LT].level,
+                                     Level(HT) * mod_[HT].level, Level(CY) * mod_[CY].level, Level(OH) * mod_[OH].level,
+                                     Level(CH) * mod_[CH].level};
+        // The LFO's pitch on voices still ringing (the resonators retuned);
+        // FM from the knob and the LFO; each voice's own filter.
+        if(mod_[BD].pitch != applied_pitch_[BD])
+            bd_body_.Retune(60.f * bd_pr_ * mod_[BD].pitch, sr_), bd_knock_.Retune(124.f * bd_pr_ * mod_[BD].pitch, sr_);
+        if(mod_[SD].pitch != applied_pitch_[SD])
+            sd_tone_.Retune(212.f * sd_pr_ * mod_[SD].pitch, sr_);
+        if(mod_[HT].pitch != applied_pitch_[HT])
+            ht_.Retune(208.f * ht_pr_ * mod_[HT].pitch, sr_);
+        if(mod_[LT].pitch != applied_pitch_[LT] && lt_glide_ <= 0.001f)
+            lt_.Retune(153.f * lt_pitch_ * mod_[LT].pitch, sr_);
+        for(int v = 0; v < NUM_DRUMS; v++)
+            applied_pitch_[v] = mod_[v].pitch;
+        auto fm_of = [&](int v) {
+            const float f = Clamp(params_[v].fm + mod_[v].fm, 0.f, 1.f);
+            return 3.f * f * f; // feedback FM depth
+        };
+        bd_fm_ = fm_of(BD), sd_fm_ = fm_of(SD), lt_fm_ = fm_of(LT), ht_fm_ = fm_of(HT), metal_fm_ = fm_of(metal_voice_);
+        const float metal_lfo = mod_[metal_voice_].pitch;
+        bool        filt[NUM_DRUMS], any_filt = false;
+        for(int v = 0; v < NUM_DRUMS; v++)
+        {
+            filt[v] = mod_[v].cutoff < -0.01f;
+            if(filt[v])
+                vlp_[v].Set(20000.f * FastExp2(mod_[v].cutoff), sr_), any_filt = true;
+            else
+                vlp_[v].Reset();
+        }
         float gl[NUM_DRUMS], gr[NUM_DRUMS];
         for(int v = 0; v < NUM_DRUMS; v++)
         {
-            const float pan = Clamp(params_[v].pan, 0.f, 1.f);
+            const float pan = Clamp(params_[v].pan + mod_[v].pan, 0.f, 1.f);
             if(fabsf(pan - 0.5f) < 0.002f)
                 gl[v] = gr[v] = 1.f;
             else
@@ -298,7 +363,7 @@ class Drums
             {
                 lt_glide_ -= lt_glide_ * glide_k;
                 if((i & 15) == 0)
-                    lt_.Retune((153.f + 23.f * lt_glide_) * lt_pitch_, sr_);
+                    lt_.Retune((153.f + 23.f * lt_glide_) * lt_pitch_ * mod_[LT].pitch, sr_);
             }
             // The toms' shared noise: a short, low-passed burst.
             tom_lp_.Process(noise * tom_noise_);
@@ -307,8 +372,6 @@ class Drums
             tom_click_ -= tom_click_ * click_k;
             const float lt_r = lt_fm_ > 0.f ? lt_.ProcessFm(lt_fm_) : lt_.Process();
             const float ht_r = ht_fm_ > 0.f ? ht_.ProcessFm(ht_fm_) : ht_.Process();
-            // The send: the click and noise with the last tom, if it's in.
-            const float t_send = in[click_lt_ ? LT : HT] ? tclick * (lv[LT] + lv[HT]) : 0.f;
 
             // The metal: six squares, band-limited (PolyBLEP).
             // Feedback FM: their pitch pushed by their own last output.
@@ -316,7 +379,7 @@ class Drums
             float       metal     = 0.f;
             for(int k = 0; k < 6; k++)
             {
-                const float inc = kMetalHz[k] * metal_pitch_ * metal_mod / sr_;
+                const float inc = kMetalHz[k] * metal_pitch_ * metal_lfo * metal_mod / sr_;
                 float&      ph  = metal_ph_[k];
                 ph += inc;
                 if(ph >= 1.f)
@@ -346,7 +409,6 @@ class Drums
             hat_hp_s_.Process(hat_bp_.Band() * lv[CH] * ch_env_ + (click_oh_ ? 0.f : hclick));
             hat_hp2_s_.Process(hat_hp_s_.High());
             const float oh       = hat_hp2_.High(), ch = hat_hp2_s_.High();
-            const float hat_send = (in[OH] ? oh : 0.f) + (in[CH] ? ch : 0.f);
             hat_click_ -= hat_click_ * click_k;
 
             // Cymbal: both bands, one envelope (a fast part and a tail).
@@ -363,18 +425,31 @@ class Drums
             cy_click_ -= cy_click_ * click_k;
             const float cy = 0.02f * cy_hp_lo_.High() + cy_hp_hi2_.High();
 
-            const int   tv    = click_lt_ ? LT : HT; // the toms' click and noise: the last tom's
+            // Each voice (the toms' click and noise with the last tom), through
+            // its own filter if the LFO is closing it, then panned.
             const float t_all = tclick * (lv[LT] + lv[HT]);
-            const float vb = lv[BD] * bd, vs = lv[SD] * sd, vl = lv[LT] * lt_r, vh = lv[HT] * ht_r,
-                        vc = lv[CY] * 1.6f * cy, vo = 1.6f * oh, vx = 1.6f * ch;
-            out_l[i] += kGain * (gl[BD] * vb + gl[SD] * vs + gl[LT] * vl + gl[HT] * vh + gl[tv] * t_all + gl[CY] * vc
-                                 + gl[OH] * vo + gl[CH] * vx);
-            out_r[i] += kGain * (gr[BD] * vb + gr[SD] * vs + gr[LT] * vl + gr[HT] * vh + gr[tv] * t_all + gr[CY] * vc
-                                 + gr[OH] * vo + gr[CH] * vx);
+            float       val[NUM_DRUMS] = {lv[BD] * bd,
+                                          lv[SD] * sd,
+                                          lv[LT] * lt_r + (click_lt_ ? t_all : 0.f),
+                                          lv[HT] * ht_r + (click_lt_ ? 0.f : t_all),
+                                          lv[CY] * 1.6f * cy,
+                                          1.6f * oh,
+                                          1.6f * ch};
+            if(any_filt)
+                for(int v = 0; v < NUM_DRUMS; v++)
+                    if(filt[v])
+                        val[v] = vlp_[v].Process(val[v]);
+            float l = 0.f, r = 0.f, s = 0.f;
+            for(int v = 0; v < NUM_DRUMS; v++)
+            {
+                l += gl[v] * val[v], r += gr[v] * val[v];
+                if(in[v])
+                    s += val[v];
+            }
+            out_l[i] += kGain * l;
+            out_r[i] += kGain * r;
             if(send)
-                send[i] += kGain * ((in[BD] ? lv[BD] * bd : 0.f) + (in[SD] ? lv[SD] * sd : 0.f)
-                                    + (in[LT] ? lv[LT] * lt_r : 0.f) + (in[HT] ? lv[HT] * ht_r : 0.f) + t_send
-                                    + (in[CY] ? lv[CY] * 1.6f * cy : 0.f) + 1.6f * hat_send);
+                send[i] += kGain * s;
         }
     }
 
@@ -410,6 +485,11 @@ class Drums
 
     float      sr_ = 48000.f;
     DrumParams params_[NUM_DRUMS];
+    VoiceMod   mod_[NUM_DRUMS];
+    float      applied_pitch_[NUM_DRUMS] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+    VoiceLowPass vlp_[NUM_DRUMS];
+    float      bd_pr_ = 1.f, sd_pr_ = 1.f, ht_pr_ = 1.f; // their tuning at the hit (the LFO's on top)
+    int        metal_voice_ = CH;                       // the metal's last voice: its LFO and FM
     uint32_t   rng_ = 0x12345678u;
 
     Resonator bd_body_, bd_knock_, sd_tone_, lt_, ht_;

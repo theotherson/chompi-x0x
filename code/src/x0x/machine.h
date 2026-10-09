@@ -591,6 +591,17 @@ class Machine
         fx_.Set(fs);
         if(!seq_.Queued())
             queued_ = -1, both_ = false;
+        // The drums' LFO, synced to the tempo (from the top when PLAY), once
+        // a block: each voice's target moved by its depth.
+        const int shape = StepIndex(p[DRUM_LFO_SHAPE], kLfoShapes);
+        if(shape > 0)
+        {
+            lfo_phase_ += n * seq_.Tempo() / (60.f * sr_ * kLfoBeats[StepIndex(p[DRUM_LFO_RATE], kLfoRates)]);
+            while(lfo_phase_ >= 1.f)
+                lfo_phase_ -= 1.f, lfo_held_ = NextLfoRandom();
+        }
+        const float lfo = shape > 0 ? LfoValue(shape, lfo_phase_, lfo_held_) : 0.f; // -1..1
+        lfo_now_        = lfo;
         for(int v = 0; v < kDrumVoices; v++)
         {
             DrumParams& dp = drums_.Params(static_cast<Drum>(v));
@@ -600,6 +611,19 @@ class Machine
             dp.tune        = p[DRUM_TUNE + v];
             dp.fm          = p[DRUM_FM + v];
             dp.pan         = p[DRUM_PAN + v];
+            VoiceMod    m;
+            const float d = p[DRUM_LFO_DEPTH + v];
+            switch(shape > 0 ? StepIndex(p[DRUM_LFO_TARGET + v], kLfoTargets) : LFO_OFF)
+            {
+                case LFO_LEVEL: m.level = 1.f - d * 0.5f * (1.f - lfo); break;       // dips, down to silent
+                case LFO_PAN: m.pan = 0.5f * d * lfo; break;                         // either way of its own
+                case LFO_TUNE: m.pitch = FastExp2(d * lfo); break;                   // +-1 octave
+                case LFO_FILTER: m.cutoff = -9.f * d * 0.5f * (1.f - lfo); break;    // down from open, 9 octaves
+                case LFO_FM: m.fm = d * 0.5f * (1.f + lfo); break;                   // more FM
+                case LFO_DECAY: dp.decay = Clamp(dp.decay + 0.5f * d * lfo, 0.f, 1.f); break; // at each hit
+                default: break;
+            }
+            drums_.SetMod(static_cast<Drum>(v), m);
         }
         const uint8_t sends = static_cast<uint8_t>(StepIndex(p[DRUM_FX_SENDS], 128));
         drums_.SetSendMask(sends);
@@ -723,34 +747,17 @@ class Machine
         ds.filter     = p[DRUM_FILTER];
         ds.crush_bits = p[DRUM_CRUSH];
         ds.crush_rate = p[DRUM_CRUSH_RATE];
-        // The filter's LFO, synced to the tempo (from the start when PLAY).
-        const int    shape = StepIndex(p[DRUM_LFO_SHAPE], kLfoShapes);
-        float        lfo[64];
-        const float* mod = nullptr;
-        if(shape > 0)
-        {
-            const float inc = seq_.Tempo() / (60.f * sr_ * kLfoBeats[StepIndex(p[DRUM_LFO_RATE], kLfoRates)]);
-            for(size_t i = 0; i < n; i++)
-            {
-                lfo_phase_ += inc;
-                if(lfo_phase_ >= 1.f)
-                    lfo_phase_ -= 1.f, lfo_held_ = NextLfoRandom();
-                lfo[i] = kLfoOctaves * LfoValue(shape, lfo_phase_, lfo_held_);
-            }
-            mod = lfo;
-        }
-        lfo_now_ = shape > 0 ? LfoValue(shape, lfo_phase_, lfo_held_) : 0.f;
         drum_fx_.Set(ds);
-        drum_fx_.Process(drum, n, mod);
+        drum_fx_.Process(drum, n);
         drum_fx_r_.Set(ds);
-        drum_fx_r_.Process(drum_r, n, mod);
+        drum_fx_r_.Process(drum_r, n);
         // The sends (mono): the voices in them, through the same filter,
         // crush and distortion (a copy: they aren't linear); all in, the
         // bus's two sides together.
         if(split)
         {
             drum_fx_send_.Set(ds);
-            drum_fx_send_.Process(dsrc, n, mod);
+            drum_fx_send_.Process(dsrc, n);
         }
         else
             for(size_t i = 0; i < n; i++)
