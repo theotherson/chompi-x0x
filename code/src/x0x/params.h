@@ -60,6 +60,8 @@ enum Param : uint8_t
     DRUM_FILTER_RES, //   its resonance (CHOMPI + it),
     DRUM_FENV,       //   its envelope's amount (each hit opens it),
     DRUM_FENV_DECAY, //   and decay (CHOMPI + it),
+    DRUM_LFO_SHAPE,  //   its LFO: off, triangle, ramp up, ramp down, S+H,
+    DRUM_LFO_RATE,   //   and its rate, synced (kLfoBeats)
     DRUM_DRIVE,      //   distortion (CHOMPI + volume on the drums' side)
     DRUM_FX_SENDS,   // which drum voices go to the reverb and delay (a mask: v * 127)
     COMP,            // the master compressor (volume knob, page 4)
@@ -139,6 +141,8 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_filter_res", 0.f,  0, 0},   // none
     {"drum_fenv",   0.f,      0, 0},   // off
     {"drum_fenv_decay", .4f,  0, 0},   // ~60 ms
+    {"drum_lfo_shape", 0.f,   5, 0},   // off
+    {"drum_lfo_rate", .2f,    11, 0},  // 1 bar
     {"drum_drive",  0.f,      0, 0},   // off by default
     {"drum_fx_sends", 1.f,    128, 0}, // every voice in
     {"comp",        0.f,      0, 0},   // off .. heavy

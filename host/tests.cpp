@@ -2321,11 +2321,11 @@ static void TestDrumEffects()
     const int div = StepIndex(prm[DELAY_TIME], kDelayDivisions);
     r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
     CHECK(StepIndex(prm[DELAY_TIME], kDelayDivisions) == div + 1);
-    r.ui.KnobClick(3, r.now), r.ui.KnobClick(3, r.now); // page 4: filter / drive
-    r.ui.KnobTurn(3, -5, false);
-    CHECK(prm[DRUM_FILTER] < 0.5f);
+    r.ui.KnobClick(3, r.now), r.ui.KnobClick(3, r.now); // page 4: the filter's LFO / its rate
+    r.ui.KnobTurn(3, 1, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 1);
     r.ui.Chompi(true), r.ui.KnobClick(3, r.now), r.ui.Chompi(false); // reset them all
-    CHECK(prm[DRUM_REVERB] == 0.f && prm[REVERB_SIZE] == kParams[REVERB_SIZE].def && prm[DRUM_FILTER] == 0.5f);
+    CHECK(prm[DRUM_REVERB] == 0.f && prm[REVERB_SIZE] == kParams[REVERB_SIZE].def && prm[DRUM_LFO_SHAPE] == 0.f);
     CHECK(StepIndex(prm[DELAY_TIME], kDelayDivisions) == div + 1); // the shared time stays
 }
 
@@ -2496,7 +2496,7 @@ static void TestDrumFxSends()
 
 static void TestDrumFilterEnvelope()
 {
-    printf("drum filter envelope: each hit sweeps the filter open (knob 4, page 5)\n");
+    printf("drum filter envelope: each hit sweeps the filter open (knob 3, page 2)\n");
     // Noise through the low-pass, a hit at the start: bright at first, then
     // back to the knob's cutoff; the high-pass sweeps the other way.
     auto hf = [](float filter, float amount, float decay, int from_ms, int to_ms, bool trigger) {
@@ -2571,21 +2571,134 @@ static void TestDrumFilterEnvelope()
     CHECK(swept > closed * 5);
     prm[DRUM_FENV] = 0.f, prm[DRUM_FILTER] = 0.5f;
 
-    // The panel: knob 4's fifth page; CHOMPI, the decay; CHOMPI + click resets.
+    // The panel: knob 2's second page the filter (CHOMPI: resonance), knob
+    // 3's its envelope (CHOMPI: decay); CHOMPI + click resets each; a click
+    // again back to the voice's attack / decay.
     r.Run(1000);
     r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
     CHECK(r.ui.OnDrums());
-    for(int i = 0; i < 4; i++)
-        r.ui.KnobClick(3, r.now);
-    r.ui.KnobTurn(3, 5, false);
+    const float attack = prm[DRUM_PARAMS + 1], decay = prm[DRUM_PARAMS + 2];
+    r.ui.KnobClick(1, r.now), r.ui.KnobClick(2, r.now);
+    r.ui.KnobTurn(1, -5, false);
+    CHECK(prm[DRUM_FILTER] < 0.5f);
+    r.ui.Chompi(true), r.ui.KnobTurn(1, 5, false), r.ui.Chompi(false);
+    CHECK(prm[DRUM_FILTER_RES] > 0.f);
+    r.ui.KnobTurn(2, 5, false);
     CHECK(prm[DRUM_FENV] > 0.f);
-    r.ui.Chompi(true), r.ui.KnobTurn(3, 5, false), r.ui.Chompi(false);
+    r.ui.Chompi(true), r.ui.KnobTurn(2, 5, false), r.ui.Chompi(false);
     CHECK(prm[DRUM_FENV_DECAY] > kParams[DRUM_FENV_DECAY].def);
-    r.ui.Chompi(true), r.ui.KnobClick(3, r.now), r.ui.Chompi(false);
+    CHECK(prm[DRUM_PARAMS + 1] == attack && prm[DRUM_PARAMS + 2] == decay);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.knob[1].r > 0.2f && f.knob[1].g > 0.5f * f.knob[1].r && f.knob[1].b == 0.f); // the filter: yellow
+    r.ui.Chompi(true), r.ui.KnobClick(1, r.now), r.ui.KnobClick(2, r.now), r.ui.Chompi(false);
+    CHECK(prm[DRUM_FILTER] == 0.5f && prm[DRUM_FILTER_RES] == 0.f);
     CHECK(prm[DRUM_FENV] == 0.f && prm[DRUM_FENV_DECAY] == kParams[DRUM_FENV_DECAY].def);
-    r.ui.KnobClick(3, r.now); // round to page 1: reverb
-    r.ui.KnobTurn(3, 3, false);
-    CHECK(prm[DRUM_REVERB] > 0.f);
+    r.ui.KnobClick(1, r.now), r.ui.KnobClick(2, r.now);
+    r.ui.KnobTurn(1, 3, false), r.ui.KnobTurn(2, 3, false);
+    CHECK(prm[DRUM_PARAMS + 1] > attack && prm[DRUM_PARAMS + 2] > decay);
+}
+
+static void TestDrumFilterLfo()
+{
+    printf("drum filter LFO: knob 4, page 4 (shape; CHOMPI, its synced rate)\n");
+    // The shapes.
+    CHECK(LfoValue(0, 0.3f, 0.f) == 0.f);
+    CHECK(LfoValue(1, 0.f, 0.f) == -1.f && LfoValue(1, 0.5f, 0.f) == 1.f && LfoValue(1, 1.f, 0.f) == -1.f);
+    CHECK(LfoValue(2, 0.f, 0.f) == -1.f && LfoValue(2, 0.75f, 0.f) == 0.5f);
+    CHECK(LfoValue(3, 0.f, 0.f) == 1.f && LfoValue(3, 0.75f, 0.f) == -0.5f);
+    CHECK(LfoValue(4, 0.2f, 0.3f) == 0.3f && LfoValue(4, 0.9f, 0.3f) == 0.3f);
+
+    // On the machine: a ramp up at 1/4 swings the low-passed hats' brightness
+    // round each beat; sample and hold changes once a cycle; 120 BPM.
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ClearBass(), p.ClearDrums();
+    float* prm = r.m.settings.params;
+    prm[DRUM_FILTER]   = 0.25f;
+    prm[DRUM_LFO_RATE] = StepValue(4, kLfoRates); // 1/4
+    prm[DRUM_LFO_SHAPE] = StepValue(2, kLfoShapes);
+    r.m.Play();
+    float  L[48], R[48], lo = 2.f, hi = -2.f;
+    int    rises = 0;
+    float  last = r.m.DrumLfo();
+    for(int ms = 0; ms < 2000; ms++)
+    {
+        r.m.Process(L, R, 48);
+        const float v = r.m.DrumLfo();
+        lo = std::min(lo, v), hi = std::max(hi, v);
+        if(v < last - 1.f)
+            rises++; // the ramp's reset: once a beat
+        last = v;
+        for(int i = 0; i < 48; i++)
+            CHECK(std::isfinite(L[i]));
+    }
+    CHECK(lo < -0.9f && hi > 0.9f);
+    CHECK(rises >= 3 && rises <= 4); // 2 s at 120 BPM: 4 beats
+    // Restarted with PLAY: from the bottom.
+    r.m.Stop(), r.m.Play();
+    r.m.Process(L, R, 48);
+    CHECK(r.m.DrumLfo() < -0.9f);
+    // Sample and hold: steps, held between.
+    prm[DRUM_LFO_SHAPE] = StepValue(4, kLfoShapes);
+    int changes = 0;
+    last        = r.m.DrumLfo();
+    for(int ms = 0; ms < 2000; ms++)
+    {
+        r.m.Process(L, R, 48);
+        if(r.m.DrumLfo() != last)
+            changes++;
+        last = r.m.DrumLfo();
+    }
+    CHECK(changes >= 3 && changes <= 5);
+    // It moves the filter: noise-like hats through a closed low-pass, much
+    // brighter at the LFO's top than at its bottom.
+    {
+        DrumFx fx;
+        fx.Init(48000.f);
+        DrumFx::Settings st;
+        st.filter = 0.2f;
+        fx.Set(st);
+        auto bright = [&](float oct) {
+            float    b[48], m[48], prev = 0.f;
+            uint32_t seed = 5;
+            double   e    = 0;
+            for(int blk = 0; blk < 200; blk++)
+            {
+                for(int i = 0; i < 48; i++)
+                    seed = seed * 1664525u + 1013904223u, b[i] = static_cast<int32_t>(seed) * 4.6e-10f, m[i] = oct;
+                fx.Process(b, 48, m);
+                for(int i = 0; i < 48; i++)
+                    e += (b[i] - prev) * (b[i] - prev), prev = b[i];
+            }
+            return e;
+        };
+        CHECK(bright(kLfoOctaves) > bright(-kLfoOctaves) * 10);
+    }
+
+    // The panel: knob 4's page 4; a click a step; the keys show it.
+    r.m.Stop();
+    prm[DRUM_LFO_SHAPE] = 0.f;
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.ui.OnDrums());
+    r.Run(1000);
+    for(int i = 0; i < 3; i++)
+        r.ui.KnobClick(3, r.now);
+    r.ui.KnobTurn(3, 1, false), r.ui.KnobTurn(3, 1, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 2);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[2]].g > 0.9f && f.key[Ui::kWhite[1]].g < 0.1f && f.key[Ui::kWhite[5]].g == 0.f);
+    r.ui.KnobTurn(3, 10, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 3); // one step a click, however fast
+    for(int i = 0; i < 10; i++)
+        r.ui.KnobTurn(3, 1, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 4); // S+H, the last
+    r.ui.Chompi(true), r.ui.KnobTurn(3, -1, false), r.ui.Chompi(false);
+    CHECK(StepIndex(prm[DRUM_LFO_RATE], kLfoRates) == 3); // from 1/4 to 1/2
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[3]].r > 0.9f && f.key[Ui::kWhite[10]].r < 0.1f);
 }
 
 static void TestDrumDistortion()
@@ -2603,13 +2716,6 @@ static void TestDrumDistortion()
     CHECK(r.ui.OnDrums());
     r.ui.Chompi(true), r.ui.KnobTurn(5, 8, false), r.ui.Chompi(false);
     CHECK(prm[DRUM_DRIVE] > 0.f && prm[DRIVE] == bass_drive);
-    // CHOMPI + knob 4 (page 4): the filter's resonance.
-    for(int i = 0; i < 3; i++)
-        r.ui.KnobClick(3, r.now);
-    r.ui.Chompi(true), r.ui.KnobTurn(3, 10, false), r.ui.Chompi(false);
-    CHECK(prm[DRUM_FILTER_RES] > 0.f);
-    r.ui.Chompi(true), r.ui.KnobClick(3, r.now), r.ui.Chompi(false); // reset
-    CHECK(prm[DRUM_FILTER_RES] == 0.f);
 
     // The sound: distorted is louder relative to its peak (squashed).
     auto run = [](float drive, std::vector<float>& out) {
@@ -2816,6 +2922,7 @@ int main()
     TestDrumEffects();
     TestDrumFxSends();
     TestDrumFilterEnvelope();
+    TestDrumFilterLfo();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

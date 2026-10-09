@@ -35,6 +35,27 @@ namespace x0x
 constexpr int   kDelayDivisions              = 9;
 constexpr float kDelayBeats[kDelayDivisions] = {1.f / 6, 0.25f, 1.f / 3, 0.5f, 2.f / 3, 0.75f, 1.f, 1.5f, 2.f};
 
+/** The drums' filter LFO: off, triangle, ramp up, ramp down, sample and
+ *  hold; its synced rates, slow to fast (beats per cycle): 4 bars, 2 bars,
+ *  1 bar, 1/2, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32. */
+constexpr int   kLfoShapes = 5;
+constexpr int   kLfoRates  = 11;
+constexpr float kLfoBeats[kLfoRates] = {16.f, 8.f, 4.f, 2.f, 1.f, 2.f / 3, 0.5f, 1.f / 3, 0.25f, 1.f / 6, 0.125f};
+constexpr float kLfoOctaves = 2.f; // its depth: the cutoff moves +-2 octaves
+
+/** The LFO's value (-1..1) at phase 0..1; `held` for sample and hold. */
+inline float LfoValue(int shape, float phase, float held)
+{
+    switch(shape)
+    {
+        case 1: return 1.f - 4.f * fabsf(phase - 0.5f); // triangle, from the bottom
+        case 2: return 2.f * phase - 1.f;               // ramp up
+        case 3: return 1.f - 2.f * phase;               // ramp down
+        case 4: return held;                            // sample and hold
+        default: return 0.f;
+    }
+}
+
 /** The free delay time's range, in ms. */
 constexpr float kDelayFreeMinMs = 30.f;
 constexpr float kDelayFreeMaxMs = 1900.f;
@@ -542,7 +563,8 @@ class DrumFx
         trig_depth_ = depth;
     }
 
-    void Process(float* x, size_t n)
+    /** mod: if given, the LFO, in octaves, for each sample. */
+    void Process(float* x, size_t n, const float* mod = nullptr)
     {
         // Distortion, as the bass's drive: a treble lift into a nearly hard
         // clip, then a tone low-pass (8 to 6 kHz).
@@ -566,7 +588,7 @@ class DrumFx
         // high-pass down) by up to 6 octaves, then falls back, 10 ms to 1 s.
         const float env_oct = 6.f * Clamp(s_.env_amount, 0.f, 1.f) * (lp ? 1.f : -1.f);
         const float env_k   = TauToCoef(0.01f * FastExp2(6.64f * Clamp(s_.env_decay, 0.f, 1.f)), sr_);
-        const bool  env_on  = (lp || hp) && s_.env_amount > 0.005f;
+        const bool  env_on  = (lp || hp) && (s_.env_amount > 0.005f || mod);
         const bool  crush = s_.crush_bits > 0.005f;
         const float levels = FastExp2(15.f - 12.f * s_.crush_bits);
         const int   hold   = 1 + static_cast<int>(31.f * s_.crush_rate * s_.crush_rate);
@@ -578,7 +600,7 @@ class DrumFx
             if(env_on && (i & 3) == 0)
             {
                 // The cutoff, moved: every 4 samples.
-                const float hz_e = Clamp(hz * FastExp2(env_oct * env_), 20.f, 0.45f * sr_);
+                const float hz_e = Clamp(hz * FastExp2(env_oct * env_ + (mod ? mod[i] : 0.f)), 20.f, 0.45f * sr_);
                 const float ge   = tanf(kPi * hz_e / sr_);
                 a1 = 1.f / (1.f + ge * (ge + kq)), a2 = ge * a1, a3 = ge * a2;
             }

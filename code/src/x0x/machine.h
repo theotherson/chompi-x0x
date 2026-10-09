@@ -83,6 +83,7 @@ class Machine
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
+        lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
         if(options.transport_out && !ExternalClock())
             PushMidi(0xFA);
@@ -209,6 +210,8 @@ class Machine
     /** For the LEDs: the compressor's gain reduction (dB) and the sidechain's
      *  duck now (0..1). */
     float CompReduction() const { return comp_.Reduction(); }
+    /** The drums' filter LFO now, -1..1 (0 when off). */
+    float DrumLfo() const { return lfo_now_; }
 
     /** Whether drum voice v goes to the reverb and delay (saved). */
     bool DrumInFx(int v) const { return (StepIndex(settings.params[DRUM_FX_SENDS], 128) >> v) & 1; }
@@ -421,6 +424,7 @@ class Machine
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
+        lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
     }
 
@@ -618,15 +622,32 @@ class Machine
         ds.filter     = p[DRUM_FILTER];
         ds.crush_bits = p[DRUM_CRUSH];
         ds.crush_rate = p[DRUM_CRUSH_RATE];
+        // The filter's LFO, synced to the tempo (from the start when PLAY).
+        const int    shape = StepIndex(p[DRUM_LFO_SHAPE], kLfoShapes);
+        float        lfo[64];
+        const float* mod = nullptr;
+        if(shape > 0)
+        {
+            const float inc = seq_.Tempo() / (60.f * sr_ * kLfoBeats[StepIndex(p[DRUM_LFO_RATE], kLfoRates)]);
+            for(size_t i = 0; i < n; i++)
+            {
+                lfo_phase_ += inc;
+                if(lfo_phase_ >= 1.f)
+                    lfo_phase_ -= 1.f, lfo_held_ = NextLfoRandom();
+                lfo[i] = kLfoOctaves * LfoValue(shape, lfo_phase_, lfo_held_);
+            }
+            mod = lfo;
+        }
+        lfo_now_ = shape > 0 ? LfoValue(shape, lfo_phase_, lfo_held_) : 0.f;
         drum_fx_.Set(ds);
-        drum_fx_.Process(drum, n);
+        drum_fx_.Process(drum, n, mod);
         // The sends: the voices in them, through the same filter, crush and
         // distortion (a second copy: they aren't linear); all in, the bus.
         const float* send_src = drum;
         if(split)
         {
             drum_fx_send_.Set(ds);
-            drum_fx_send_.Process(dsrc, n);
+            drum_fx_send_.Process(dsrc, n, mod);
             send_src = dsrc;
         }
         else if((sends & 0x7f) == 0)
@@ -918,6 +939,13 @@ class Machine
     Drums       drums_;
     DrumFx      drum_fx_, drum_fx_send_;
     size_t      block_pos_ = 0; // where in the block a drum hit lands
+    float       lfo_phase_ = 0.f, lfo_held_ = 0.f, lfo_now_ = 0.f;
+    uint32_t    lfo_seed_  = 12345;
+    float       NextLfoRandom()
+    {
+        lfo_seed_ = lfo_seed_ * 1664525u + 1013904223u;
+        return static_cast<int32_t>(lfo_seed_) * (1.f / 2147483648.f);
+    }
     Compressor  comp_;
     float       duck_ = 0.f, duck_gain_ = 1.f;
     Reverb      reverb_;
