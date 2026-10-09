@@ -15,12 +15,19 @@
 #include "hardware.h"
 #include "temp_led_stuff.h"
 #include "fatfs.h"
+#include "util/CpuLoadMeter.h"
+// The sound (voice, drums, effects, sequencer): built for speed (-O3).
+#include "x0x/machine.h"
+// The panel, MIDI and the card: built for size, so the program fits the
+// bootloader's 282 KB of SRAM with room to spare. None of it is per-sample.
+#pragma GCC push_options
+#pragma GCC optimize("Os")
+#include "x0x/ui.h"
+#include "x0x/midifile.h"
 #include "panel.h"
 #include "midi_io.h"
 #include "storage.h"
-#include "x0x/machine.h"
-#include "x0x/ui.h"
-#include "util/CpuLoadMeter.h"
+#pragma GCC pop_options
 
 using namespace daisy;
 using namespace chompi;
