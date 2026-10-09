@@ -2080,7 +2080,13 @@ static void TestDrumPanel()
     CHECK(bd >= 0 && p.DrumAccent(bd) && pitched == 0);
     r.ui.Play();
     r.ui.Loop(r.now); // record off
-    // The pattern page works on the drums' side too.
+    // Live, F#4 is quantize: no pattern page.
+    r.Key(Ui::kKeyPattern);
+    r.White(2);
+    CHECK(r.m.CurrentPattern() == 0);
+    r.Key(Ui::kKeyPattern); // (quantize back as it was)
+    // The pattern page works on the drums' side too, in step mode.
+    r.ui.SetMode(Ui::Mode::STEP);
     r.Key(Ui::kKeyPattern);
     r.White(2);
     CHECK(r.m.CurrentPattern() == 2);
@@ -2701,6 +2707,235 @@ static void TestDrumFilterLfo()
     CHECK(f.key[Ui::kWhite[3]].r > 0.9f && f.key[Ui::kWhite[10]].r < 0.1f);
 }
 
+static void TestDrumTimingAndLiveKeys()
+{
+    printf("drum timing: on the grid, recorded late, quantize / roll / erase (live F#4 G#4 A#4)\n");
+    // A late first bass note no longer lengthens every loop: 16 steps at
+    // 120 BPM are 2 s, every pass.
+    {
+        Pattern p;
+        p.Clear();
+        for(int i = 0; i < kSteps; i++)
+            p.steps[i].on = true;
+        p.steps[0].nudge = 3;
+        Sequencer s;
+        s.Init(48000.f), s.SetTempo(120.f), s.SetPattern(&p), s.Start();
+        Sequencer::Event ev[Sequencer::kMaxEvents + 4];
+        long t = 0, last0 = -1;
+        int  loops = 0;
+        bool exact = true;
+        for(int b = 0; b < 48000 * 9 / 48; b++, t += 48)
+        {
+            const int c = s.Process(48, ev);
+            for(int i = 0; i < c; i++)
+                if(ev[i].type == Sequencer::Event::STEP && ev[i].step == 0)
+                {
+                    const long at = t + ev[i].offset;
+                    if(last0 >= 0)
+                        exact &= labs(at - last0 - 96000) <= 1, loops++;
+                    last0 = at;
+                }
+        }
+        CHECK(loops >= 3 && exact);
+    }
+
+    // When things play: the sample (to the block) each voice's hit count moves.
+    Rig r;
+    Pattern& p   = r.m.Current();
+    float*   prm = r.m.settings.params;
+    p.ClearBass(), p.ClearDrums();
+    auto first_hit = [&](int v, int ms) {
+        // From PLAY: the ms of the first hit of v, -1 if none.
+        r.m.Stop(), r.Run(50), r.m.Play();
+        const uint32_t c0 = r.m.DrumHitCount(v);
+        for(int i = 0; i < ms; i++)
+        {
+            r.Run(1);
+            if(r.m.DrumHitCount(v) != c0)
+                return i;
+        }
+        return -1;
+    };
+    // The drums keep to the grid however late the bass note on their step.
+    p.steps[2].on = true, p.steps[2].nudge = 4;
+    p.drums[2]    = 1 << BD;
+    CHECK(abs(first_hit(BD, 600) - 250) <= 1); // step 3: 250 ms
+    // A hit recorded 3 ticks late (125/6 ms a tick) plays late, quantize off;
+    // on the grid with it on.
+    p.drum_nudge[2][BD] = 3;
+    prm[DRUM_QUANTIZE]  = 0.f;
+    CHECK(abs(first_hit(BD, 600) - 312) <= 2);
+    prm[DRUM_QUANTIZE] = 1.f;
+    CHECK(abs(first_hit(BD, 600) - 250) <= 1);
+    prm[DRUM_QUANTIZE] = 0.f;
+    // Muted, the late hit doesn't play either.
+    r.m.SetDrumMute(BD, true);
+    CHECK(first_hit(BD, 600) == -1);
+    r.m.SetDrumMute(BD, false);
+    p.ClearBass(), p.ClearDrums();
+
+    // A queued pattern whose first bass note is late: its drums start on the
+    // grid, once.
+    {
+        Pattern& q = r.m.patterns[1];
+        q.Clear();
+        q.steps[0].on = true, q.steps[0].nudge = 3;
+        q.drums[0]    = 1 << SD;
+        r.m.Stop(), r.Run(50), r.m.Play();
+        r.Run(1000);
+        r.m.SelectPattern(1, false);
+        const uint32_t c0 = r.m.DrumHitCount(SD);
+        int            at = -1;
+        for(int i = 0; i < 1200; i++)
+        {
+            r.Run(1);
+            if(at < 0 && r.m.DrumHitCount(SD) != c0)
+                at = i;
+        }
+        CHECK(abs(at - 1000) <= 2);                // on the bar's grid
+        CHECK(r.m.DrumHitCount(SD) == c0 + 1);     // once
+        CHECK(r.m.CurrentPattern() == 1);
+        r.m.Stop();
+        r.m.SelectPattern(0, true);
+    }
+
+    // Recording live: quantize off keeps the timing; on, the grid (1/8 here).
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.ui.OnDrums());
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.Run(1000);
+    p.ClearDrums();
+    prm[DRUM_QUANTIZE] = 0.f;
+    r.m.Stop(), r.Run(50), r.m.Play();
+    r.ui.Loop(r.now); // record on
+    r.Run(375 + 42);  // step 4 (index 3) plus 2 ticks
+    r.Black(0);       // BD
+    r.Run(5);
+    CHECK(p.DrumHit(3, BD) && p.drum_nudge[3][BD] == 2);
+    // Just before a step: into that step, on time, and not played twice.
+    const uint32_t before = r.m.DrumHitCount(SD);
+    r.Run(125 * 2 - 42 - 5 - 4); // 4 ms before step 6 (index 5)
+    r.Black(1);                  // SD
+    r.Run(30);
+    CHECK(p.DrumHit(5, SD) && p.drum_nudge[5][SD] == 0);
+    CHECK(r.m.DrumHitCount(SD) == before + 1);
+    // Quantize on, 1/8: F#4 + white key 2 picks the grid (and turns it on).
+    r.ui.KeyDown(Ui::kKeyPattern, r.now), r.White(1), r.ui.KeyUp(Ui::kKeyPattern, r.now);
+    CHECK(StepIndex(prm[DRUM_QUANTIZE], 2) == 1 && QuantGridSteps(prm[DRUM_QUANT_GRID]) == 2);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyPattern].b > 0.3f);
+    p.ClearDrums();
+    r.m.Stop(), r.Run(50), r.m.Play();
+    r.Run(125 * 3 + 10); // just into step 4 (index 3): nearest 1/8 is index 4
+    r.Black(0);
+    r.Run(5);
+    CHECK(p.DrumHit(4, BD) && !p.DrumHit(3, BD) && p.drum_nudge[4][BD] == 0);
+    // A tap of F#4: quantize off; again, on.
+    r.Key(Ui::kKeyPattern);
+    CHECK(StepIndex(prm[DRUM_QUANTIZE], 2) == 0);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kKeyPattern].b < 0.1f);
+    r.Key(Ui::kKeyPattern);
+    CHECK(StepIndex(prm[DRUM_QUANTIZE], 2) == 1);
+    r.ui.Loop(r.now); // record off
+
+    // Erase: A#4 held + BD: BD's hits go as they pass (others stay); the key
+    // doesn't play it.
+    p.ClearDrums();
+    for(int i = 0; i < kSteps; i += 2)
+        p.drums[i] = (1 << BD) | (1 << CH);
+    r.m.Stop(), r.Run(50), r.m.Play();
+    const uint32_t bd0 = r.m.DrumHitCount(BD);
+    r.ui.KeyDown(Ui::kKeyClear, r.now), r.ui.KeyDown(Ui::kBlack[0], r.now);
+    CHECK(r.m.DrumErasing(BD));
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kBlack[0]].r > 0.9f && f.key[Ui::kBlack[0]].g == 0.f);
+    r.Run(2100);
+    r.ui.KeyUp(Ui::kBlack[0], r.now), r.ui.KeyUp(Ui::kKeyClear, r.now);
+    CHECK(!r.m.DrumErasing(BD));
+    int bd_left = 0, ch_left = 0;
+    for(int i = 0; i < kSteps; i++)
+        bd_left += p.DrumHit(i, BD), ch_left += p.DrumHit(i, CH);
+    CHECK(bd_left == 0 && ch_left == 8);
+    CHECK(r.m.DrumHitCount(BD) - bd0 <= 1); // (at most the first step, before the key)
+
+    // Roll: G#4 held + SD: SD repeats at the rate (1/16: 8 a second at 120);
+    // G#4 + white key 5: 1/32. Stopped, it rolls too.
+    p.ClearDrums();
+    r.ui.KeyDown(Ui::kKeyCopy, r.now), r.White(2), r.ui.KeyUp(Ui::kKeyCopy, r.now); // 1/16
+    CHECK(StepIndex(prm[DRUM_ROLL_RATE], kRollRates) == 2);
+    auto roll = [&](int ms) {
+        const uint32_t c0 = r.m.DrumHitCount(SD);
+        r.ui.KeyDown(Ui::kKeyCopy, r.now), r.ui.KeyDown(Ui::kBlack[1], r.now);
+        r.Run(ms);
+        r.ui.KeyUp(Ui::kBlack[1], r.now), r.ui.KeyUp(Ui::kKeyCopy, r.now);
+        const uint32_t c1 = r.m.DrumHitCount(SD);
+        r.Run(300);
+        CHECK(r.m.DrumHitCount(SD) == c1); // stops with the key
+        return static_cast<int>(c1 - c0);
+    };
+    const int r16 = roll(1000);
+    CHECK(r16 >= 8 && r16 <= 9);
+    r.ui.KeyDown(Ui::kKeyCopy, r.now), r.White(4), r.ui.KeyUp(Ui::kKeyCopy, r.now); // 1/32
+    const int r32 = roll(1000);
+    CHECK(r32 >= 16 && r32 <= 17);
+    r.m.Stop(), r.Run(50);
+    const int stopped = roll(1000);
+    CHECK(stopped >= 16 && stopped <= 17);
+    // Recorded, quantize off: at 1/32, one hit a step (the first, on time).
+    // (Quantize on at 1/8, it went every other step.)
+    prm[DRUM_QUANTIZE] = 0.f;
+    p.ClearDrums();
+    r.m.Play();
+    r.ui.Loop(r.now);
+    r.Run(10);
+    roll(1000);
+    r.ui.Loop(r.now);
+    int sd = 0;
+    for(int i = 0; i < kSteps; i++)
+        sd += p.DrumHit(i, SD);
+    CHECK(sd >= 8 && sd <= 9);
+    for(int i = 0; i < kSteps; i++)
+        CHECK(p.drum_nudge[i][SD] == 0);
+    r.m.Stop();
+
+    // Files: the timing round-trips through the pattern text and MIDI.
+    Pattern a;
+    a.Clear();
+    a.drums[0] = (1 << BD) | kDrumAccent, a.drums[5] = (1 << SD) | (1 << CH);
+    a.drum_nudge[5][SD] = 4, a.drum_nudge[0][BD] = 1;
+    char txt[2048];
+    CHECK(WritePatterns(&a, 1, txt, sizeof txt) > 0);
+    CHECK(strstr(txt, "drum_nudge 1000000 0000000") != nullptr);
+    Pattern back[1];
+    ReadPatterns(txt, back, 1);
+    CHECK(back[0] == a);
+    uint8_t mid[4096];
+    size_t  n = WriteMidiFile(a, 120.f, 0, "x", mid, sizeof mid);
+    Pattern m;
+    CHECK(ReadMidiFile(mid, n, m) && m.drum_nudge[5][SD] == 4 && m.drum_nudge[0][BD] == 1 && m.DrumHit(5, CH));
+    n = WriteMidiFile(a, 120.f, 0, "x", mid, sizeof mid, true); // the drums quantized
+    CHECK(ReadMidiFile(mid, n, m) && !m.DrumNudged() && m.DrumHit(5, SD));
+    // Every pattern full, every hit late: still fits the card's buffer.
+    static Pattern full[kPatterns];
+    for(int i = 0; i < kPatterns; i++)
+    {
+        full[i].Clear();
+        for(int st = 0; st < kSteps; st++)
+        {
+            full[i].steps[st].on = true, full[i].steps[st].note = 24, full[i].steps[st].octave = -1;
+            full[i].steps[st].accent = full[i].steps[st].slide = full[i].steps[st].tie = true;
+            full[i].steps[st].nudge = 5;
+            full[i].drums[st]       = 0xff;
+            for(int v = 0; v < kDrumVoices; v++)
+                full[i].drum_nudge[st][v] = 5;
+        }
+    }
+    static char big[24576];
+    CHECK(WritePatterns(full, kPatterns, big, sizeof big) > 0);
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -2923,6 +3158,7 @@ int main()
     TestDrumFxSends();
     TestDrumFilterEnvelope();
     TestDrumFilterLfo();
+    TestDrumTimingAndLiveKeys();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();

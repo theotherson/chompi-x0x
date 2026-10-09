@@ -83,6 +83,7 @@ class Machine
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
+        drum_pat_ = -1;
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
         if(options.transport_out && !ExternalClock())
@@ -128,6 +129,7 @@ class Machine
         }
         settings.pattern = i;
         queued_          = -1;
+        drum_pat_        = -1;
         seq_.SetPattern(&patterns[i]);
         settings_changes++;
     }
@@ -210,6 +212,19 @@ class Machine
     /** For the LEDs: the compressor's gain reduction (dB) and the sidechain's
      *  duck now (0..1). */
     float CompReduction() const { return comp_.Reduction(); }
+    /** Erase (A#4 held + a voice, live): the voice's hits go as they pass. */
+    void SetDrumErase(int v, bool on) { erase_mask_ = Bit(erase_mask_, v, on); }
+    bool DrumErasing(int v) const { return (erase_mask_ >> v) & 1; }
+    void StopErasing() { erase_mask_ = 0; }
+    /** Roll (G#4 held + a voice, live): the voice repeats at the roll rate. */
+    void SetDrumRoll(int v, bool on, bool accent)
+    {
+        roll_accent_ = accent;
+        roll_mask_   = Bit(roll_mask_, v, on);
+    }
+    bool DrumRolling(int v) const { return (roll_mask_ >> v) & 1; }
+    void StopRolls() { roll_mask_ = 0; }
+
     /** The drums' filter LFO now, -1..1 (0 when off). */
     float DrumLfo() const { return lfo_now_; }
 
@@ -424,6 +439,7 @@ class Machine
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
+        drum_pat_ = -1;
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
     }
@@ -541,6 +557,29 @@ class Machine
             PlayDrum(v, (h & kDrumAccent) != 0, semis);
             if(Recording() && Running() && rec)
                 RecordDrum(v, (h & kDrumAccent) != 0);
+        }
+        // Rolls: a voice's first hit came with its key (above); then on the
+        // roll's grid while running, or every roll step from the key when
+        // stopped. A grid hit too soon after the key's is skipped.
+        {
+            const uint8_t rolls = roll_mask_;
+            const int     rt    = kRollTicks[StepIndex(p[DRUM_ROLL_RATE], kRollRates)];
+            const float   spt   = sr_ * 60.f / (seq_.Tempo() * 24.f);
+            if(rolls & ~roll_prev_)
+                roll_since_ = 0.f, roll_clock_ = rt * spt;
+            roll_prev_ = rolls;
+            seq_.SetRoll(rolls ? rt : 0);
+            roll_skip_ = roll_since_ < rt * spt * 0.5f;
+            if(rolls && !Running())
+            {
+                roll_clock_ -= static_cast<float>(n);
+                if(roll_clock_ <= 0.f)
+                {
+                    roll_clock_ += rt * spt;
+                    RollHits();
+                }
+            }
+            roll_since_ += static_cast<float>(n);
         }
 
         Sequencer::Event ev[Sequencer::kMaxEvents + 4];
@@ -714,15 +753,56 @@ class Machine
         }
     }
 
-    /** A step of the pattern: the drum part's next step (its own length). */
+    /** A roll's hit: every rolling voice (recorded, if recording). */
+    void RollHits()
+    {
+        const uint8_t rolls = roll_mask_;
+        if(!rolls || (Running() && roll_skip_))
+            return;
+        for(int v = 0; v < kDrumVoices; v++)
+            if((rolls >> v) & 1)
+            {
+                PlayDrum(v, roll_accent_);
+                if(Recording() && Running())
+                    RecordDrum(v, roll_accent_, true);
+            }
+    }
+
+    /** The pattern the drums play: the next one already from its first
+     *  step's place on the grid, before a late first bass note starts it. */
+    Pattern& DrumPattern() { return patterns[drum_pat_ >= 0 ? drum_pat_ : settings.pattern]; }
+
+    /** A step's place on the grid: the drum part's next step (its own
+     *  length). Hits recorded late are scheduled (quantize on: on the grid);
+     *  voices held for erasing lose theirs. */
     void DrumStep()
     {
-        const Pattern& pat = Current();
-        drum_pos_          = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
+        Pattern&   pat   = DrumPattern();
+        drum_pos_        = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
+        const bool quant = StepIndex(settings.params[DRUM_QUANTIZE], 2) == 1;
+        const uint8_t erase = erase_mask_;
+        if(erase & pat.drums[drum_pos_])
+        {
+            for(int v = 0; v < kDrumVoices; v++)
+                if((erase >> v) & 1)
+                    pat.SetDrumHit(drum_pos_, v, false);
+            if(!(pat.drums[drum_pos_] & 0x7f))
+                pat.drums[drum_pos_] = 0; // no hits left: no accent either
+            pattern_changes++;
+        }
         const uint8_t s    = pat.drums[drum_pos_];
+        const uint8_t skip = rec_skip_;
+        rec_skip_          = 0;
         for(int v = 0; v < kDrumVoices; v++)
-            if(((s >> v) & 1) && DrumAudible(v))
-                PlayDrum(v, (s & kDrumAccent) != 0);
+            if(((s >> v) & 1) && DrumAudible(v) && !((skip >> v) & 1))
+            {
+                const bool acc   = (s & kDrumAccent) != 0;
+                const int  nudge = quant ? 0 : pat.drum_nudge[drum_pos_][v];
+                if(nudge == 0)
+                    PlayDrum(v, acc);
+                else
+                    seq_.ScheduleDrum(nudge, v | (acc ? kDrumAccent : 0));
+            }
     }
 
     static uint8_t Bit(uint8_t bits, int v, bool on)
@@ -730,18 +810,37 @@ class Machine
         return static_cast<uint8_t>(on ? bits | (1 << v) : bits & ~(1 << v));
     }
 
-    /** A live hit into the drum part: the step playing, or the next one if
-     *  it's more than halfway through. */
-    void RecordDrum(int v, bool accent)
+    /** A live hit into the drum part. Quantize on: to the nearest point of
+     *  the grid (every 1, 2 or 4 steps). Off: to the step it falls in, late
+     *  by as many ticks as it was played (or the next step, on time). A roll
+     *  keeps the first of its hits in a step. */
+    void RecordDrum(int v, bool accent, bool roll = false)
     {
         if(drum_pos_ < 0)
             return;
-        Pattern&  pat  = Current();
-        const int len  = ClampInt(pat.drum_length, 1, kSteps);
-        int       step = drum_pos_;
-        if(seq_.StepPhase() > 0.5f)
-            step = (step + 1) % len;
-        pat.drums[step] = static_cast<uint8_t>(pat.drums[step] | (1 << v) | (accent ? kDrumAccent : 0));
+        Pattern&    pat   = DrumPattern();
+        const int   len   = ClampInt(pat.drum_length, 1, kSteps);
+        const float phase = seq_.GridPhase();
+        int         step, nudge = 0;
+        if(StepIndex(settings.params[DRUM_QUANTIZE], 2) == 1)
+        {
+            const int g = QuantGridSteps(settings.params[DRUM_QUANT_GRID]);
+            step        = (static_cast<int>((drum_pos_ + phase) / g + 0.5f) * g) % len;
+        }
+        else
+        {
+            step  = drum_pos_;
+            nudge = static_cast<int>(phase * kStepTicks + 0.5f);
+            if(nudge >= kStepTicks)
+                step = (step + 1) % len, nudge = 0;
+        }
+        if(roll && roll_rec_step_[v] == step && pat.DrumHit(step, v))
+            return;
+        roll_rec_step_[v] = static_cast<int8_t>(step); // (a roll's key hit counts as its first)
+        pat.drums[step]   = static_cast<uint8_t>(pat.drums[step] | (1 << v) | (accent ? kDrumAccent : 0));
+        pat.drum_nudge[step][v] = static_cast<uint8_t>(nudge);
+        if(step != drum_pos_)
+            rec_skip_ = static_cast<uint8_t>(rec_skip_ | (1 << v)); // played just now: not again at its step
         pattern_changes++;
         record_count_++;
     }
@@ -828,9 +927,24 @@ class Machine
                 if(options.notes_out)
                     PushMidi(0x80 | ch, e.note, 0);
                 break;
+            case Sequencer::Event::GRID:
+                // The drums step on the grid; at the top, a queued pattern's.
+                if(e.step == 0 && queued_ >= 0)
+                    drum_pat_ = queued_, drum_pos_ = -1;
+                DrumStep();
+                break;
+            case Sequencer::Event::DRUM:
+            {
+                const int v = e.step & 0x7f;
+                if(DrumAudible(v) && !((erase_mask_ >> v) & 1))
+                    PlayDrum(v, (e.step & kDrumAccent) != 0);
+                break;
+            }
+            case Sequencer::Event::ROLL:
+                RollHits();
+                break;
             case Sequencer::Event::STEP:
                 step_count_++;
-                DrumStep();
                 if(ArpEngaged() && (arp_.Active() || arp_note_ >= 0))
                     ArpStep(e.offset, e.step);
                 // A key held while recording ties through the steps it covers.
@@ -850,8 +964,10 @@ class Machine
             case Sequencer::Event::PATTERN_CHANGE:
                 if(queued_ >= 0)
                     settings.pattern = queued_;
-                queued_   = -1;
-                drum_pos_ = -1; // the new pattern's drums from their top
+                queued_ = -1;
+                if(drum_pat_ < 0)
+                    drum_pos_ = -1; // the new pattern's drums from their top
+                drum_pat_ = -1;     // (they already are, from the grid)
                 settings_changes++;
                 break;
         }
@@ -950,6 +1066,16 @@ class Machine
     float       duck_ = 0.f, duck_gain_ = 1.f;
     Reverb      reverb_;
     int         drum_pos_ = -1;
+    int         drum_pat_ = -1;      // the drums' pattern, ahead of the bass's
+    uint8_t     rec_skip_ = 0;       // voices recorded into the next step
+    int8_t      roll_rec_step_[kDrumVoices] = {-1, -1, -1, -1, -1, -1, -1}; // each voice's last recorded step
+    volatile uint8_t erase_mask_ = 0; // voices held for erasing
+    volatile uint8_t roll_mask_  = 0; // voices rolling
+    volatile bool    roll_accent_ = false;
+    uint8_t     roll_prev_  = 0;
+    float       roll_since_ = 0.f;   // samples since a roll started
+    float       roll_clock_ = 0.f;   // stopped: samples to its next hit
+    bool        roll_skip_  = false; // too soon after the key's own hit
     uint8_t     hits_[kHitQueue] = {};
     int8_t      hit_semis_[kHitQueue] = {};
     bool        hit_rec_[kHitQueue] = {};

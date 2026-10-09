@@ -170,7 +170,8 @@ class Ui
         PATTERN,
     };
 
-    static constexpr int kWhite[15] = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
+    static constexpr int kWhiteKeys = 15;
+    static constexpr int kWhite[kWhiteKeys] = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
     static constexpr int kBlack[10] = {1, 3, 6, 8, 10, 13, 15, 18, 20, 22};
     static constexpr int kMiddleC   = 12; // white key 8
     static constexpr int kKeyTranspose = 13; // black key 6
@@ -864,6 +865,31 @@ class Ui
             f.key[kKeyClear] = Scale(kClearColour, 0.2f + 0.8f * Clamp((now - clear_down_) / static_cast<float>(kClearHoldMs), 0.f, 1.f));
         else
             f.key[kKeyClear] = Scale(kClearColour, .12f);
+        if(mode_ == Mode::PITCH)
+        {
+            // Live: F#4 quantize (blue when on), G#4 roll (green), A#4 erase
+            // (red), bright while held; held, the white keys show F#4's grid
+            // or G#4's rate, and erased voices light red.
+            const bool quant = StepIndex(p[DRUM_QUANTIZE], 2) == 1;
+            f.key[kKeyPattern] = Scale(kQuantizeColour, held_[kKeyPattern] ? 1.f : (quant ? 0.5f : 0.06f));
+            f.key[kKeyCopy]    = Scale(kRollColour, held_[kKeyCopy] ? 1.f : 0.1f);
+            f.key[kKeyClear]   = Scale(kClearColour, held_[kKeyClear] ? 1.f : 0.1f);
+            if(held_[kKeyPattern])
+            {
+                const int g = StepIndex(p[DRUM_QUANT_GRID], 3);
+                for(int i = 0; i < kWhiteKeys; i++)
+                    f.key[kWhite[i]] = i < 3 ? Scale(kQuantizeColour, i == g && quant ? 1.f : 0.08f) : Rgb{};
+            }
+            else if(held_[kKeyCopy])
+            {
+                const int r = StepIndex(p[DRUM_ROLL_RATE], kRollRates);
+                for(int i = 0; i < kWhiteKeys; i++)
+                    f.key[kWhite[i]] = i < kRollRates ? Scale(kRollColour, i == r ? 1.f : 0.08f) : Rgb{};
+            }
+            for(int b = 0; b < VoiceKeys(); b++)
+                if(m_->DrumErasing(VoiceOfKey(b)))
+                    f.key[kBlack[b]] = kClearColour;
+        }
         if(now - drum_len_shown_at_ < kShowLengthMs)
             DrawLength(f, pat.drum_length);
         if(now - cleared_at_ < 300)
@@ -911,7 +937,7 @@ class Ui
             const bool rate  = lfo_shown_ == DRUM_LFO_RATE;
             const int  steps = rate ? kLfoRates : kLfoShapes;
             const int  sel   = StepIndex(p[lfo_shown_], steps);
-            for(int i = 0; i < 15; i++)
+            for(int i = 0; i < kWhiteKeys; i++)
                 f.key[kWhite[i]] = i < steps ? Scale(rate ? Rgb{1.f, 1.f, 1.f} : Rgb{0.f, 1.f, .6f}, i == sel ? 1.f : 0.06f) : Rgb{};
         }
         // The purple knob's two lights: the swing with CHOMPI held; otherwise
@@ -1001,6 +1027,26 @@ class Ui
     void DrumKey(int k, uint32_t now)
     {
         const int b = BlackIndex(k), w = WhiteIndex(k);
+        if(mode_ == Mode::PITCH && (b == 7 || b == 8 || b == 9))
+        {
+            // Live: F#4 quantize (tap; held, white keys 1-3 its grid), G#4
+            // roll and A#4 erase (held, with voice keys).
+            if(b == 7)
+                live_quant_down_ = true, live_quant_used_ = false;
+            return;
+        }
+        if(mode_ == Mode::PITCH && w >= 0 && (held_[kKeyPattern] || held_[kKeyCopy]))
+        {
+            if(held_[kKeyPattern] && w < 3)
+            {
+                m_->SetParam(DRUM_QUANT_GRID, StepValue(w, 3));
+                m_->SetParam(DRUM_QUANTIZE, 1.f);
+                live_quant_used_ = true;
+            }
+            else if(held_[kKeyCopy] && !held_[kKeyPattern] && w < kRollRates)
+                m_->SetParam(DRUM_ROLL_RATE, StepValue(w, kRollRates));
+            return;
+        }
         // The pattern page, PATTERN and COPY work as on the bass side.
         if(b == 7)
         {
@@ -1049,6 +1095,21 @@ class Ui
         }
         if(b >= 0 && b < VoiceKeys())
         {
+            if(mode_ == Mode::PITCH && held_[kKeyClear])
+            {
+                // A#4 held + a voice: erase its hits as they pass (not played).
+                m_->SetDrumErase(VoiceOfKey(b), true);
+                return;
+            }
+            if(mode_ == Mode::PITCH && held_[kKeyCopy] && !chompi_)
+            {
+                // G#4 held + a voice: a roll, from this hit on.
+                const int v = VoiceOfKey(b);
+                drum_sel_   = v;
+                m_->DrumHit(v, live_accent_);
+                m_->SetDrumRoll(v, true, live_accent_);
+                return;
+            }
             if(knob_down_[3])
             {
                 // Knob 4 held + a voice: in or out of the reverb and delay
@@ -1102,8 +1163,11 @@ class Ui
         const int step = StepOfWhite(w);
         if(w != 7)
             half_ = w > 7 ? 1 : 0;
-        uint8_t& s = m_->Current().drums[step];
-        s ^= drum_acc_page_ ? kDrumAccent : static_cast<uint8_t>(1 << drum_sel_);
+        Pattern& pat = m_->Current();
+        if(drum_acc_page_)
+            pat.drums[step] ^= kDrumAccent;
+        else
+            pat.SetDrumHit(step, drum_sel_, !pat.DrumHit(step, drum_sel_)); // on the grid
         m_->PatternEdited();
     }
 
@@ -1111,6 +1175,24 @@ class Ui
     {
         if(k == voice_key_)
             voice_key_ = -1;
+        const int b = BlackIndex(k);
+        if(b >= 0 && b < VoiceKeys() && mode_ == Mode::PITCH)
+        {
+            m_->SetDrumErase(VoiceOfKey(b), false);
+            m_->SetDrumRoll(VoiceOfKey(b), false, live_accent_);
+        }
+        if(k == kKeyClear)
+            m_->StopErasing();
+        if(k == kKeyCopy)
+            m_->StopRolls();
+        if(k == kKeyPattern && live_quant_down_)
+        {
+            // Live: a tap of F#4 turns quantize on / off.
+            live_quant_down_ = false;
+            if(!live_quant_used_)
+                m_->SetParam(DRUM_QUANTIZE, StepIndex(m_->settings.params[DRUM_QUANTIZE], 2) ? 0.f : 1.f);
+            return;
+        }
         if(k == kKeyPattern && pattern_down_)
         {
             pattern_down_ = false; // a tap: the pattern page
@@ -1132,7 +1214,11 @@ class Ui
                 Pattern&      p    = m_->Current();
                 const uint8_t mask = drum_acc_page_ && mode_ == Mode::STEP ? kDrumAccent : static_cast<uint8_t>(1 << drum_sel_);
                 for(int i = 0; i < kSteps; i++)
+                {
                     p.drums[i] = static_cast<uint8_t>(p.drums[i] & ~mask);
+                    if(mask != kDrumAccent)
+                        p.drum_nudge[i][drum_sel_] = 0;
+                }
                 m_->PatternEdited();
             }
         }
@@ -1282,6 +1368,7 @@ class Ui
     static constexpr Rgb kArpOnColour        = {0.f, .85f, 1.f};  // cyan
     static constexpr Rgb kLatchColour        = {1.f, .45f, 0.f};  // orange
     static constexpr Rgb kQuantizeColour     = {0.f, .5f, 1.f};   // blue
+    static constexpr Rgb kRollColour         = {0.f, 1.f, .3f};   // drum rolls: green
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
     static constexpr Rgb kProtectColour      = {1.f, 0.f, 1.f};   // write protect on, side A: magenta
@@ -2218,6 +2305,8 @@ class Ui
     int      lfo_shown_             = DRUM_LFO_SHAPE;
     uint32_t lfo_shown_at_          = 0x80000000u;
     bool     drum_clear_down_       = false;
+    bool     live_quant_down_       = false; // live, drums: F#4 down (tap: quantize)
+    bool     live_quant_used_       = false; // ...and a grid picked meanwhile
     uint32_t drum_len_shown_at_     = 0x80000000u;
     uint32_t drum_hits_seen_[kDrumVoices] = {};
     uint32_t drum_hit_at_[kDrumVoices]    = {0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u,
@@ -2264,7 +2353,7 @@ class Ui
 
 // Out-of-class definitions for the arrays, which C++14 (the firmware's
 // standard) needs when they are indexed.
-constexpr int Ui::kWhite[15];
+constexpr int Ui::kWhite[Ui::kWhiteKeys];
 constexpr int Ui::kBlack[10];
 constexpr Rgb Ui::kRed;
 constexpr Rgb Ui::kTransposeColour;
@@ -2280,6 +2369,7 @@ constexpr Rgb Ui::kClearColour;
 constexpr Rgb Ui::kUnprotectColour;
 constexpr Rgb Ui::kQuantizedColour;
 constexpr Rgb Ui::kDrumColour;
+constexpr Rgb Ui::kRollColour;
 constexpr Rgb Ui::kQuantizeColour;
 constexpr Rgb Ui::kLatchColour;
 constexpr Rgb Ui::kArpColour;

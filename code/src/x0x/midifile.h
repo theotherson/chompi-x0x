@@ -79,10 +79,11 @@ struct MidiEvent
 };
 } // namespace detail
 
-/** Writes `pat` (played with quantize to `grid` steps, 0 = off) as a MIDI
- *  file named `name` (the track name). @return bytes written, 0 if it
- *  didn't fit */
-inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char* name, uint8_t* buf, size_t size)
+/** Writes `pat` (played with quantize to `grid` steps, 0 = off; the drums
+ *  with their recorded timing unless `drums_quantized`) as a MIDI file named
+ *  `name` (the track name). @return bytes written, 0 if it didn't fit */
+inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char* name, uint8_t* buf, size_t size,
+                            bool drums_quantized = false)
 {
     const int len = pat.length;
     Step      e[kSteps];
@@ -119,7 +120,8 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
         for(int v = 0; v < 7; v++)
             if(pat.DrumHit(i, v))
             {
-                const uint32_t t = static_cast<uint32_t>(i * kMidiTicksPerStep);
+                const uint32_t t = static_cast<uint32_t>(
+                    i * kMidiTicksPerStep + (drums_quantized ? 0 : pat.drum_nudge[i][v] * kMidiTicksPerNudge));
                 const uint8_t  vel = static_cast<uint8_t>(pat.DrumAccent(i) ? kMidiAccentVel : kMidiNormalVel);
                 ev[n++] = {t, 0x99, kGmDrum[v], vel};
                 ev[n++] = {t + kMidiTicksPerStep / 2, 0x89, kGmDrum[v], 0};
@@ -425,15 +427,25 @@ inline bool ReadMidiFile(const uint8_t* d, size_t size, Pattern& out)
         if(next < p.length && next == last + 1 && n.off > notes[at[next]].on)
             p.steps[last].slide = true;
     }
-    // The drums: each hit on its nearest step; 112 and up an accent.
+    // The drums: each hit in the step it falls in, late by its ticks (or
+    // the next step, on time, if nearer it); 112 and up an accent. Two hits
+    // of a voice in a step: the first.
     p.drum_length = dcount ? p.length : static_cast<uint8_t>(kSteps);
     for(int i = 0; i < dcount; i++)
     {
-        const int step = static_cast<int>(dhits[i].on / tps + 0.5f);
+        const float pos   = dhits[i].on / tps;
+        int         step  = static_cast<int>(pos);
+        int         nudge = static_cast<int>((pos - step) * kStepTicks + 0.5f);
+        if(nudge >= kStepTicks)
+            step++, nudge = 0;
         if(step >= p.drum_length)
             continue;
-        p.drums[step] = static_cast<uint8_t>(p.drums[step] | (1 << dhits[i].pitch) | (dhits[i].vel >= 112 ? kDrumAccent : 0));
-        any           = true;
+        const int v = dhits[i].pitch;
+        if(p.DrumHit(step, v) && p.drum_nudge[step][v] <= nudge)
+            continue;
+        p.drums[step]          = static_cast<uint8_t>(p.drums[step] | (1 << v) | (dhits[i].vel >= 112 ? kDrumAccent : 0));
+        p.drum_nudge[step][v]  = static_cast<uint8_t>(nudge > 5 ? 5 : nudge);
+        any                    = true;
     }
     if(!any)
         return false;

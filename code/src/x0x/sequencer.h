@@ -11,6 +11,10 @@
  *
  *  Events come out in time order with their sample offset in the block. The
  *  caller (Machine) turns them into voice notes and MIDI.
+ *
+ *  GRID marks each step's place on the grid (swing included, but not the
+ *  bass note's own timing): the drums step on it. Drum hits recorded late
+ *  are scheduled from there (ScheduleDrum) and come back as DRUM events.
  */
 #pragma once
 #include "pattern.h"
@@ -33,6 +37,9 @@ class Sequencer
             STEP,           // a step started (step = its index)
             TICK,           // an internal clock tick, for MIDI clock out
             PATTERN_CHANGE, // the queued pattern took over
+            GRID,           // a step's place on the grid (step = its index)
+            DRUM,           // a drum hit scheduled late (step = its payload)
+            ROLL,           // a drum roll's next hit (SetRoll)
         };
         Type     type;
         uint32_t offset; // sample in the block
@@ -63,6 +70,36 @@ class Sequencer
     int  CurrentStep() const { return running_ ? step_ : -1; }
     int  NextStep() const { return next_step_; }
 
+    /** How far from the last GRID to the next, 0..1 (recording drums). */
+    float GridPhase() const
+    {
+        if(!running_)
+            return 0.f;
+        const double len = grid_pos_ - last_grid_pos_;
+        return len > 0.0 ? Clamp(static_cast<float>((pos_ - last_grid_pos_) / len), 0.f, 1.f) : 0.f;
+    }
+
+    /** A DRUM event `ticks` after the last GRID, carrying `payload`. */
+    void ScheduleDrum(double ticks, int payload)
+    {
+        if(!running_ || drum_count_ >= kMaxDrums)
+            return;
+        drum_at_[drum_count_]  = last_grid_pos_ + ticks;
+        drum_pay_[drum_count_] = payload;
+        drum_count_++;
+    }
+
+    /** Drum rolls: a ROLL event every `ticks`, on that grid from the top of
+     *  the pattern; 0 stops them. */
+    void SetRoll(int ticks)
+    {
+        if(ticks == roll_ticks_)
+            return;
+        roll_ticks_ = ticks;
+        if(ticks > 0)
+            roll_next_ = (static_cast<int>(pos_ / ticks + 1e-6) + 1) * static_cast<double>(ticks);
+    }
+
     /** How far through the current step on the grid, 0..1 (for recording). */
     float StepPhase() const
     {
@@ -83,6 +120,9 @@ class Sequencer
         next_tick_ = 0.0;
         gate_off_  = -1.0;
         hold_      = false;
+        grid_step_ = 0, grid_pos_ = 0.0, grid_base_ = 0.0, last_grid_pos_ = 0.0;
+        drum_count_ = 0;
+        roll_next_  = 0.0;
         ScheduleStep();
     }
 
@@ -154,6 +194,13 @@ class Sequencer
         double next = next_tick_;
         if(step_pos_ < next)
             next = step_pos_;
+        if(grid_pos_ < next)
+            next = grid_pos_;
+        for(int i = 0; i < drum_count_; i++)
+            if(drum_at_[i] < next)
+                next = drum_at_[i];
+        if(roll_ticks_ > 0 && roll_next_ < next)
+            next = roll_next_;
         if(gate_off_ >= 0.0 && gate_off_ < next)
             next = gate_off_;
         return next;
@@ -168,8 +215,37 @@ class Sequencer
             gate_off_ = -1.0;
             ReleaseIfPlaying(off, ev, count);
         }
+        if(grid_pos_ <= pos_ + 1e-9)
+        {
+            // The grid first: a step's note is never before its place.
+            Event e{Event::GRID, off};
+            e.step         = grid_step_;
+            ev[count++]    = e;
+            last_grid_pos_ = grid_pos_;
+            grid_step_++;
+            if(grid_step_ >= pat_->length)
+                grid_step_ = 0, grid_base_ += pat_->length * kTicksPerStep; // a wrap is never swung
+            grid_pos_ = grid_base_ + GridStart(grid_step_);
+        }
         if(step_pos_ <= pos_ + 1e-9)
             StartStep(off, ev, count);
+        for(int i = 0; i < drum_count_ && count < kMaxEvents - 4;)
+            if(drum_at_[i] <= pos_ + 1e-9)
+            {
+                Event e{Event::DRUM, off};
+                e.step      = drum_pay_[i];
+                ev[count++] = e;
+                drum_count_--;
+                drum_at_[i]  = drum_at_[drum_count_];
+                drum_pay_[i] = drum_pay_[drum_count_];
+            }
+            else
+                i++;
+        if(roll_ticks_ > 0 && roll_next_ <= pos_ + 1e-9 && count < kMaxEvents - 4)
+        {
+            ev[count++] = {Event::ROLL, off};
+            roll_next_ += roll_ticks_;
+        }
         if(next_tick_ <= pos_ + 1e-9)
         {
             if(internal)
@@ -208,10 +284,17 @@ class Sequencer
         // Wrap: back to the top, and a queued pattern takes over.
         if(next_step_ == 0 && step_ >= 0)
         {
-            pos_       = 0.0;
-            next_tick_ = next_tick_ - static_cast<double>(pat_length_ticks_);
+            // Back by the pattern's length: a late first step stays late,
+            // and the loop keeps its length.
+            const double l = static_cast<double>(pat_length_ticks_);
+            pos_ -= l;
+            next_tick_ -= l;
             if(gate_off_ >= 0.0)
-                gate_off_ -= pat_length_ticks_;
+                gate_off_ -= l;
+            grid_base_ -= l, grid_pos_ -= l, last_grid_pos_ -= l;
+            for(int i = 0; i < drum_count_; i++)
+                drum_at_[i] -= l;
+            roll_next_ -= l;
             if(queued_)
             {
                 pat_    = queued_;
@@ -307,6 +390,19 @@ class Sequencer
     int        next_step_        = 0;
     int        playing_          = -1;
     bool       hold_             = false;
+    // The grid, for the drums: the next step's place, the last one's, and
+    // where this pass of the pattern started (ahead of pos_'s while the
+    // bass's first step is late).
+    int        grid_step_     = 0;
+    double     grid_pos_      = 0.0;
+    double     grid_base_     = 0.0;
+    double     last_grid_pos_ = 0.0;
+    static constexpr int kMaxDrums = 16;
+    double     drum_at_[kMaxDrums]  = {};
+    int        drum_pay_[kMaxDrums] = {};
+    int        drum_count_          = 0;
+    int        roll_ticks_          = 0;
+    double     roll_next_           = 0.0;
 };
 
 } // namespace x0x

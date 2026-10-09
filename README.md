@@ -30,9 +30,14 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | Voice keys | That voice's page | Play it |
 | C#4 / D#4 | The ACCENT page (blue) / view 1-8 / 9-16 | Closed / open hat. CHOMPI + LOOP: live hits accented on / off (LOOP blue while CHOMPI is held) |
 | White keys | The page's steps on / off: the voice's hits in its colour (accented ones tinted blue), other voices' dim (or the accents, blue) | The last voice played, pitched in C major from middle C (played, not recorded) |
-| F#4 / G#4 | PATTERN, COPY: as on the bass side | The same |
-| A#4 (CLEAR) | Tap: this voice's hits (or the accents); hold 1 s: the whole drum part | The same |
-| LOOP | Tap tempo | Record on/off (hits go to the nearest step while running); hold 2 s: clear the drum part |
+| F#4 | PATTERN: as on the bass side | **Quantize** (blue when on): a tap turns it on / off. Hold F#4 and press white key 1 / 2 / 3 for the grid: 1/16, 1/8, 1/4 (this turns quantize on) |
+| G#4 | COPY: as on the bass side | **Roll** (green): hold G#4 and hold voice keys, and they repeat in time. Hold G#4 and press white keys 1-5 for the rate: 1/8, 1/8T, 1/16, 1/16T, 1/32 |
+| A#4 | CLEAR: tap clears this voice's hits (or the accents); hold 1 s: the whole drum part | **Erase** (red): hold A#4 and hold voice keys while it runs, and their hits are wiped as the playhead passes them (the keys light red) |
+| LOOP | Tap tempo | Record on/off; hold 2 s: clear the drum part |
+
+**Recording drums live.** With quantize on (the default), each hit goes to the nearest point of the grid. With it off, each hit keeps its timing within the step, to 1/24 of a beat (a hit just before a step goes on that step, on time). Turning quantize on plays hits recorded off the grid on their steps instead; the timing is kept for when it's off again. A hit you record into the step about to play isn't played twice. Rolls are recorded too, one hit per voice per step (the first). The pattern, copy and clear keys are in step mode only.
+
+The drums keep to the grid: a bass note recorded late doesn't move the drums on its step.
 
 | Knob | Turn | With CHOMPI |
 |---|---|---|
@@ -160,7 +165,7 @@ Channels and on/off switches are in `/X0X/options.txt`.
 
 | File | Holds |
 |---|---|
-| `patterns.txt` | The 32 patterns (1A-16B), plain text: one `step` line per step (note, octave, on, accent, slide, tie, nudge). Files from before A/B load as the A sides |
+| `patterns.txt` | The 32 patterns (1A-16B), plain text: one `step` line per step (note, octave, on, accent, slide, tie, nudge), a `drums` line for the drum part and, if any hits were recorded off the grid, a `drum_nudge` line with their timing. Files from before A/B load as the A sides |
 | `MIDI/01A.mid` ... `16B.mid` | Each pattern as a Standard MIDI File, written when you export (hold a pattern key 2 s on the pattern page). One pass of the pattern at the current tempo, 96 ticks a beat: recorded timing kept (on the grid if quantize is on), accents at velocity 120 and others 90, ties as longer notes, slides overlapping the next note. Swing and transpose are left out. Empty patterns have no file |
 | `IMPORT/` | MIDI files to load into patterns at power-on. Name a file for its pattern, `3B.mid` (or `03B.mid`), put it here, and power on: pattern 3B is replaced and saved (even with write protect on), the file is renamed `3B.done`, and the keys flash green. A file it can't read is renamed `3B.bad`, changes nothing, and the keys blink red. Files it exported come back exactly; others are fitted: format 0 or 1, every track and channel together, the first 16 sixteenths, one note a step (the earliest, then the highest), up to 5 MIDI clock ticks late kept as timing, pitches brought into range by octaves, velocity 112 and up an accent, notes held across steps tied, and notes held into the next one slid. Other names are left alone |
 | `current.txt` | Every knob setting, the selected pattern and write protect, restored at power-on. Knob settings save even while the patterns are protected |

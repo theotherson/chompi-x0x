@@ -155,6 +155,7 @@ class Storage
         const float bpm   = m.TempoBpmNow();
         const bool  quant = x0x::StepIndex(m.settings.params[x0x::QUANTIZE], 2) == 1;
         const int   grid  = quant ? x0x::QuantGridSteps(m.settings.params[x0x::QUANT_GRID]) : 0;
+        const bool  dquant = x0x::StepIndex(m.settings.params[x0x::DRUM_QUANTIZE], 2) == 1;
         __enable_irq();
         f_mkdir("MIDI"); // fails harmlessly if it's there
         bool ok = true;
@@ -171,7 +172,7 @@ class Storage
             }
             snprintf(name, sizeof name, "x0x %d%c", num, side);
             const size_t n = x0x::WriteMidiFile(snapshot_[i], bpm, grid, name,
-                                                reinterpret_cast<uint8_t*>(buf_), sizeof(buf_));
+                                                reinterpret_cast<uint8_t*>(buf_), sizeof(buf_), dquant);
             UINT wrote = 0;
             if(n == 0 || f_open(&file_.fil, path, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
             {

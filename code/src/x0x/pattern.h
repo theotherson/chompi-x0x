@@ -21,6 +21,10 @@
  *    drums 16 81 00 40 ...     the drum part: its length, then each step as
  *                              hex: bits 0-6 the voices (BD SD LT HT CY OH
  *                              CH), bit 7 the accent (absent: no drums)
+ *    drum_nudge 0000000 0300000 ...
+ *                              each step's hits' timing, a digit a voice:
+ *                              0-5 ticks late, as a step's nudge (absent:
+ *                              all on the grid)
  */
 #pragma once
 #include "dsp.h"
@@ -85,6 +89,24 @@ struct Pattern
      *  voice and one for the accent; its own length (polymeters). */
     uint8_t drums[kSteps] = {};
     uint8_t drum_length   = kSteps;
+    /** Each hit's timing, recorded with quantize off: 0-5 ticks late. */
+    uint8_t drum_nudge[kSteps][kDrumVoices] = {};
+
+    /** Sets or clears a hit (on the grid). */
+    void SetDrumHit(int step, int voice, bool on)
+    {
+        const uint8_t bit = static_cast<uint8_t>(1 << voice);
+        drums[step]       = static_cast<uint8_t>(on ? drums[step] | bit : drums[step] & ~bit);
+        drum_nudge[step][voice] = 0;
+    }
+    bool DrumNudged() const
+    {
+        for(int i = 0; i < kSteps; i++)
+            for(int v = 0; v < kDrumVoices; v++)
+                if(drum_nudge[i][v])
+                    return true;
+        return false;
+    }
 
     bool DrumHit(int step, int voice) const { return (drums[step] >> voice) & 1; }
     bool DrumAccent(int step) const { return (drums[step] & kDrumAccent) != 0; }
@@ -147,7 +169,11 @@ struct Pattern
     void ClearDrums()
     {
         for(int i = 0; i < kSteps; i++)
+        {
             drums[i] = 0;
+            for(int v = 0; v < kDrumVoices; v++)
+                drum_nudge[i][v] = 0;
+        }
         drum_length = kSteps;
     }
 
@@ -166,7 +192,8 @@ struct Pattern
         if(length != o.length || drum_length != o.drum_length)
             return false;
         for(int i = 0; i < kSteps; i++)
-            if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i])
+            if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i]
+               || memcmp(drum_nudge[i], o.drum_nudge[i], kDrumVoices) != 0)
                 return false;
         return true;
     }
@@ -205,6 +232,29 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
             for(int i = 0; i < kSteps; i++)
             {
                 w = snprintf(buf + len, size - len, " %02x", pat.drums[i]);
+                if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                    return 0;
+                len += w;
+            }
+            if(len + 1 >= size)
+                return 0;
+            buf[len++] = '\n';
+            buf[len]   = '\0';
+        }
+        if(pat.DrumNudged())
+        {
+            w = snprintf(buf + len, size - len, "drum_nudge");
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+            for(int i = 0; i < kSteps; i++)
+            {
+                char d[kDrumVoices + 2];
+                d[0] = ' ';
+                for(int v = 0; v < kDrumVoices; v++)
+                    d[1 + v] = static_cast<char>('0' + ClampInt(pat.drum_nudge[i][v], 0, 5));
+                d[kDrumVoices + 1] = '\0';
+                w = snprintf(buf + len, size - len, "%s", d);
                 if(w <= 0 || static_cast<size_t>(w) >= size - len)
                     return 0;
                 len += w;
@@ -255,6 +305,24 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                     pat->drums[i] = static_cast<uint8_t>(v & 0xff);
                     p = end;
                 }
+            }
+        }
+        else if(pat && strncmp(line, "drum_nudge ", 11) == 0)
+        {
+            const char* p = line + 11;
+            for(int i = 0; i < kSteps; i++)
+            {
+                while(*p == ' ')
+                    p++;
+                for(int v = 0; v < kDrumVoices; v++)
+                {
+                    if(*p < '0' || *p > '9')
+                        break;
+                    pat->drum_nudge[i][v] = static_cast<uint8_t>(ClampInt(*p - '0', 0, 5));
+                    p++;
+                }
+                while(*p && *p != ' ')
+                    p++; // anything more in this step's group: skipped
             }
         }
         else if(pat && strncmp(line, "length ", 7) == 0)

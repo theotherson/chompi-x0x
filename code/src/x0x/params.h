@@ -62,6 +62,9 @@ enum Param : uint8_t
     DRUM_FENV_DECAY, //   and decay (CHOMPI + it),
     DRUM_LFO_SHAPE,  //   its LFO: off, triangle, ramp up, ramp down, S+H,
     DRUM_LFO_RATE,   //   and its rate, synced (kLfoBeats)
+    DRUM_QUANTIZE,   // live drum recording: on the grid (on) or as played
+    DRUM_QUANT_GRID, //   its grid: 1/16, 1/8, 1/4
+    DRUM_ROLL_RATE,  // drum rolls: 1/8, 1/8T, 1/16, 1/16T, 1/32
     DRUM_DRIVE,      //   distortion (CHOMPI + volume on the drums' side)
     DRUM_FX_SENDS,   // which drum voices go to the reverb and delay (a mask: v * 127)
     COMP,            // the master compressor (volume knob, page 4)
@@ -143,12 +146,19 @@ constexpr ParamInfo kParams[NUM_PARAMS] = {
     {"drum_fenv_decay", .4f,  0, 0},   // ~60 ms
     {"drum_lfo_shape", 0.f,   5, 0},   // off
     {"drum_lfo_rate", .2f,    11, 0},  // 1 bar
+    {"drum_quantize", 1.f,    2, 0},   // on
+    {"drum_quant_grid", 0.f,  3, 0},   // 1/16
+    {"drum_roll_rate", .5f,   5, 0},   // 1/16
     {"drum_drive",  0.f,      0, 0},   // off by default
     {"drum_fx_sends", 1.f,    128, 0}, // every voice in
     {"comp",        0.f,      0, 0},   // off .. heavy
     {"sidechain",   0.f,      0, 0},   // none .. -20 dB on each kick
 };
 // clang-format on
+
+/** Drum rolls' rates, in MIDI clock ticks: 1/8, 1/8T, 1/16, 1/16T, 1/32. */
+constexpr int kRollRates           = 5;
+constexpr int kRollTicks[kRollRates] = {12, 8, 6, 4, 3};
 
 /** Index of a stepped parameter's position. */
 inline int StepIndex(float v, int steps)
