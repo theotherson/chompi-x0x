@@ -21,15 +21,15 @@ Tap CHOMPI twice quickly (each tap short, nothing else touched in between) to sw
 
 Seven voices synthesised the way a TR-606 makes them (from Roland's block diagram), fitted to samples of real 606s: bass drum, snare, low and high tom, cymbal, open and closed hi-hat, plus accent. Every pattern holds a drum part alongside its bassline, so picking 3A changes both; the drum part has its own length, for polymeters. Accent is per step, as on the 606, and makes hits up to 3x as loud (the accent level sets how much). A closed hat chokes an open one.
 
-**Voices on the black keys.** Step mode: C#3 BD · D#3 SD · F#3 LT / HT · G#3 CY · A#3 CH / OH; the toms' and hats' keys alternate press by press (the key again gives the other voice's page). Live mode: every voice its own key, C#3 BD · D#3 SD · F#3 LT · G#3 HT · A#3 CY · C#4 CH · D#4 OH. Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH blue), the selected one bright, and flashes when it plays.
+**Voices on the black keys.** Step mode: C#3 BD · D#3 SD · F#3 LT / HT · G#3 CY · A#3 CH / OH; the toms' and hats' keys alternate press by press (the key again gives the other voice's page). Live mode: every voice its own key, C#3 BD · D#3 SD · F#3 LT · G#3 HT · A#3 CY · C#4 CH · D#4 OH. Each lights in its own colour (BD red, SD orange, LT yellow, HT lime, CY cyan, OH violet, CH magenta), the selected one bright, and flashes when it plays.
 
 **Mute and solo** (both modes): CHOMPI + a voice key mutes that voice (it blinks slowly); again unmutes it. Holding a voice key 2 s solos it (it lights brighter, the others dim); again unsolos. Several can be soloed. They act on the drum part's playback: voices you play by hand always sound. They aren't saved.
 
 | | Step mode (toggle up) | Live mode (toggle down) |
 |---|---|---|
 | Voice keys | That voice's page | Play it |
-| C#4 / D#4 | The ACCENT page / view 1-8 / 9-16 | Closed / open hat. CHOMPI + LOOP: live hits accented on / off (LOOP white while CHOMPI is held) |
-| White keys | The page's steps on / off: the voice's hits in its colour, other voices' dim (or the accents, white) | The last voice played, pitched in C major from middle C (played, not recorded) |
+| C#4 / D#4 | The ACCENT page (blue) / view 1-8 / 9-16 | Closed / open hat. CHOMPI + LOOP: live hits accented on / off (LOOP blue while CHOMPI is held) |
+| White keys | The page's steps on / off: the voice's hits in its colour (accented ones tinted blue), other voices' dim (or the accents, blue) | The last voice played, pitched in C major from middle C (played, not recorded) |
 | F#4 / G#4 | PATTERN, COPY: as on the bass side | The same |
 | A#4 (CLEAR) | Tap: this voice's hits (or the accents); hold 1 s: the whole drum part | The same |
 | LOOP | Tap tempo | Record on/off (hits go to the nearest step while running); hold 2 s: clear the drum part |
@@ -42,9 +42,9 @@ Seven voices synthesised the way a TR-606 makes them (from Roland's block diagra
 | Knob 4, page 1 | Reverb send (blue) | Reverb size: a small room, quick, to a big hall, long (lavender) |
 | Knob 4, page 2 | Delay send (cyan): into the delay the bass uses too | The delay's synced time (shared with the bass side; white keys 1-9 show it) |
 | Knob 4, page 3 | Bit crush (green) | Sample-rate reduction (red) |
-| Knob 4, page 4 | Filter: low-pass turned left, high-pass turned right, off in the middle (yellow) | Drive (orange) |
+| Knob 4, page 4 | Filter: low-pass turned left, high-pass turned right, off in the middle (yellow) | Distortion mix: dry to wet, for parallel distortion (default all wet) |
 | Purple | Tempo (flashing the beat) | Swing |
-| Volume | As on the bass side (shared) | |
+| Volume | Volume (shared) | **The drums' own distortion**, as the bass's drive but separate from it (orange to red) |
 
 Knob 4's click steps through its pages; CHOMPI + click resets all the drums' effects (not the shared delay time). The delay is shared: the bass reaches it through its own delay knob, the drums through their send, so their echoes always line up; its feedback and tone (the bass's knob 4, page 2) set it for both. The mix knob (volume, page 3) acts before the effects, so muting a side mutes its echoes too. MIDI out sends them on channel 10 (GM notes: BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42), and MIDI files export and import the drum part on channel 10.
 

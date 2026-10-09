@@ -597,6 +597,7 @@ class Machine
         // the reverb.
         DrumFx::Settings ds;
         ds.drive      = p[DRUM_DRIVE];
+        ds.dist_mix   = p[DRUM_DIST_MIX];
         ds.filter     = p[DRUM_FILTER];
         ds.crush_bits = p[DRUM_CRUSH];
         ds.crush_rate = p[DRUM_CRUSH_RATE];

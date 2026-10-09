@@ -2303,6 +2303,56 @@ static void TestCompressorAndSidechain()
     r.m.Stop();
 }
 
+static void TestDrumDistortion()
+{
+    printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
+    Rig r;
+    float* prm = r.m.settings.params;
+    // Bass side: CHOMPI + volume is the bass's drive.
+    r.ui.Chompi(true), r.ui.KnobTurn(5, 5, false), r.ui.Chompi(false);
+    CHECK(prm[DRIVE] > 0.f && prm[DRUM_DRIVE] == 0.f);
+    const float bass_drive = prm[DRIVE];
+    // Drums' side: the drums' own.
+    r.Run(1000);
+    r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false), r.Run(120), r.ui.Chompi(true), r.Run(60), r.ui.Chompi(false);
+    CHECK(r.ui.OnDrums());
+    r.ui.Chompi(true), r.ui.KnobTurn(5, 8, false), r.ui.Chompi(false);
+    CHECK(prm[DRUM_DRIVE] > 0.f && prm[DRIVE] == bass_drive);
+    // CHOMPI + knob 4 (page 4): the mix.
+    for(int i = 0; i < 3; i++)
+        r.ui.KnobClick(3, r.now);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, -10, false), r.ui.Chompi(false);
+    CHECK(prm[DRUM_DIST_MIX] < 1.f);
+
+    // The sound: distorted is louder relative to its peak (squashed), and a
+    // mix of 0 is the dry signal exactly.
+    auto run = [](float drive, float mix, std::vector<float>& out) {
+        DrumFx fx;
+        fx.Init(48000.f);
+        DrumFx::Settings st;
+        st.drive = drive, st.dist_mix = mix;
+        fx.Set(st);
+        out.resize(4800);
+        for(size_t i = 0; i < out.size(); i++)
+            out[i] = 0.6f * sinf(6.2832f * 110.f * i / 48000.f) * expf(-static_cast<float>(i) / 1200.f);
+        for(size_t i = 0; i < out.size(); i += 48)
+            fx.Process(&out[i], 48);
+    };
+    std::vector<float> dry, dist, mix0;
+    run(0.f, 1.f, dry), run(0.8f, 1.f, dist), run(0.8f, 0.f, mix0);
+    auto crest = [](const std::vector<float>& v) {
+        double e = 0, pk = 0;
+        for(float x : v)
+            e += x * x, pk = std::max(pk, static_cast<double>(fabsf(x)));
+        return pk / sqrt(e / v.size());
+    };
+    CHECK(crest(dist) < crest(dry) * 0.7); // squashed
+    bool same = true;
+    for(size_t i = 0; i < dry.size(); i++)
+        same &= fabsf(dry[i] - mix0[i]) < 1e-6f;
+    CHECK(same);
+}
+
 int main()
 {
     TestDemoTiming();
@@ -2337,6 +2387,7 @@ int main()
     TestDrumMuteSoloMix();
     TestDrumEffects();
     TestCompressorAndSidechain();
+    TestDrumDistortion();
     TestArp();
     TestTransposeC();
     TestLivePlayhead();

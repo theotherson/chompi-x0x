@@ -115,7 +115,9 @@
  *    knob 4 (4 pages)              reverb (CHOMPI: size), delay send (CHOMPI:
  *                                  the shared delay's time), bit crush
  *                                  (CHOMPI: rate), filter: low-pass left,
- *                                  high-pass right (CHOMPI: drive)
+ *                                  high-pass right (CHOMPI: distortion mix)
+ *    CHOMPI + volume               the drums' own distortion (the bass's
+ *                                  drive is its own, on the bass side)
  *    purple knob                   tempo (CHOMPI: swing)
  *
  *  Knobs: clicking knob 1, knob 4 or volume steps through its pages;
@@ -428,7 +430,7 @@ class Ui
             m_->SetParam(DELAY_FREE, p[DELAY_FREE] + inc * step);
             return;
         }
-        const uint8_t sel = kKnobMap[knob][KnobPage(knob)][chompi_ ? 1 : 0];
+        const uint8_t sel = SideParam(kKnobMap[knob][KnobPage(knob)][chompi_ ? 1 : 0]);
         if(sel == kKnobNone)
             return;
         const int dir = inc > 0 ? 1 : -1;
@@ -487,7 +489,7 @@ class Ui
             for(int page = first; page <= last; page++)
             for(int layer = 0; layer < 2; layer++)
             {
-                const uint8_t sel = kKnobMap[knob][page][layer];
+                const uint8_t sel = SideParam(kKnobMap[knob][page][layer]);
                 if(sel == kKnobLength)
                 {
                     m_->SetLength(kSteps);
@@ -776,9 +778,11 @@ class Ui
                     const float   past = step >= pat.drum_length ? 0.3f : 1.f;
                     Rgb           c;
                     if(drum_acc_page_)
-                        c = (b & kDrumAccent) ? Scale(Rgb{1.f, 1.f, 1.f}, past) : (b & 0x7f) ? Rgb{.05f, .05f, .05f} : Rgb{};
+                        c = (b & kDrumAccent) ? Scale(kDrumAccentCol, past) : (b & 0x7f) ? Rgb{.05f, .05f, .05f} : Rgb{};
                     else if((b >> drum_sel_) & 1)
-                        c = (b & kDrumAccent) ? Whiten(Scale(kDrumCol[drum_sel_], past), 0.3f) : Scale(kDrumCol[drum_sel_], past);
+                        c = Scale(kDrumCol[drum_sel_], past);
+                    if(!drum_acc_page_ && ((b >> drum_sel_) & 1) && (b & kDrumAccent))
+                        c = {c.r * 0.6f, c.g * 0.6f, Clamp(c.b * 0.6f + 0.5f * past, 0.f, 1.f)}; // accented: a blue tint
                     else if(b & 0x7f)
                         c = {.05f, .05f, .05f};
                     if(lit && ds == step)
@@ -815,7 +819,7 @@ class Ui
             f.key[kBlack[KeyOfVoice(voice_key_voice_)]] = {1.f, 1.f, 1.f};
         if(mode_ == Mode::STEP)
         {
-            f.key[kBlack[5]] = Scale(Rgb{1.f, 1.f, 1.f}, drum_acc_page_ ? 1.f : 0.12f);
+            f.key[kBlack[5]] = Scale(kDrumAccentCol, drum_acc_page_ ? 1.f : 0.12f);
             f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         }
         f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentPattern())),
@@ -851,9 +855,9 @@ class Ui
             static constexpr Rgb kFxCol[4][2] = {{{.3f, .4f, 1.f}, {.7f, .5f, 1.f}},  // reverb | size
                                                  {{0.f, .9f, 1.f}, {1.f, 1.f, 1.f}},  // delay send | time
                                                  {{.3f, 1.f, 0.f}, {1.f, .15f, 0.f}}, // crush | rate
-                                                 {{1.f, .85f, 0.f}, {1.f, .3f, 0.f}}}; // filter | drive
+                                                 {{1.f, .85f, 0.f}, {1.f, .3f, 0.f}}}; // filter | distortion mix
             static constexpr int kFxP[4][2] = {{DRUM_REVERB, REVERB_SIZE}, {DRUM_DELAY, DELAY_TIME},
-                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_FILTER, DRUM_DRIVE}};
+                                               {DRUM_CRUSH, DRUM_CRUSH_RATE}, {DRUM_FILTER, DRUM_DIST_MIX}};
             const int q = kFxP[drum_knob4_page_][chompi_ ? 1 : 0];
             float     v = p[q];
             if(q == DRUM_FILTER)
@@ -878,7 +882,7 @@ class Ui
         if(chompi_)
         {
             f.chompi = {1.f, 1.f, 1.f};
-            f.loop   = Scale(Rgb{1.f, 1.f, 1.f}, live_accent_ ? 1.f : 0.12f); // CHOMPI + LOOP: live accent
+            f.loop   = Scale(kDrumAccentCol, live_accent_ ? 1.f : 0.12f); // CHOMPI + LOOP: live accent
         }
         else
             f.chompi = Scale(kDrumColour, lit && ds % 4 == 0 ? 1.f : .45f);
@@ -1103,7 +1107,7 @@ class Ui
                 static constexpr int kFx[4][2] = {{DRUM_REVERB, REVERB_SIZE},
                                                   {DRUM_DELAY, DELAY_TIME},
                                                   {DRUM_CRUSH, DRUM_CRUSH_RATE},
-                                                  {DRUM_FILTER, DRUM_DRIVE}};
+                                                  {DRUM_FILTER, DRUM_DIST_MIX}};
                 param = kFx[drum_knob4_page_][chompi_ ? 1 : 0];
                 if(param == DELAY_TIME)
                 {
@@ -1142,7 +1146,7 @@ class Ui
             // CHOMPI + click on knob 4: all the drums' effects back to their
             // defaults (the shared delay's time stays).
             static constexpr int kDrumFx[7] = {DRUM_REVERB, REVERB_SIZE, DRUM_DELAY, DRUM_CRUSH,
-                                               DRUM_CRUSH_RATE, DRUM_FILTER, DRUM_DRIVE};
+                                               DRUM_CRUSH_RATE, DRUM_FILTER, DRUM_DIST_MIX};
             for(int q : kDrumFx)
                 m_->SetParam(static_cast<Param>(q), kParams[q].def);
             return;
@@ -1179,8 +1183,9 @@ class Ui
     // The drum voices' colours: BD SD LT HT CY OH CH.
     static constexpr Rgb kDrumCol[kDrumVoices] = {
         {1.f, .08f, .08f}, {1.f, .5f, 0.f}, {1.f, .85f, 0.f}, {.4f, 1.f, 0.f},
-        {0.f, .85f, 1.f},  {.6f, .3f, 1.f}, {.15f, .35f, 1.f},
+        {0.f, .85f, 1.f},  {.6f, .3f, 1.f}, {1.f, 0.f, 1.f},
     };
+    static constexpr Rgb kDrumAccentCol = {0.f, .3f, 1.f}; // the drums' accent: blue
     static constexpr uint32_t kShowValueMs   = 1200;
     static constexpr int      kShowOctaves   = 0;
     static constexpr int      kShowPattern   = 1;
@@ -1351,6 +1356,10 @@ class Ui
     }
 
     void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
+
+    /** The volume knob's CHOMPI layer is each side's own distortion: the
+     *  bass's drive, or on the drums' side theirs. */
+    uint8_t SideParam(uint8_t sel) const { return drums_ && sel == DRIVE ? static_cast<uint8_t>(DRUM_DRIVE) : sel; }
 
     /** A side's colour on the pattern key and page: A light blue, B yellow;
      *  magenta and orange while write-protected. */
@@ -1999,17 +2008,17 @@ class Ui
         for(int k = 0; k < 6; k++)
         {
             const int     page = KnobPage(k);
-            const uint8_t sel  = kKnobMap[k][page][chompi_ ? 1 : 0];
+            const uint8_t sel  = SideParam(kKnobMap[k][page][chompi_ ? 1 : 0]);
             Rgb           c    = kKnobColour[k][page][chompi_ ? 1 : 0];
             float         v    = 0.f;
             if(sel == kKnobLength)
                 v = m_->Current().length / static_cast<float>(kSteps);
             else if(sel == WAVE)
                 c = StepIndex(m_->settings.params[WAVE], 2) ? Rgb{0.f, .8f, 1.f} : Rgb{1.f, .55f, 0.f}, v = 1.f;
-            else if(sel == DRIVE)
+            else if(sel == DRIVE || sel == DRUM_DRIVE)
             {
                 // Orange at the bottom, red at the top.
-                v = m_->settings.params[DRIVE];
+                v = m_->settings.params[sel];
                 c = {1.f, .45f * (1.f - v), 0.f};
             }
             else if(sel == TEMPO)
@@ -2137,6 +2146,7 @@ constexpr Rgb Ui::kTransposeColour;
 constexpr Rgb Ui::kTransposeKeyColour;
 constexpr Rgb Ui::kArpOnColour;
 constexpr Rgb Ui::kProtectColour;
+constexpr Rgb Ui::kDrumAccentCol;
 constexpr Rgb Ui::kDrumCol[kDrumVoices];
 constexpr Rgb Ui::kImportColour;
 constexpr Rgb Ui::kSideBColour;

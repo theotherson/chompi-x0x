@@ -423,7 +423,8 @@ class Reverb
 };
 
 /** The drums' own effects, in place: drive, a one-knob filter (low-pass
- *  turned left, high-pass turned right, off in the middle), bit crush. */
+ *  turned left, high-pass turned right, off in the middle), bit crush.
+ *  The distortion is the bass's drive's, with a dry / wet mix. */
 class DrumFx
 {
   public:
@@ -432,6 +433,7 @@ class DrumFx
     struct Settings
     {
         float drive      = 0.f;
+        float dist_mix   = 1.f;
         float filter     = 0.5f;
         float crush_bits = 0.f;
         float crush_rate = 0.f;
@@ -441,9 +443,14 @@ class DrumFx
 
     void Process(float* x, size_t n)
     {
+        // Distortion, as the bass's drive: a treble lift into a nearly hard
+        // clip, then a tone low-pass (8 to 6 kHz); mixed with the dry.
         const bool  driving = s_.drive > 0.005f;
-        const float gain    = 1.f + 20.f * s_.drive * s_.drive;
-        const float makeup  = 1.f / (1.f + 1.5f * s_.drive);
+        const float gain    = 1.f + 60.f * s_.drive * s_.drive;
+        const float makeup  = 1.f / (1.f + 2.5f * s_.drive);
+        const float pre_lp  = TauToCoef(1.f / (2.f * kPi * 1000.f), sr_);
+        const float tone_lp = TauToCoef(1.f / (2.f * kPi * (8000.f - 2000.f * s_.drive)), sr_);
+        const float wet     = Clamp(s_.dist_mix, 0.f, 1.f);
         const float f       = s_.filter - 0.5f;
         const bool  lp      = f < -0.02f, hp = f > 0.02f;
         // Low-pass from 20 kHz down to 200 Hz; high-pass from 20 Hz up to 5 kHz.
@@ -456,7 +463,16 @@ class DrumFx
         {
             float y = x[i];
             if(driving)
-                y = FastTanh(y * gain) * makeup;
+            {
+                pre_ += (y - pre_) * pre_lp;
+                float d = (y + (y - pre_)) * gain; // highs doubled
+                const float a = fabsf(d);
+                if(a > 0.9f)
+                    d = (d < 0.f ? -1.f : 1.f) * (0.9f + 0.1f * FastTanh((a - 0.9f) * 10.f));
+                t1_ += (d - t1_) * tone_lp;
+                t2_ += (t1_ - t2_) * tone_lp;
+                y = y + (t2_ * makeup - y) * wet;
+            }
             // Two one-pole stages: 12 dB / octave.
             if(lp)
             {
@@ -487,7 +503,7 @@ class DrumFx
   private:
     float    sr_ = 48000.f;
     Settings s_;
-    float    f1_ = 0.f, f2_ = 0.f, held_ = 0.f;
+    float    f1_ = 0.f, f2_ = 0.f, held_ = 0.f, pre_ = 0.f, t1_ = 0.f, t2_ = 0.f;
     int      hold_count_ = 0;
 };
 
