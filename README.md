@@ -2,7 +2,7 @@
 
 A TB-303 / x0xb0x-style bass line machine for the CHOMPI, with a TR-606-style drum machine alongside: a 303-style voice and seven 606 voices, each with a 16-step sequencer you program a step at a time or record into live. No menus: every control is a key, a knob or the toggle.
 
-**Download:** get the latest `.bin` from the [Releases page](https://github.com/theotherson/chompi-x0x/releases/latest), copy it to the root of the SD card (the only `.bin` there) and power on. See [Flashing](#flashing) below for more.
+**Download:** get the latest `.bin` from the [Releases page](https://github.com/theotherson/chompi-x0x/releases/latest). With the **Multi Firmware Launcher**, add it to the `FIRMWARE` folder in the root of the SD card; with the standard bootloader, copy it to the root of the card as the only `.bin` there. See [Flashing](#flashing) below for more.
 
 **Cheat sheet:** every control on two pages, [bass](docs/cheatsheet-bass.png) and [drums](docs/cheatsheet-drums.png) (or both as a [PDF](docs/cheatsheet.pdf) to print).
 
@@ -214,10 +214,18 @@ mkdir -p host/out && host/render host/out
 
 ## Flashing
 
-1. Copy `CHOMPI.bin` to the root of the SD card. It must be the only `.bin` there.
+The `.bin` is a release download (`chompi-x0x-v1_0_1.bin` and so on) or, if you built it yourself, `code/src/build/CHOMPI.bin`; the name doesn't matter.
+
+**With the Multi Firmware Launcher:** add the `.bin` to the `FIRMWARE` folder in the root of the SD card, alongside your other firmwares, and pick it at power-on.
+
+**With the standard bootloader:**
+
+1. Copy the `.bin` to the root of the SD card. It must be the only `.bin` there.
 2. Power on. The rainbow shows while the bootloader installs it, then a red sweep across the keys.
 
 A CHOMPI that has never had the bootloader needs `bin/install_bootloader.sh` once first. One running any stock firmware already has it. To go back, use a card with a stock firmware's `.bin`.
+
+Either way, your patterns and settings live in `/X0X` on the card, apart from the firmware.
 
 ## Layout of this repo
 
