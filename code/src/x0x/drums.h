@@ -159,6 +159,23 @@ class Svf
 class Drums
 {
   public:
+    /** Constants fitted to five TR-606 kits' closed hats and toms (with a
+     *  search over their spectra and envelopes), kept together so a fitting
+     *  tool can vary them (ApplyFit after a change). */
+    struct Fit
+    {
+        float ch_tau        = 0.0178f; // the closed hat's decay (s, at decay 0.5)
+        float ch_hp_hz      = 8520.f;  // its two high-passes: a peak up top,
+        float ch_hp_q       = 1.35f;
+        float ch_hp2_hz     = 6490.f;  //   and a gentle slope below
+        float ch_hp2_q      = 0.5f;
+        float tom_noise     = 0.139f;  // the toms' noise burst: level,
+        float tom_noise_tau = 0.0817f; //   decay (s),
+        float tom_noise_hz  = 313.f;   //   a slightly resonant low-pass
+        float tom_noise_q   = 1.69f;
+    };
+    Fit fit;
+
     void Init(float sample_rate)
     {
         *this = Drums{}; // nothing left ringing
@@ -173,13 +190,18 @@ class Drums
         cy_hp_hi2_.Set(6000.f, 0.8f, sr_);
         cy_hp_lo_.Set(3000.f, 0.7f, sr_);
         cy_hp_hi_.Set(6000.f, 1.0f, sr_);
-        hat_hp_s_.Set(6000.f, 1.0f, sr_);
-        hat_hp2_s_.Set(6000.f, 0.8f, sr_);
         sd_hp_.Set(1400.f, 0.9f, sr_);
         sd_lp_.Set(5000.f, 0.7f, sr_);
-        tom_lp_.Set(1000.f, 0.7f, sr_);
         for(int d = 0; d < NUM_DRUMS; d++)
             params_[d] = DrumParams{};
+        ApplyFit();
+    }
+
+    void ApplyFit()
+    {
+        hat_hp_s_.Set(fit.ch_hp_hz, fit.ch_hp_q, sr_);
+        hat_hp2_s_.Set(fit.ch_hp2_hz, fit.ch_hp2_q, sr_);
+        tom_lp_.Set(fit.tom_noise_hz, fit.tom_noise_q, sr_);
     }
 
     DrumParams& Params(Drum d) { return params_[d]; }
@@ -226,7 +248,7 @@ class Drums
                 lt_pitch_ = pr;
                 tom_click_ = 0.3f * ck * hit;
                 click_lt_  = true;
-                tom_noise_ = 0.06f * hit;
+                tom_noise_ = fit.tom_noise * hit;
                 break;
             case HT:
                 ht_pr_ = pr;
@@ -234,7 +256,7 @@ class Drums
                 ht_.Ping(hit);
                 tom_click_ = 0.3f * ck * hit;
                 click_lt_  = false;
-                tom_noise_ = 0.06f * hit;
+                tom_noise_ = fit.tom_noise * hit;
                 break;
             case CY:
                 metal_pitch_ = pr, metal_voice_ = d;
@@ -255,7 +277,7 @@ class Drums
                 metal_pitch_ = pr, metal_voice_ = d;
                 oh_env_    = 0.f; // the choke: a closed hat cuts the open one
                 ch_env_    = hit;
-                ch_tau_    = 0.017f * mk;
+                ch_tau_    = fit.ch_tau * mk;
                 ch_time_   = 0.f;
                 hat_click_ = 0.3f * ck * hit;
                 click_oh_  = false;
@@ -338,7 +360,7 @@ class Drums
         const float oh_cut  = TauToCoef(0.25f, sr_); // the 606's shut-off, after ~0.55 s
         const float cy_kf   = TauToCoef(0.015f * cy_tau_, sr_);
         const float cy_ks   = TauToCoef(0.24f * cy_tau_, sr_);
-        const float tom_nk  = TauToCoef(0.025f, sr_);
+        const float tom_nk  = TauToCoef(fit.tom_noise_tau, sr_);
         const float click_k = TauToCoef(0.0008f, sr_);
         const float glide_k = TauToCoef(0.02f, sr_);
         for(size_t i = 0; i < n; i++)
