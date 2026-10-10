@@ -1826,6 +1826,7 @@ static void TestDelayTime()
     CHECK(r.ui.KnobPage(3) == 1);
     r.ui.KnobDown(3), r.ui.KnobUp(3, r.now), r.ui.KnobDown(3), r.ui.KnobUp(3, r.now), r.ui.KnobDown(3), r.ui.KnobUp(3, r.now);
     CHECK(r.ui.KnobPage(3) == 0);
+    r.Run(100); // (a detent right after letting go is a jog)
     const int div = StepIndex(p[DELAY_TIME], kDelayDivisions);
     r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
     CHECK(StepIndex(p[DELAY_FREE_ON], 2) == 0 && StepIndex(p[DELAY_TIME], kDelayDivisions) == div); // back, same setting
@@ -2539,15 +2540,29 @@ static void TestDrumFxSends()
     const Rgb off = f.key[Ui::kBlack[0]], on = f.key[Ui::kBlack[1]];
     CHECK(off.r + off.g + off.b < 0.1f && on.r + on.g + on.b > 0.5f);
     r.ui.KnobUp(3, r.now);
+    r.Run(100);
     r.ui.KnobTurn(3, 1, false);
     CHECK(prm[DRUM_REVERB] > rev); // still page 1: the release didn't click
     r.ui.KnobDown(3), r.Black(0), r.ui.KnobUp(3, r.now);
     CHECK(r.m.DrumInFx(BD));
     // Pushed and turned on the drums: no click either.
-    r.ui.KnobDown(3), r.ui.KnobTurn(3, 1, false), r.ui.KnobUp(3, r.now);
+    r.Run(100);
+    r.ui.KnobDown(3), r.ui.KnobTurn(3, 2, false), r.ui.KnobUp(3, r.now);
+    r.Run(100);
     const float rev2 = prm[DRUM_REVERB];
     r.ui.KnobTurn(3, 1, false);
     CHECK(prm[DRUM_REVERB] > rev2);
+    // A jog: one detent while the knob is pushed (as pressing an encoder can
+    // do) neither changes the value nor loses the click; nor does one just
+    // after letting go.
+    r.Run(100);
+    const float rev3 = prm[DRUM_REVERB];
+    r.ui.KnobDown(3), r.ui.KnobTurn(3, 1, false), r.ui.KnobUp(3, r.now);
+    r.ui.KnobTurn(3, -1, false);
+    CHECK(prm[DRUM_REVERB] == rev3);
+    r.Run(100);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false); // page 2 now: the delay time
+    CHECK(prm[DRUM_REVERB] == rev3 && prm[REVERB_SIZE] == kParams[REVERB_SIZE].def);
 }
 
 static void TestDrumFilterEnvelope()
@@ -2717,20 +2732,28 @@ static void TestDrumFilterLfo()
     r.Run(1000);
     for(int i = 0; i < 2; i++)
         r.ui.KnobClick(0, r.now);
-    r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
-    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 2);
+    // Page 3: the speed, a step a detent; CHOMPI: the shape, a step every
+    // two detents (a nudge doesn't change it).
+    r.ui.KnobTurn(0, -1, false);
+    CHECK(StepIndex(prm[DRUM_LFO_RATE], kLfoRates) == 3); // from 1/4 to 1/2
     LedFrame f;
     r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[3]].r > 0.9f && f.key[Ui::kWhite[10]].r < 0.1f);
+    r.ui.Chompi(true);
+    r.ui.KnobTurn(0, 1, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 0); // one detent: not yet
+    r.ui.KnobTurn(0, 1, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 1);
+    r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 2);
+    r.ui.Draw(f, r.now);
     CHECK(f.key[Ui::kWhite[2]].g > 0.9f && f.key[Ui::kWhite[1]].g < 0.1f && f.key[Ui::kWhite[5]].g == 0.f);
-    r.ui.KnobTurn(0, 10, false);
-    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 3); // one step a click, however fast
-    for(int i = 0; i < 10; i++)
+    r.ui.KnobTurn(0, 10, false), r.ui.KnobTurn(0, 10, false);
+    CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 3); // one step per two events, however fast
+    for(int i = 0; i < 20; i++)
         r.ui.KnobTurn(0, 1, false);
     CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 4); // S+H, the last
-    r.ui.Chompi(true), r.ui.KnobTurn(0, -1, false), r.ui.Chompi(false);
-    CHECK(StepIndex(prm[DRUM_LFO_RATE], kLfoRates) == 3); // from 1/4 to 1/2
-    r.ui.Draw(f, r.now);
-    CHECK(f.key[Ui::kWhite[3]].r > 0.9f && f.key[Ui::kWhite[10]].r < 0.1f);
+    r.ui.Chompi(false);
 }
 
 static void TestDrumTimingAndLiveKeys()
@@ -3440,16 +3463,21 @@ static void TestDrumLfoTargets()
     r.Run(500);
     r.Black(1); // SD
     r.ui.KnobClick(0, r.now), r.ui.KnobClick(0, r.now);
-    r.ui.KnobTurn(0, 1, false);
+    r.ui.Chompi(true), r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false), r.ui.Chompi(false); // CHOMPI: the shape
     CHECK(StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 1);
-    r.ui.KnobClick(0, r.now); // page 4
-    r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
+    r.ui.KnobClick(0, r.now); // page 4: the depth; CHOMPI, the target
+    r.ui.Chompi(true);
+    for(int i = 0; i < 4; i++)
+        r.ui.KnobTurn(0, 1, false); // two steps: level, then pan
     CHECK(StepIndex(prm[DRUM_LFO_TARGET + SD], kLfoTargets) == LFO_PAN && prm[DRUM_LFO_TARGET + BD] == 0.f);
     LedFrame f;
     r.ui.Draw(f, r.now);
     CHECK(f.key[Ui::kWhite[LFO_PAN]].r > 0.9f && f.key[Ui::kWhite[LFO_LEVEL]].r < 0.1f && f.key[Ui::kWhite[7]].r == 0.f);
-    r.ui.Chompi(true), r.ui.KnobTurn(0, 5, false), r.ui.Chompi(false);
+    r.ui.Chompi(false);
+    r.ui.KnobTurn(0, 5, false);
     CHECK(prm[DRUM_LFO_DEPTH + SD] > 0.5f && prm[DRUM_LFO_DEPTH + BD] == 0.5f);
+    r.ui.Draw(f, r.now);
+    CHECK(f.knob[0].r > 0.5f && f.knob[0].b > 0.2f && f.knob[0].g < f.knob[0].r); // the depth: pink
     r.ui.Chompi(true), r.ui.KnobClick(0, r.now), r.ui.Chompi(false);
     CHECK(prm[DRUM_LFO_TARGET + SD] == 0.f && prm[DRUM_LFO_DEPTH + SD] == 0.5f && StepIndex(prm[DRUM_LFO_SHAPE], kLfoShapes) == 1);
     r.ui.KnobClick(0, r.now); // round to page 1: the level

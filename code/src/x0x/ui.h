@@ -200,6 +200,7 @@ class Ui
     static constexpr uint32_t kExportHoldMs   = 2000;
     static constexpr uint32_t kSoloHoldMs     = 2000;
     static constexpr uint32_t kKnobResetHoldMs = 2000; // CHOMPI + a knob pushed: all its pages reset
+    static constexpr uint32_t kKnobJogMs       = 60;   // a detent this soon after letting go is a jog
     static constexpr uint32_t kCurrentFlashMs = 400; // the current pattern's slow flash (queued: fast)
 
     void Init(Machine* m) { m_ = m; }
@@ -420,6 +421,7 @@ class Ui
         knob_down_[knob]    = true;
         knob_turned_[knob]  = false;
         knob_down_at_[knob] = last_tick_;
+        push_detents_[knob] = 0;
     }
 
     void KnobUp(int knob, uint32_t now)
@@ -427,6 +429,7 @@ class Ui
         if(knob < 0 || knob >= 6 || !knob_down_[knob])
             return;
         knob_down_[knob] = false;
+        knob_up_at_[knob] = last_tick_;
         if(!knob_turned_[knob])
             KnobClick(knob, now);
     }
@@ -438,6 +441,14 @@ class Ui
     {
         const float step = KnobStep(dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
         Touched();
+        // Pushing an encoder can jog it a detent: while a knob is held, its
+        // first detent is ignored (it neither moves the value nor cancels the
+        // click); from the second it's a push and turn. Likewise a jog just
+        // after it's let go.
+        if(knob_down_[knob] && !knob_turned_[knob] && (push_detents_[knob] += inc > 0 ? inc : -inc) < 2)
+            return;
+        if(!knob_down_[knob] && last_tick_ - knob_up_at_[knob] < kKnobJogMs)
+            return;
         if(knob_down_[knob])
             knob_turned_[knob] = true;
         if(drums_ && knob != 5)
@@ -975,13 +986,13 @@ class Ui
         const int   pv = DRUM_PARAMS + 3 * drum_sel_;
         const bool lfo_on = StepIndex(p[DRUM_LFO_SHAPE], kLfoShapes) > 0;
         const int  target = StepIndex(p[DRUM_LFO_TARGET + drum_sel_], kLfoTargets);
-        if(drum_knob1_page_ == 2) // the LFO (green, moving with it); CHOMPI, its rate (white)
-            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_LFO_RATE])
+        if(drum_knob1_page_ == 2) // the LFO's speed (green, moving with it); CHOMPI, its shape (white)
+            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_LFO_SHAPE])
                                 : Scale(Rgb{0.f, 1.f, .6f}, lfo_on ? 0.3f + 0.7f * (0.5f + 0.5f * m_->DrumLfo()) : 0.15f);
-        else if(drum_knob1_page_ == 3) // the voice's target (its colour, moving with the LFO); CHOMPI, the depth (white)
-            f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * p[DRUM_LFO_DEPTH + drum_sel_])
-                                : Scale(vc, target == LFO_OFF ? 0.1f
-                                                              : lfo_on ? 0.3f + 0.7f * (0.5f + 0.5f * m_->DrumLfo()) : 0.5f);
+        else if(drum_knob1_page_ == 3) // its depth on this voice (pink); CHOMPI, the target (the voice's colour, moving with the LFO)
+            f.knob[0] = chompi_ ? Scale(vc, target == LFO_OFF ? 0.1f
+                                                              : lfo_on ? 0.3f + 0.7f * (0.5f + 0.5f * m_->DrumLfo()) : 0.5f)
+                                : Scale(Rgb{1.f, .3f, .6f}, 0.2f + 0.8f * p[DRUM_LFO_DEPTH + drum_sel_]);
         else if(drum_knob1_page_ == 1) // the accent (blue); CHOMPI, the length (white)
             f.knob[0] = chompi_ ? Scale(Rgb{1.f, 1.f, 1.f}, 0.2f + 0.8f * pat.drum_length / static_cast<float>(kSteps))
                                 : Scale(kDrumAccentCol, 0.2f + 0.8f * p[DRUM_ACCENT]);
@@ -1346,19 +1357,30 @@ class Ui
                 // this voice (CHOMPI: how far). Steps shown on the white keys.
                 if(drum_knob1_page_ >= 2)
                 {
-                    int q, steps;
-                    if(drum_knob1_page_ == 2)
-                        q = chompi_ ? DRUM_LFO_RATE : DRUM_LFO_SHAPE, steps = chompi_ ? kLfoRates : kLfoShapes;
-                    else if(chompi_)
+                    // Page 3: the LFO's speed (CHOMPI: its shape); page 4 its
+                    // depth on this voice (CHOMPI: what it moves). The shape
+                    // and the target take two detents a step, so a nudge
+                    // doesn't change them.
+                    int q, steps, per = 1;
+                    if(drum_knob1_page_ == 3 && !chompi_)
                     {
                         m_->SetParam(DRUM_LFO_DEPTH + drum_sel_, p[DRUM_LFO_DEPTH + drum_sel_] + inc * step);
                         return;
                     }
+                    if(drum_knob1_page_ == 2)
+                        q = chompi_ ? DRUM_LFO_SHAPE : DRUM_LFO_RATE, steps = chompi_ ? kLfoShapes : kLfoRates;
                     else
                         q = DRUM_LFO_TARGET + drum_sel_, steps = kLfoTargets;
-                    m_->SetParam(q, StepValue(StepIndex(p[q], steps) + (inc > 0 ? 1 : -1), steps));
+                    if(chompi_)
+                        per = 2;
+                    slow_detents_ += inc > 0 ? 1 : -1;
                     lfo_shown_    = q;
                     lfo_shown_at_ = last_tick_;
+                    if(slow_detents_ >= per || slow_detents_ <= -per)
+                    {
+                        m_->SetParam(q, StepValue(StepIndex(p[q], steps) + (slow_detents_ > 0 ? 1 : -1), steps));
+                        slow_detents_ = 0;
+                    }
                     return;
                 }
                 if(drum_knob1_page_ == 1)
@@ -1441,7 +1463,7 @@ class Ui
         if(!chompi_)
         {
             if(knob == 0)
-                drum_knob1_page_ = (drum_knob1_page_ + 1) % 4;
+                drum_knob1_page_ = (drum_knob1_page_ + 1) % 4, slow_detents_ = 0;
             else if(knob == 3)
                 drum_knob4_page_ = (drum_knob4_page_ + 1) % 3;
             else if(knob == 1)
@@ -2441,6 +2463,9 @@ class Ui
     bool     knob_down_[6]          = {};    // pushed (its click comes on release)
     bool     knob_turned_[6]        = {};    // ...and turned while pushed: no click
     uint32_t knob_down_at_[6]       = {};
+    uint32_t knob_up_at_[6]         = {0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u};
+    int      push_detents_[6]       = {};    // detents while pushed (the first is a jog)
+    int      slow_detents_          = 0;     // toward a step of the LFO's shape or target
     uint32_t knob_reset_at_[3]      = {0x80000000u, 0x80000000u, 0x80000000u};
     uint32_t delay_shown_at_        = 0x80000000u;
     uint32_t pat_key_at_            = 0;
