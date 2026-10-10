@@ -2,7 +2,7 @@
 
 A TB-303 / x0xb0x-style bass line machine for the CHOMPI, with a TR-606-style drum machine alongside: a 303-style voice and seven 606 voices, each with a 16-step sequencer you program a step at a time or record into live. No menus: every control is a key, a knob or the toggle.
 
-**Download:** get the latest `.bin` from the [Releases page](https://github.com/theotherson/chompi-x0x/releases/latest). With the **Multi Firmware Launcher**, add it to the `FIRMWARE` folder in the root of the SD card; with the standard bootloader, copy it to the root of the card as the only `.bin` there. See [Flashing](#flashing) below for more.
+**Download:** get the latest `.bin` from the [Releases page](https://github.com/theotherson/chompi-x0x/releases/latest). With the [**Multi Firmware Launcher**](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE), add it to the `FIRMWARE` folder in the root of the SD card; with the standard bootloader, copy it to the root of the card as the only `.bin` there. See [Flashing](#flashing) below for more.
 
 **Cheat sheet:** every control on two pages, [bass](docs/cheatsheet-bass.png) and [drums](docs/cheatsheet-drums.png) (or both as a [PDF](docs/cheatsheet.pdf) to print).
 
@@ -216,7 +216,7 @@ mkdir -p host/out && host/render host/out
 
 The `.bin` is a release download (`chompi-x0x-v1_0_1.bin` and so on) or, if you built it yourself, `code/src/build/CHOMPI.bin`; the name doesn't matter.
 
-**With the Multi Firmware Launcher:** add the `.bin` to the `FIRMWARE` folder in the root of the SD card, alongside your other firmwares, and pick it at power-on.
+**With the [Multi Firmware Launcher](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE):** add the `.bin` to the `FIRMWARE` folder in the root of the SD card, alongside your other firmwares, and pick it at power-on. A number in front of the name puts it on that key (`04_X0X.bin`: key 4); without one it takes a free key. x0x keeps its files in its own `/X0X` folder, so it shares the card with the others.
 
 **With the standard bootloader:**
 
@@ -253,5 +253,6 @@ The first commit is TEMPO v1.0 as released, so `git diff` against it shows every
 ## Credits
 
 - Built on CHOMPI Club's open-source TEMPO firmware (MIT); see `LICENSE`, `THIRD_PARTY.md` and `TRADEMARKS.md`. The CHOMPI name belongs to CHOMPI Club, and this is a community firmware, not an official release.
+- The fix that keeps the firmware from occasionally starting at 64 MHz (libDaisy's `boot_info` placed in backup SRAM) is from [sfaber02/CHOMPI-MULTI-FIRMWARE](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE).
 - Key, LED and knob tables, and fixes for SD card cache alignment, codec start-up and button edges, from hiwatts' POLY ([sfaber02/chompi-poly](https://github.com/sfaber02/chompi-poly), MIT). TEMPO's MidiManager is the model for the DMA MIDI out.
 - This was a total "vibe" job and majority of credit goes to Claude for doing the actual coding allowing me to put this together in three days. I may have given considerable direction when shaping UI/UX behaviour and mechanics and modelling the filter behaviour off my RE-303 (also consulting Tim Stinchcombe's page (https://www.timstinchcombe.co.uk/index.php?pge=diode2) about building a 303 diode filter) but translating this into useable and bug-free code was 100% done by Claude.
