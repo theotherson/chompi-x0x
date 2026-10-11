@@ -25,10 +25,10 @@
     --dacc: #0050ff; --pattA: #4aa8ff; --pattB: #f2c200;
   }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { size: 2000px 1840px; margin: 0; }
+  @page { size: 2000px 1880px; margin: 0; }
   html, body { margin: 0; background: #ddd; }
   body { font-family: "Poppins", "Helvetica Neue", Arial, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
-  .sheet { width: 2000px; height: 1840px; padding: 50px 60px 0; overflow: hidden; position: relative; background: var(--page); page-break-after: always; break-after: page; }
+  .sheet { width: 2000px; height: 1880px; padding: 50px 60px 0; overflow: hidden; position: relative; background: var(--page); page-break-after: always; break-after: page; }
   .sheet:last-child { page-break-after: auto; break-after: auto; }
   body.only-bass #drums, body.only-drums #bass { display: none; }
   #bass  { --page: #ece4f7; --card: #e1d4f2; --line: #cdbbe6; --hi: var(--violet); }
@@ -183,6 +183,7 @@
         <div class="a">Pattern key held 2 s</div><div>export every pattern as MIDI to <code>/X0X/MIDI</code></div>
         <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + step key</div><div>copy the pattern there · <b>+ PATTERN</b>: to its other side, A ⇄ B</div>
         <div class="a"><span class="chip" style="background:var(--red)">CLEAR</span></div><div>tap: the selected step · hold 1 s: the pattern</div>
+        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + <span class="chip" style="background:var(--red)">CLEAR</span></div><div><b>undo</b> the last clear (again: redo)</div>
         <div class="a">LOOP</div><div>switch to the <b style="color:#d98200">drums</b> · <span class="p">CHOMPI + LOOP:</span> mute / unmute the bass</div>
       </div>
     </div>
@@ -209,7 +210,7 @@
       <div class="list">
         <div>16 patterns, <b style="color:#1f7fd6">A</b> and <b style="color:#b98a00">B</b> sides; each holds a bassline <b>and</b> a drum part, and the two sides can play <b>different patterns</b></div>
         <div>Edits save to <code>/X0X</code> by themselves, unless write-protected</div>
-        <div><b>Import</b>: <code>3B.mid</code> into <code>/X0X/IMPORT</code>, then power on (drums: channel 10)</div>
+        <div><b>Import a MIDI file</b>: name it after a pattern (<code>3B.mid</code>), put it in <code>/X0X/IMPORT</code> on the card and power on. Channel 10 becomes the drums, everything else the bassline</div>
       </div>
     </div>
     <div class="box">
@@ -293,9 +294,13 @@
         <div class="a"><span class="chip" style="background:var(--dacc)">ACCENT</span></div><div>the accent page · <b>hold 2 s</b>: unmute every voice</div>
         <div class="a">CHOMPI + voice</div><div><b>mute</b> / unmute (it blinks)</div>
         <div class="a">Voice held 2 s</div><div><b>solo</b>: the rest muted; bring them back with CHOMPI. Again when it's the only one: all back</div>
-        <div class="a"><span class="chip" style="background:var(--pattA)">PATTERN</span></div><div>the <b>drums'</b> pattern page (lit: slots with drum parts) · <b>held + key</b>: both sides</div>
-        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + step key</div><div>copy the <b>drum part</b> there (its bassline kept) · <b>+ PATTERN</b>: A ⇄ B</div>
+        <div class="a"><span class="chip" style="background:var(--pattA)">PATTERN</span></div><div>the <b>drums'</b> pattern page: <b style="color:#1f7fd6">A</b>, or <b style="color:#b98a00">B</b> with CHOMPI held (lit: slots with drum parts). Running, a pick waits for the end of the drum part; again: now</div>
+        <div class="a">PATTERN held + key</div><div>on the page: <b>both</b> drums and bass there, together at the bar</div>
+        <div class="a">PATTERN held 2 s</div><div><b>write protect</b>, while stopped: play freely, nothing saves</div>
+        <div class="a">Pattern key held 2 s</div><div>export every pattern as MIDI to <code>/X0X/MIDI</code></div>
+        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + step key</div><div>copy the <b>drum part</b> there (its bassline kept) · <b>+ PATTERN</b>: to its other side, A ⇄ B</div>
         <div class="a"><span class="chip" style="background:var(--red)">CLEAR</span></div><div>tap: this voice's hits (or the accents) · hold 1 s: the whole drum part</div>
+        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + <span class="chip" style="background:var(--red)">CLEAR</span></div><div><b>undo</b> the last clear (again: redo)</div>
         <div class="a">LOOP</div><div>switch to the <b style="color:var(--violet)">bass</b> · <span class="p">CHOMPI + LOOP:</span> mute / unmute the drums</div>
       </div>
     </div>
@@ -321,7 +326,7 @@
         <div><b>1</b> off · <b>2</b> level: dips it, as far as silent · <b>3</b> pan: swings it either side</div>
         <div><b>4</b> tuning: an octave either way · <b>5</b> filter: its own low-pass, swept down from open</div>
         <div><b>6</b> feedback FM: adds grit · <b>7</b> decay: longer or shorter, hit by hit</div>
-        <div>Shapes: off, triangle, ramp up, ramp down, sample &amp; hold; from the top of the bar on PLAY</div>
+        <div>Shapes (CHOMPI + Pg 3): off, triangle, ramp up, ramp down, sample &amp; hold. <b>The LFO restarts when you press PLAY</b>, so it always lines up with the start of the pattern</div>
       </div>
     </div>
     <div class="box">

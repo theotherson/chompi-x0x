@@ -340,6 +340,7 @@ class Ui
         }
         if(mode_ == Mode::STEP && !chompi_ && k == kKeyClear && !clear_done_)
         {
+            SaveUndo(false);
             m_->Current().steps[selected_] = Step{}; // a tap clears the selected step
             m_->PatternEdited();
         }
@@ -591,6 +592,7 @@ class Ui
         }
         if(mode_ == Mode::PITCH && loop_down_ && !loop_cleared_ && now - loop_down_at_ >= kLoopClearMs)
         {
+            SaveUndo(drums_);
             if(drums_)
             {
                 m_->DrumPattern().ClearDrums();
@@ -630,6 +632,7 @@ class Ui
         }
         if(drums_ && drum_clear_down_ && held_[kKeyClear] && !clear_done_ && now - clear_down_ >= kClearHoldMs)
         {
+            SaveUndo(true);
             m_->DrumPattern().ClearDrums(); // CLEAR held: the drum part
             m_->PatternEdited();
             clear_done_ = true;
@@ -638,6 +641,7 @@ class Ui
         if(!drums_ && mode_ == Mode::STEP && !chompi_ && held_[kKeyClear] && !clear_done_
            && now - clear_down_ >= kClearHoldMs)
         {
+            SaveUndo(false);
             m_->Current().ClearBass();
             m_->PatternEdited();
             clear_done_ = true;
@@ -818,10 +822,41 @@ class Ui
             for(int i = 0; i < kKeyNotes; i++)
                 f.key[i] = Scale(drums_ ? kDrumColour : kBassColour, k);
         }
+        // A clear just undone (or redone): the keybed flashes the side's colour.
+        if(now - undone_at_ < 300)
+            for(int i = 0; i < kKeyNotes; i++)
+                f.key[i] = drums_ ? kDrumColour : kBassColour;
         // A knob's every page just reset: it flashes white.
         for(int k = 0; k < 3; k++)
             if(now - knob_reset_at_[k] < 300)
                 f.knob[k] = {1.f, 1.f, 1.f};
+    }
+
+    /** Before any clear: the side's part as it was, for COPY + CLEAR. */
+    void SaveUndo(bool drums)
+    {
+        ClearUndo& u = drums ? drum_undo_ : bass_undo_;
+        u.valid      = true;
+        u.slot       = drums ? m_->CurrentDrumPattern() : m_->CurrentPattern();
+        u.part       = m_->patterns[u.slot];
+    }
+
+    /** COPY + CLEAR: the side's last clear undone, its part put back as it
+     *  was; again, redone (the two swap). */
+    void UndoClear()
+    {
+        ClearUndo& u = drums_ ? drum_undo_ : bass_undo_;
+        if(!u.valid)
+            return;
+        Pattern&      p   = m_->patterns[u.slot];
+        const Pattern now = p;
+        if(drums_)
+            p.CopyDrumsFrom(u.part);
+        else
+            p.CopyBassFrom(u.part);
+        u.part = now;
+        m_->PatternEdited();
+        undone_at_ = last_tick_;
     }
 
     /** CHOMPI + knob 1-3 held 2 s: all its pages back to their defaults
@@ -1195,6 +1230,11 @@ class Ui
         }
         if(b == 9)
         {
+            if(held_[kKeyCopy])
+            {
+                UndoClear(); // COPY + CLEAR: the last clear undone (again: redone)
+                return;
+            }
             clear_down_      = now, clear_done_ = false;
             drum_clear_down_ = true;
             return;
@@ -1329,6 +1369,7 @@ class Ui
             if(!clear_done_)
             {
                 // A tap: this voice's hits (or the accents, on their page).
+                SaveUndo(true);
                 Pattern&      p    = m_->DrumPattern();
                 const uint8_t mask = drum_acc_page_ && mode_ == Mode::STEP ? kDrumAccent : static_cast<uint8_t>(1 << drum_sel_);
                 for(int i = 0; i < kSteps; i++)
@@ -1705,7 +1746,15 @@ class Ui
                 else
                     pattern_down_ = true, pattern_down_at_ = now; // a tap or a 2 s hold: see KeyUp, Tick
                 break;
-            case 9: clear_down_ = now, clear_done_ = false; break;
+            case 9:
+                if(held_[kKeyCopy])
+                {
+                    UndoClear(); // COPY + CLEAR: the last clear undone (again: redone)
+                    clear_done_ = true;
+                    break;
+                }
+                clear_down_ = now, clear_done_ = false;
+                break;
             default: break; // 8 = COPY, used while held
         }
     }
@@ -2463,6 +2512,14 @@ class Ui
     bool     knob_down_[6]          = {};    // pushed (its click comes on release)
     bool     knob_turned_[6]        = {};    // ...and turned while pushed: no click
     uint32_t knob_down_at_[6]       = {};
+    struct ClearUndo
+    {
+        bool    valid = false;
+        int     slot  = 0;
+        Pattern part;
+    };
+    ClearUndo bass_undo_, drum_undo_;              // each side's last clear, for COPY + CLEAR
+    uint32_t  undone_at_ = 0x80000000u;
     uint32_t knob_up_at_[6]         = {0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u};
     int      push_detents_[6]       = {};    // detents while pushed (the first is a jog)
     int      slow_detents_          = 0;     // toward a step of the LFO's shape or target

@@ -181,6 +181,14 @@ struct Pattern
             steps[i] = Step{};
         length = kSteps;
     }
+    /** The bassline alone (steps, length) from another pattern. */
+    void CopyBassFrom(const Pattern& o)
+    {
+        for(int i = 0; i < kSteps; i++)
+            steps[i] = o.steps[i];
+        length = o.length;
+    }
+
     /** The drum part alone (hits, timing, length) from another pattern. */
     void CopyDrumsFrom(const Pattern& o)
     {

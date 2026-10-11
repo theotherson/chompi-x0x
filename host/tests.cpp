@@ -3647,6 +3647,69 @@ static void TestMidiDrumsIn()
     CHECK(d.drum_channel == 10 && d.drums_in); // older files: channel 10, on
 }
 
+static void TestUndoClear()
+{
+    printf("COPY + CLEAR: the last clear undone (again: redone), each side its own\n");
+    Rig r;
+    r.Run(10);
+    Pattern& p = r.m.Current();
+    p.Clear();
+    for(int i = 0; i < kSteps; i += 2)
+        p.steps[i].on = true, p.steps[i].note = static_cast<uint8_t>(i);
+    p.length     = 12;
+    p.drums[0]   = (1 << BD) | kDrumAccent, p.drums[4] = 1 << SD, p.drum_pitch[4][SD] = 3;
+    const Pattern before = p;
+    auto undo = [&] { r.ui.KeyDown(Ui::kKeyCopy, r.now), r.Key(Ui::kKeyClear), r.ui.KeyUp(Ui::kKeyCopy, r.now); };
+    auto hold_clear = [&] { r.ui.KeyDown(Ui::kKeyClear, r.now), r.Run(1100), r.ui.KeyUp(Ui::kKeyClear, r.now); };
+    // Nothing cleared yet: nothing happens (and no step is cleared).
+    undo();
+    CHECK(p == before);
+    // Bass, step mode: hold CLEAR, then COPY + CLEAR brings the bassline back
+    // (the drums never touched), and its keys flash.
+    hold_clear();
+    CHECK(p.BassEmpty() && p.drums[0] == before.drums[0]);
+    undo();
+    CHECK(p == before);
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[3]].b > 0.9f && f.key[Ui::kWhite[3]].g == 0.f); // the bass's purple
+    undo(); // again: cleared again
+    CHECK(p.BassEmpty());
+    undo();
+    CHECK(p == before);
+    // A tap of CLEAR (one step) is undone the same way.
+    r.Run(400);
+    r.White(2), r.Key(Ui::kKeyClear);
+    CHECK(!p.steps[2].on);
+    undo();
+    CHECK(p == before);
+    // The drums: their own clear and undo (hold, and a voice's tap).
+    r.ui.Loop(r.now);
+    r.Run(500);
+    CHECK(r.ui.OnDrums());
+    hold_clear();
+    CHECK(p.DrumsEmpty() && !p.BassEmpty());
+    undo();
+    CHECK(p == before);
+    r.Black(1), r.Key(Ui::kKeyClear); // SD's hits
+    CHECK(!p.DrumHit(4, SD) && p.DrumHit(0, BD));
+    undo();
+    CHECK(p == before && p.drum_pitch[4][SD] == 3);
+    // Live mode: LOOP held 2 s clears; back in step mode, COPY + CLEAR undoes it.
+    r.ui.SetMode(Ui::Mode::PITCH);
+    r.ui.LoopDown(r.now), r.Run(2100), r.ui.LoopUp(r.now);
+    CHECK(p.DrumsEmpty());
+    r.ui.SetMode(Ui::Mode::STEP);
+    undo();
+    CHECK(p == before);
+    // The bass's undo is still its own (its last clear: the step tap).
+    r.ui.Loop(r.now);
+    r.Run(500);
+    CHECK(!r.ui.OnDrums());
+    undo();
+    CHECK(!p.steps[2].on && p.drums[4] == before.drums[4]);
+}
+
 static void TestDrumDistortion()
 {
     printf("drum distortion: its own (CHOMPI + volume on the drums' side), with a mix\n");
@@ -3881,6 +3944,7 @@ int main()
     TestDrumLfoTargets();
     TestDrumPitchRecording();
     TestMidiDrumsIn();
+    TestUndoClear();
     TestCompressorAndSidechain();
     TestDrumDistortion();
     TestDrumBeatLights();
