@@ -224,6 +224,7 @@ class Voice
         // jump there is a click.
         const float amp_acc    = accent_ ? 1.f + 0.9f * p.accent : 1.f;
         const float acc_glide  = TauToCoef(0.002f, sr_);
+        const float wave_fade  = TauToCoef(0.0015f, sr_); // saw <-> square: a 5 ms fade, not a jump
         const float post_hp    = p.post_hp_hz > 0.f ? TauToCoef(1.f / (2.f * kPi * p.post_hp_hz), sr_) : 0.f;
         const float base_oct   = log2f(p.cutoff_hz * kCutoffScale);
 
@@ -263,7 +264,8 @@ class Voice
                 ladder_.SetCutoff(FastExp2(oct));
             }
 
-            const float x = Osc(inc, p.square, p.pulse_width);
+            square_mix_ += ((p.square ? 1.f : 0.f) - square_mix_) * wave_fade;
+            const float x = Osc(inc, square_mix_, p.pulse_width);
 
             // Two filter steps per sample, the input held; the output is
             // their average (a simple decimator).
@@ -289,14 +291,15 @@ class Voice
     }
 
   private:
-    /** polyBLEP saw, or a pulse from two offset saws (`pw` = its width). */
-    float Osc(float inc, bool square, float pw)
+    /** polyBLEP saw, or a pulse from two offset saws (`pw` = its width);
+     *  `square` 0 the saw, 1 the pulse, between them a fade. */
+    float Osc(float inc, float square, float pw)
     {
         phase_ += inc;
         if(phase_ >= 1.f)
             phase_ -= 1.f;
         float saw = 2.f * phase_ - 1.f - Blep(phase_, inc);
-        if(!square)
+        if(square < 1e-4f)
             return saw;
         float p2 = phase_ + pw;
         if(p2 >= 1.f)
@@ -304,7 +307,8 @@ class Voice
         const float saw2 = 2.f * p2 - 1.f - Blep(p2, inc);
         // The difference of the saws is a pulse between -2pw and 2 - 2pw,
         // whose average is zero at any width.
-        return 0.7f * (saw - saw2);
+        const float pulse = 0.7f * (saw - saw2);
+        return square > 0.9999f ? pulse : saw + (pulse - saw) * square;
     }
 
 
@@ -325,6 +329,7 @@ class Voice
 
     float sr_      = 48000.f;
     float phase_   = 0.f;
+    float square_mix_ = 0.f; // 0 saw .. 1 square, fading toward the switch
     float pitch_   = 36.f;
     float target_  = 36.f;
     DiodeLadder ladder_;

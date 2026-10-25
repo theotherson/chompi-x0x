@@ -1,5 +1,6 @@
 // Desktop tests of the x0x core: sequencer timing, patterns, storage format.
 //   make -C host && host/tests
+#include "../code/src/x0x/quadrature.h"
 #include "../code/src/x0x/ui.h"
 #include "../code/src/x0x/midifile.h"
 #include "../code/src/x0x/defaults.h"
@@ -349,7 +350,9 @@ static void TestKnobPages()
     printf("knobs: two pages, CHOMPI layer, tap tempo\n");
     Rig r;
     const float* p = r.m.settings.params;
-    r.ui.KnobTurn(0, 1, false); // knob 1 page 1: wave
+    r.ui.KnobTurn(0, 1, false); // knob 1 page 1: wave, two clicks a step
+    CHECK(StepIndex(p[WAVE], 2) == 0);
+    r.ui.KnobTurn(0, -1, false), r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false); // a bounce back restarts the count
     CHECK(StepIndex(p[WAVE], 2) == 1);
     r.ui.Chompi(true);
     const float pw = p[PULSE_WIDTH];
@@ -358,7 +361,8 @@ static void TestKnobPages()
     r.ui.Chompi(false);
     r.ui.KnobClick(0, r.now); // page 2: length
     CHECK(r.ui.KnobPage(0) == 1);
-    r.ui.KnobTurn(0, -1, false), r.ui.KnobTurn(0, -1, false), r.ui.KnobTurn(0, -1, false);
+    for(int i = 0; i < 6; i++)
+        r.ui.KnobTurn(0, -1, false); // two clicks a step
     CHECK(r.m.Current().length == 13);
     r.ui.Chompi(true);
     r.ui.KnobTurn(0, 5, false); // tuning
@@ -390,8 +394,8 @@ static void TestKnobPages()
 
     r.ui.KnobTurn(3, 20, false); // delay
     CHECK(p[DELAY] > 0.f);
-    r.ui.Chompi(true), r.ui.KnobTurn(3, 2, false), r.ui.Chompi(false); // delay time
-    CHECK(StepIndex(p[DELAY_TIME], kDelayDivisions) == 6); // one turn event = one position (3/16 to 1/4)
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false); // delay time
+    CHECK(StepIndex(p[DELAY_TIME], kDelayDivisions) == 6); // two clicks = one position (3/16 to 1/4)
     r.ui.KnobClick(3, r.now); // page 2: tape feedback / tone
     r.ui.KnobTurn(3, 10, false);
     r.ui.Chompi(true), r.ui.KnobTurn(3, -10, false), r.ui.Chompi(false);
@@ -901,8 +905,8 @@ static void TestLengthShown()
         r.ui.SetMode(mode);
         r.Run(5);
         r.ui.KnobClick(0, r.now); // knob 1 page 2: length
-        for(int i = 0; i < 4; i++)
-            r.ui.KnobTurn(0, -1, false); // 16 -> 12
+        for(int i = 0; i < 8; i++)
+            r.ui.KnobTurn(0, -1, false); // 16 -> 12, two clicks a step
         CHECK(r.m.Current().length == 12);
         LedFrame f;
         r.ui.Draw(f, r.now);
@@ -916,7 +920,7 @@ static void TestLengthShown()
         r.ui.Draw(f, r.now);
         CHECK(!(f.key[Ui::kWhite[10]].r > 0.9f && f.key[Ui::kWhite[10]].g > 0.9f)); // gone again
         // Length 8: middle C is the last step.
-        for(int i = 0; i < 4; i++)
+        for(int i = 0; i < 8; i++)
             r.ui.KnobTurn(0, -1, false);
         r.ui.Draw(f, r.now);
         CHECK(f.key[Ui::kMiddleC].g > 0.9f);
@@ -1830,7 +1834,7 @@ static void TestDelayTime()
     const int div = StepIndex(p[DELAY_TIME], kDelayDivisions);
     r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
     CHECK(StepIndex(p[DELAY_FREE_ON], 2) == 0 && StepIndex(p[DELAY_TIME], kDelayDivisions) == div); // back, same setting
-    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
     CHECK(StepIndex(p[DELAY_TIME], kDelayDivisions) == div + 1);
     LedFrame f;
     r.ui.Draw(f, r.now); // white keys 1-9: the settings, this one bright
@@ -2029,8 +2033,8 @@ static void TestDrumPanel()
     r.ui.KnobTurn(0, 5, false);
     CHECK(r.m.settings.params[DRUM_ACCENT] > ac);
     r.ui.Chompi(true);
-    for(int i = 0; i < 4; i++)
-        r.ui.KnobTurn(0, -1, false); // a step a click
+    for(int i = 0; i < 8; i++)
+        r.ui.KnobTurn(0, -1, false); // a step every two clicks
     r.ui.Chompi(false);
     CHECK(p.drum_length == 12 && p.length == 16);
     // CHOMPI + click: the accent and length back; then page 1's: level and pan.
@@ -2376,7 +2380,7 @@ static void TestDrumEffects()
     CHECK(prm[REVERB_SIZE] < 0.5f);
     r.ui.KnobClick(3, r.now); // page 2: delay send / the shared delay's time
     const int div = StepIndex(prm[DELAY_TIME], kDelayDivisions);
-    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
+    r.ui.Chompi(true), r.ui.KnobTurn(3, 1, false), r.ui.KnobTurn(3, 1, false), r.ui.Chompi(false);
     CHECK(StepIndex(prm[DELAY_TIME], kDelayDivisions) == div + 1);
     r.ui.KnobClick(3, r.now), r.ui.KnobClick(3, r.now); // three pages: back to the first, reverb
     r.ui.KnobTurn(3, 1, false);
@@ -3943,8 +3947,31 @@ static void TestMidiEcho()
     CHECK(!r.m.Running());
 }
 
+static void TestQuadrature()
+{
+    printf("encoder decoding: a click per detent, bounces ignored\n");
+    // Feeds states (A, B as 2 bits), each held two samples; returns the clicks.
+    auto feed = [](std::initializer_list<int> states, int hold = 2) {
+        Quadrature q;
+        int sum = 0;
+        for(int st : states)
+            for(int i = 0; i < hold; i++)
+                sum += q.Sample(st & 2, st & 1);
+        return sum;
+    };
+    CHECK(feed({3, 2, 0, 1, 3}) == 1);                   // B leads: clockwise
+    CHECK(feed({3, 1, 0, 2, 3}) == -1);                  // A leads: back
+    CHECK(feed({3, 2, 0, 1, 3, 2, 0, 1, 3}) == 2);       // two detents
+    CHECK(feed({3, 2, 3, 2, 0, 2, 0, 1, 3}) == 1);       // bounces on the way: still one
+    CHECK(feed({3, 2, 0, 1, 0, 1, 3}) == 1);             // a bounce near the end (the old decoder's reversal)
+    CHECK(feed({3, 2, 0, 2, 3}) == 0);                   // half way and back: nothing
+    CHECK(feed({3, 2, 1, 3}) == 1);                      // a skipped state in a fast spin still counts
+    CHECK(feed({3, 2, 0, 1, 3}, 1) == 0);                // one-sample glitches don't count as changes
+}
+
 int main()
 {
+    TestQuadrature();
     TestDemoTiming();
     TestExternalMatchesInternal();
     TestSwingAndTicks();

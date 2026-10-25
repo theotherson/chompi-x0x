@@ -3,6 +3,7 @@
 #define CHOMPI_ENCODER_H
 #include "daisy_core.h"
 #include "hid/switch.h"
+#include "x0x/quadrature.h"
 
 namespace chompi
 {
@@ -62,7 +63,7 @@ class ChompiEncoder
     bool     updated_;
     daisy::Switch   sw_;
     dsy_gpio hw_a_, hw_b_;
-    uint8_t  a_, b_;
+    x0x::Quadrature quad_; // the lines to clicks, bounce-proof
     int32_t  inc_;
 };
 } // namespace chompi

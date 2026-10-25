@@ -201,6 +201,7 @@ class Ui
     static constexpr uint32_t kSoloHoldMs     = 2000;
     static constexpr uint32_t kKnobResetHoldMs = 2000; // CHOMPI + a knob pushed: all its pages reset
     static constexpr uint32_t kKnobJogMs       = 60;   // a detent this soon after letting go is a jog
+    static constexpr int      kSlowClicks      = 2;    // clicks a step, for stepped controls
     static constexpr uint32_t kCurrentFlashMs = 400; // the current pattern's slow flash (queued: fast)
 
     void Init(Machine* m) { m_ = m; }
@@ -475,10 +476,10 @@ class Ui
         const uint8_t sel = SideParam(kKnobMap[knob][KnobPage(knob)][chompi_ ? 1 : 0]);
         if(sel == kKnobNone)
             return;
-        const int dir = inc > 0 ? 1 : -1;
         if(sel == kKnobLength)
         {
-            m_->SetLength(m_->Current().length + dir);
+            if(const int d = SlowStep(knob, inc))
+                m_->SetLength(m_->Current().length + d);
             length_shown_at_ = last_tick_; // show it on the keys for a moment
             return;
         }
@@ -493,12 +494,15 @@ class Ui
             // crossfades there); shown on the white keys for a moment.
             if(StepIndex(m_->settings.params[DELAY_FREE_ON], 2) == 1)
                 m_->SetParam(DELAY_FREE_ON, 0.f);
-            else
-                m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
+            else if(const int d = SlowStep(knob, inc))
+                m_->SetParam(p, StepValue(StepIndex(v, steps) + d, steps));
             delay_shown_at_ = last_tick_;
         }
         else if(steps)
-            m_->SetParam(p, StepValue(StepIndex(v, steps) + dir, steps));
+        {
+            if(const int d = SlowStep(knob, inc))
+                m_->SetParam(p, StepValue(StepIndex(v, steps) + d, steps));
+        }
         else if(p == TEMPO)
         {
             // 1 BPM a click turned slowly, up to 5 spun fast.
@@ -552,6 +556,7 @@ class Ui
         else
         {
             knob_page_[knob] = (KnobPage(knob) + 1) % kKnobPages[knob];
+            slow_[knob]      = 0;
             if(drums_ && knob == 5 && knob_page_[5] == 1)
                 knob_page_[5] = 2; // the drums' side skips tempo / swing
         }
@@ -857,6 +862,23 @@ class Ui
         u.part = now;
         m_->PatternEdited();
         undone_at_ = last_tick_;
+    }
+
+    /** Stepped controls (lengths, synced times, the wave, the LFO's shape
+     *  and target) move a step every kSlowClicks clicks, so a nudge or a
+     *  bounce doesn't change them; turning back starts the count again.
+     *  The step's direction, or 0. */
+    int SlowStep(int knob, int inc)
+    {
+        const int dir = inc > 0 ? 1 : -1;
+        int&      c   = slow_[knob];
+        if(c * dir < 0)
+            c = 0;
+        c += dir;
+        if(c * dir < kSlowClicks)
+            return 0;
+        c = 0;
+        return dir;
     }
 
     /** CHOMPI + knob 1-3 held 2 s: all its pages back to their defaults
@@ -1402,7 +1424,7 @@ class Ui
                     // depth on this voice (CHOMPI: what it moves). The shape
                     // and the target take two detents a step, so a nudge
                     // doesn't change them.
-                    int q, steps, per = 1;
+                    int q, steps;
                     if(drum_knob1_page_ == 3 && !chompi_)
                     {
                         m_->SetParam(DRUM_LFO_DEPTH + drum_sel_, p[DRUM_LFO_DEPTH + drum_sel_] + inc * step);
@@ -1412,23 +1434,18 @@ class Ui
                         q = chompi_ ? DRUM_LFO_SHAPE : DRUM_LFO_RATE, steps = chompi_ ? kLfoShapes : kLfoRates;
                     else
                         q = DRUM_LFO_TARGET + drum_sel_, steps = kLfoTargets;
-                    if(chompi_)
-                        per = 2;
-                    slow_detents_ += inc > 0 ? 1 : -1;
                     lfo_shown_    = q;
                     lfo_shown_at_ = last_tick_;
-                    if(slow_detents_ >= per || slow_detents_ <= -per)
-                    {
-                        m_->SetParam(q, StepValue(StepIndex(p[q], steps) + (slow_detents_ > 0 ? 1 : -1), steps));
-                        slow_detents_ = 0;
-                    }
+                    if(const int d = chompi_ ? SlowStep(0, inc) : (inc > 0 ? 1 : -1))
+                        m_->SetParam(q, StepValue(StepIndex(p[q], steps) + d, steps));
                     return;
                 }
                 if(drum_knob1_page_ == 1)
                 {
                     if(chompi_)
                     {
-                        m_->SetDrumLength(m_->DrumPattern().drum_length + (inc > 0 ? 1 : -1));
+                        if(const int d = SlowStep(0, inc))
+                            m_->SetDrumLength(m_->DrumPattern().drum_length + d);
                         drum_len_shown_at_ = last_tick_;
                         return;
                     }
@@ -1484,9 +1501,8 @@ class Ui
                     // The shared delay's synced time, as on the bass side.
                     if(StepIndex(p[DELAY_FREE_ON], 2) == 1)
                         m_->SetParam(DELAY_FREE_ON, 0.f);
-                    else
-                        m_->SetParam(DELAY_TIME, StepValue(StepIndex(p[DELAY_TIME], kDelayDivisions) + (inc > 0 ? 1 : -1),
-                                                           kDelayDivisions));
+                    else if(const int d = SlowStep(3, inc))
+                        m_->SetParam(DELAY_TIME, StepValue(StepIndex(p[DELAY_TIME], kDelayDivisions) + d, kDelayDivisions));
                     delay_shown_at_ = last_tick_;
                     return;
                 }
@@ -1504,7 +1520,7 @@ class Ui
         if(!chompi_)
         {
             if(knob == 0)
-                drum_knob1_page_ = (drum_knob1_page_ + 1) % 4, slow_detents_ = 0;
+                drum_knob1_page_ = (drum_knob1_page_ + 1) % 4, slow_[0] = 0;
             else if(knob == 3)
                 drum_knob4_page_ = (drum_knob4_page_ + 1) % 3;
             else if(knob == 1)
@@ -2522,7 +2538,7 @@ class Ui
     uint32_t  undone_at_ = 0x80000000u;
     uint32_t knob_up_at_[6]         = {0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u};
     int      push_detents_[6]       = {};    // detents while pushed (the first is a jog)
-    int      slow_detents_          = 0;     // toward a step of the LFO's shape or target
+    int      slow_[6]               = {};    // clicks toward a stepped control's next step (SlowStep)
     uint32_t knob_reset_at_[3]      = {0x80000000u, 0x80000000u, 0x80000000u};
     uint32_t delay_shown_at_        = 0x80000000u;
     uint32_t pat_key_at_            = 0;
