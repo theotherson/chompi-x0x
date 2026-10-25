@@ -76,7 +76,24 @@ class Machine
     // ------------------------------------------------------------ transport
 
     bool Running() const { return seq_.Running(); }
-    void TogglePlay() { Running() ? Stop() : Play(); }
+    /** PLAY. Sending clock while stopped, the start waits for the clock's
+     *  next tick (at most one, ~17 ms at 145 BPM), so the clock stays even
+     *  through it: a tick close behind the last reads as a tempo jump to a
+     *  DAW following us, and Live then misses the Start. */
+    void TogglePlay()
+    {
+        if(start_pending_)
+            start_pending_ = false;
+        else if(Running())
+            Stop();
+        else if(IdleClock())
+            start_pending_ = true;
+        else
+            Play();
+    }
+
+    /** PLAY pressed, waiting for the clock's next tick to start. */
+    bool StartPending() const { return start_pending_; }
 
     void Play()
     {
@@ -552,6 +569,9 @@ class Machine
      *  clock in is still ignored until a Start (see Play). */
     bool Leading() const { return leading_ && Running(); }
 
+    /** Stopped on our own clock: it still goes out. */
+    bool IdleClock() const { return !Running() && !ExternalClock() && options.clock_out; }
+
     /** MIDI clock is arriving (within the last half second). */
     bool ExternalClock() const { return options.clock_in && since_ext_ < static_cast<uint32_t>(sr_ / 2); }
 
@@ -694,6 +714,12 @@ class Machine
 
         Sequencer::Event ev[Sequencer::kMaxEvents + 4];
         int              count = 0;
+        // PLAY waiting for the clock's next tick: start in the block it's due.
+        if(start_pending_ && (!IdleClock() || idle_clock_ + static_cast<float>(n) >= sr_ * 60.f / (TempoBpm(p[TEMPO]) * 24.f)))
+        {
+            start_pending_ = false;
+            Play();
+        }
         if(ext)
         {
             while(ext_ticks_ > 0 && count < Sequencer::kMaxEvents - 8)
@@ -715,7 +741,7 @@ class Machine
         // Stopped on our own clock, the clock still goes out, as most
         // hardware's does: a DAW following us that loses the clock (Live)
         // ignores the next Start until it's re-armed.
-        if(!Running() && !ext && options.clock_out)
+        if(IdleClock())
         {
             const float spt = sr_ * 60.f / (TempoBpm(p[TEMPO]) * 24.f);
             for(idle_clock_ += static_cast<float>(n); idle_clock_ >= spt; idle_clock_ -= spt)
@@ -1227,6 +1253,7 @@ class Machine
     float       mix_bass_ = 1.f, mix_drums_ = 1.f;
     bool        leading_  = false; // PLAY started us on our own clock
     float       idle_clock_ = 0.f; // samples toward the next clock out while stopped
+    bool        start_pending_ = false; // PLAY waiting for the next tick (TogglePlay)
     VoiceParams vp_;
     Fx          fx_;
     Arp         arp_;

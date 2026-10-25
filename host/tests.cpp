@@ -223,6 +223,7 @@ struct Rig
     {
         m.Init(kSr, g_delay, 96000, g_reverb, Reverb::kReverbFrames);
         m.patterns[0].Clear();
+        m.options.clock_out = false; // PLAY at once (with clock out it waits for the next tick: TestMidiEcho)
         ui.Init(&m);
     }
     /** Runs the audio for ms milliseconds, a block at a time. */
@@ -3905,6 +3906,7 @@ static void TestMidiEcho()
 {
     printf("leading on our clock: an echoed clock and transport are ignored\n");
     Rig r;
+    r.m.options.clock_out = true;
     DemoPattern(r.m.patterns[0]);
     r.m.Loaded();
     Machine::MidiOut mo;
@@ -3951,6 +3953,32 @@ static void TestMidiEcho()
     drain(clocks, start, stop);
     CHECK(spp_first && start);
     r.m.Stop();
+    // PLAY (the panel's) waits for the clock's next tick: the ticks stay even.
+    {
+        int   gap_min = 1 << 30, since = 0, ticks = 0;
+        bool  started = false;
+        for(int t = 0; t < 400; t++)
+        {
+            if(t == 137)
+                r.m.TogglePlay();
+            r.m.Process(l, rr, kBlock);
+            since++;
+            while(r.m.PopMidi(Machine::kUsb, mo))
+            {
+                if(mo.b[0] == 0xF8)
+                {
+                    if(ticks++ > 0 && since < gap_min)
+                        gap_min = since;
+                    since = 0;
+                }
+                started |= mo.b[0] == 0xFA;
+            }
+        }
+        CHECK(started && r.m.Running());
+        CHECK(gap_min >= 15); // 120 BPM: a tick every ~21 ms, never one close behind another
+        r.m.TogglePlay();
+        CHECK(!r.m.Running());
+    }
     // Stopped, the echo goes on; PLAY again still leads and sends Start.
     for(int t = 0; t < 20; t++)
         r.m.MidiClock(), r.m.Process(l, rr, kBlock);
