@@ -102,7 +102,7 @@ class Machine
         seq_.Stop();
         rec_key_ = -1;
         if(options.transport_out && leading_)
-            PushMidi(0xFC);
+            PushMidi(0xFC), PushMidi(0xF2, 0, 0); // and back to the top, so a DAW is there well before the next Start
     }
 
     /** The step playing now, -1 when stopped. */
