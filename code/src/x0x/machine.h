@@ -87,9 +87,10 @@ class Machine
         drum_pos_ = -1; // the first step is the drums' first
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
-        // On our own clock we lead: what comes back in (a DAW synced to us
-        // echoing its clock and transport) is ignored until we stop.
-        leading_ = !ExternalClock();
+        // On our own clock we lead, and keep leading, stopped or not, until
+        // another device sends Start: a DAW synced to us echoes our clock
+        // back, even while stopped, and that mustn't take over.
+        leading_ = leading_ || !ExternalClock();
         if(options.transport_out && leading_)
             PushMidi(0xFA);
     }
@@ -102,7 +103,6 @@ class Machine
         rec_key_ = -1;
         if(options.transport_out && leading_)
             PushMidi(0xFC);
-        leading_ = false;
     }
 
     /** The step playing now, -1 when stopped. */
@@ -492,7 +492,7 @@ class Machine
 
     void MidiClock()
     {
-        if(!options.clock_in || Leading())
+        if(!options.clock_in || leading_)
             return;
         // Tempo from the spacing of clocks, smoothed.
         if(since_ext_ < static_cast<uint32_t>(sr_) && since_ext_ > 0)
@@ -508,6 +508,7 @@ class Machine
     {
         if(!options.transport_in || Leading())
             return;
+        leading_ = false; // another device's Start: it leads now
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
@@ -523,8 +524,10 @@ class Machine
 
     void MidiContinue()
     {
-        if(options.transport_in && !Leading())
-            seq_.Continue();
+        if(!options.transport_in || Leading())
+            return;
+        leading_ = false;
+        seq_.Continue();
     }
 
     void MidiCc(int cc, int value)
@@ -545,7 +548,8 @@ class Machine
     }
 
     /** Running on our own clock, started by PLAY: MIDI clock and transport
-     *  in are ignored, so a DAW that follows us can't take over. */
+     *  in are ignored, so a DAW that follows us can't take over. Stopped,
+     *  clock in is still ignored until a Start (see Play). */
     bool Leading() const { return leading_ && Running(); }
 
     /** MIDI clock is arriving (within the last half second). */

@@ -3938,10 +3938,18 @@ static void TestMidiEcho()
     r.m.Stop(); // ...but our own sends Stop
     drain(clocks, start, stop);
     CHECK(stop && !r.m.Running());
-    // Stopped, a DAW's clock and Start are followed again.
+    // Stopped, the echo goes on; PLAY again still leads and sends Start.
     for(int t = 0; t < 20; t++)
         r.m.MidiClock(), r.m.Process(l, rr, kBlock);
+    CHECK(!r.m.ExternalClock());
+    r.m.Play();
+    drain(clocks, start, stop);
+    CHECK(start && r.m.Running());
+    r.m.Stop();
+    // Another device's Start hands over: its clock is followed.
     r.m.MidiStart();
+    for(int t = 0; t < 20; t++)
+        r.m.MidiClock(), r.m.Process(l, rr, kBlock);
     CHECK(r.m.Running() && r.m.ExternalClock());
     r.m.MidiStop();
     CHECK(!r.m.Running());

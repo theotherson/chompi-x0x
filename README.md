@@ -168,7 +168,7 @@ A soft limiter keeps the output in range however hard they're pushed.
 
 | | In | Out |
 |---|---|---|
-| Clock | Followed when it arrives (the pattern then runs on it), unless PLAY started it on its own clock: then clock and transport coming in are ignored until it stops, so a DAW that follows it and echoes its clock back can't take over | Sent while running on the internal clock |
+| Clock | Followed when it arrives (the pattern then runs on it), unless PLAY started it on its own clock: then it leads, and clock coming in is ignored (running or stopped) until another device sends Start, so a DAW that follows it and echoes its clock back can't take over | Sent while running on the internal clock |
 | Start / Stop / Continue | Run, stop, resume | Sent with PLAY |
 | Notes | Play the voice live (and record in pitch mode); velocity 112+ = accent | The pattern's and your notes, slides as overlapping notes |
 | Drum notes (channel 10) | GM drum notes play the drums (and record, when recording): kicks 35-36 BD, snares / rim / clap 37-40 SD, toms 41-47 LT, 48 / 50 HT, cymbals 49-59 CY, 46 OH, 42 / 44 CH; velocity 112+ = accent | The drum part and your hits, on GM notes (BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42) |
