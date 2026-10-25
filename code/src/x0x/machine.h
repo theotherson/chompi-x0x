@@ -87,7 +87,10 @@ class Machine
         drum_pos_ = -1; // the first step is the drums' first
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         seq_.Start();
-        if(options.transport_out && !ExternalClock())
+        // On our own clock we lead: what comes back in (a DAW synced to us
+        // echoing its clock and transport) is ignored until we stop.
+        leading_ = !ExternalClock();
+        if(options.transport_out && leading_)
             PushMidi(0xFA);
     }
 
@@ -97,8 +100,9 @@ class Machine
             return;
         seq_.Stop();
         rec_key_ = -1;
-        if(options.transport_out && !ExternalClock())
+        if(options.transport_out && leading_)
             PushMidi(0xFC);
+        leading_ = false;
     }
 
     /** The step playing now, -1 when stopped. */
@@ -488,7 +492,7 @@ class Machine
 
     void MidiClock()
     {
-        if(!options.clock_in)
+        if(!options.clock_in || Leading())
             return;
         // Tempo from the spacing of clocks, smoothed.
         if(since_ext_ < static_cast<uint32_t>(sr_) && since_ext_ > 0)
@@ -502,7 +506,7 @@ class Machine
 
     void MidiStart()
     {
-        if(!options.transport_in)
+        if(!options.transport_in || Leading())
             return;
         seq_.SetPattern(&patterns[settings.pattern]);
         queued_   = -1;
@@ -513,13 +517,13 @@ class Machine
 
     void MidiStop()
     {
-        if(options.transport_in)
+        if(options.transport_in && !Leading())
             seq_.Stop();
     }
 
     void MidiContinue()
     {
-        if(options.transport_in)
+        if(options.transport_in && !Leading())
             seq_.Continue();
     }
 
@@ -539,6 +543,10 @@ class Machine
             }
         }
     }
+
+    /** Running on our own clock, started by PLAY: MIDI clock and transport
+     *  in are ignored, so a DAW that follows us can't take over. */
+    bool Leading() const { return leading_ && Running(); }
 
     /** MIDI clock is arriving (within the last half second). */
     bool ExternalClock() const { return options.clock_in && since_ext_ < static_cast<uint32_t>(sr_ / 2); }
@@ -1201,6 +1209,7 @@ class Machine
     uint32_t    drum_hit_count_[kDrumVoices] = {};
     uint8_t     drum_mute_ = 0;
     float       mix_bass_ = 1.f, mix_drums_ = 1.f;
+    bool        leading_  = false; // PLAY started us on our own clock
     VoiceParams vp_;
     Fx          fx_;
     Arp         arp_;

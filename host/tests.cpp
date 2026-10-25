@@ -3897,6 +3897,52 @@ static void TestEngineBalance()
         CHECK(fabs(loud({{DRUM_DRIVE, d}}, true) - drums) < 3.0);
 }
 
+static void TestMidiEcho()
+{
+    printf("leading on our clock: an echoed clock and transport are ignored\n");
+    Rig r;
+    DemoPattern(r.m.patterns[0]);
+    r.m.Loaded();
+    Machine::MidiOut mo;
+    auto drain = [&](int& clocks, bool& start, bool& stop) {
+        clocks = 0, start = stop = false;
+        while(r.m.PopMidi(Machine::kUsb, mo))
+            clocks += mo.b[0] == 0xF8, start |= mo.b[0] == 0xFA, stop |= mo.b[0] == 0xFC;
+    };
+    int  clocks;
+    bool start, stop;
+    drain(clocks, start, stop);
+    r.m.Play();
+    float l[kBlock], rr[kBlock];
+    // A DAW synced to us sends our Start and clock straight back, 4x as fast.
+    r.m.MidiStart();
+    const uint32_t steps0 = r.m.StepCount();
+    for(int t = 0; t < 1000; t++) // one second at 120 BPM: 8 steps, 48 clocks
+    {
+        r.m.MidiClock(), r.m.MidiClock();
+        r.m.Process(l, rr, kBlock);
+        r.now++, r.ui.Tick(r.now);
+    }
+    drain(clocks, start, stop);
+    CHECK(start);
+    CHECK(!r.m.ExternalClock() || r.m.TempoBpmNow() == TempoBpm(r.m.settings.params[TEMPO]));
+    CHECK(clocks >= 46 && clocks <= 50);
+    const uint32_t steps = r.m.StepCount() - steps0;
+    CHECK(steps >= 7 && steps <= 9);
+    r.m.MidiStop(); // an echoed Stop doesn't stop us...
+    CHECK(r.m.Running());
+    r.m.Stop(); // ...but our own sends Stop
+    drain(clocks, start, stop);
+    CHECK(stop && !r.m.Running());
+    // Stopped, a DAW's clock and Start are followed again.
+    for(int t = 0; t < 20; t++)
+        r.m.MidiClock(), r.m.Process(l, rr, kBlock);
+    r.m.MidiStart();
+    CHECK(r.m.Running() && r.m.ExternalClock());
+    r.m.MidiStop();
+    CHECK(!r.m.Running());
+}
+
 int main()
 {
     TestDemoTiming();
@@ -3959,6 +4005,7 @@ int main()
     TestLiveLights();
     TestSettingsOptions();
     TestMidiClock();
+    TestMidiEcho();
     printf(g_fail ? "%d FAILED\n" : "all passed\n", g_fail);
     return g_fail ? 1 : 0;
 }
