@@ -168,8 +168,8 @@ A soft limiter keeps the output in range however hard they're pushed.
 
 | | In | Out |
 |---|---|---|
-| Clock | Followed when it arrives (the pattern then runs on it), unless PLAY started it on its own clock: then it leads, and clock coming in is ignored (running or stopped) until another device sends Start, so a DAW that follows it and echoes its clock back can't take over | Sent while running on the internal clock |
-| Start / Stop / Continue | Run, stop, resume | Sent with PLAY |
+| Clock | Followed when it arrives (the pattern then runs on it), unless PLAY started it on its own clock: then it leads, and clock coming in is ignored (running or stopped) until another device sends Start, so a DAW that follows it and echoes its clock back can't take over | Sent on the internal clock, running or stopped (a DAW following it stays locked) |
+| Start / Stop / Continue | Run, stop, resume | Sent with PLAY (Start after Song Position 0, so a DAW starts from the top) |
 | Notes | Play the voice live (and record in pitch mode); velocity 112+ = accent | The pattern's and your notes, slides as overlapping notes |
 | Drum notes (channel 10) | GM drum notes play the drums (and record, when recording): kicks 35-36 BD, snares / rim / clap 37-40 SD, toms 41-47 LT, 48 / 50 HT, cymbals 49-59 CY, 46 OH, 42 / 44 CH; velocity 112+ = accent | The drum part and your hits, on GM notes (BD 36, SD 38, LT 45, HT 50, CY 49, OH 46, CH 42) |
 | CC | 74 cutoff, 71 resonance, 12 env mod, 13 decay, 14 accent, 5 slide time, 70 wave, 77 pulse width, 15 tuning, 16 swing, 91 delay mix, 92 delay time, 94 delay feedback, 95 delay tone, 93 chorus/flanger, 18 bit crush, 19 sample-rate crush, 7 volume, 17 drive | The same CCs when knobs move (off by default) |

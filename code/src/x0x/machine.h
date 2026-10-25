@@ -92,7 +92,7 @@ class Machine
         // back, even while stopped, and that mustn't take over.
         leading_ = leading_ || !ExternalClock();
         if(options.transport_out && leading_)
-            PushMidi(0xFA);
+            PushMidi(0xF2, 0, 0), PushMidi(0xFA); // from the top: Song Position 0, then Start
     }
 
     void Stop()
@@ -712,6 +712,18 @@ class Machine
         if(since_ext_ < 0x7FFFFFFF)
             since_ext_ += static_cast<uint32_t>(n);
 
+        // Stopped on our own clock, the clock still goes out, as most
+        // hardware's does: a DAW following us that loses the clock (Live)
+        // ignores the next Start until it's re-armed.
+        if(!Running() && !ext && options.clock_out)
+        {
+            const float spt = sr_ * 60.f / (TempoBpm(p[TEMPO]) * 24.f);
+            for(idle_clock_ += static_cast<float>(n); idle_clock_ >= spt; idle_clock_ -= spt)
+                PushMidi(0xF8);
+        }
+        else
+            idle_clock_ = 0.f;
+
         // The arpeggiator: its gate ends half a step after it starts; while
         // the pattern runs its steps come with the pattern's, otherwise from
         // its own clock at the tempo.
@@ -1214,6 +1226,7 @@ class Machine
     uint8_t     drum_mute_ = 0;
     float       mix_bass_ = 1.f, mix_drums_ = 1.f;
     bool        leading_  = false; // PLAY started us on our own clock
+    float       idle_clock_ = 0.f; // samples toward the next clock out while stopped
     VoiceParams vp_;
     Fx          fx_;
     Arp         arp_;

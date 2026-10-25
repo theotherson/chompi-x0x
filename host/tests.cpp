@@ -3938,6 +3938,19 @@ static void TestMidiEcho()
     r.m.Stop(); // ...but our own sends Stop
     drain(clocks, start, stop);
     CHECK(stop && !r.m.Running());
+    // Stopped, the clock still goes out (a DAW following us keeps sync).
+    for(int t = 0; t < 1000; t++)
+        r.m.Process(l, rr, kBlock);
+    drain(clocks, start, stop);
+    CHECK(clocks >= 46 && clocks <= 50);
+    // Start comes after Song Position 0.
+    r.m.Play();
+    bool spp_first = false;
+    if(r.m.PopMidi(Machine::kUsb, mo))
+        spp_first = mo.b[0] == 0xF2 && mo.len == 3 && mo.b[1] == 0 && mo.b[2] == 0;
+    drain(clocks, start, stop);
+    CHECK(spp_first && start);
+    r.m.Stop();
     // Stopped, the echo goes on; PLAY again still leads and sends Start.
     for(int t = 0; t < 20; t++)
         r.m.MidiClock(), r.m.Process(l, rr, kBlock);
