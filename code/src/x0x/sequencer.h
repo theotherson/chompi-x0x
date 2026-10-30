@@ -10,6 +10,9 @@
  *  incoming clock advances one tick. Swing delays every second step by up to
  *  2 ticks (a triplet feel at full swing); triplet scales aren't swung.
  *
+ *  A ratcheted step plays its note 2-4 times, evenly through the step, each
+ *  with a gate half its share; a slide or tie out of it holds the last.
+ *
  *  Events come out in time order with their sample offset in the block. The
  *  caller (Machine) turns them into voice notes and MIDI.
  *
@@ -126,6 +129,7 @@ class Sequencer
         grid_step_ = 0, grid_pos_ = 0.0, grid_base_ = 0.0, last_grid_pos_ = 0.0;
         drum_count_ = 0;
         roll_next_  = 0.0;
+        rat_left_   = 0;
         ticks_      = pat_ ? pat_->StepTicks() : kStepTicks;
         ScheduleStep();
     }
@@ -205,6 +209,8 @@ class Sequencer
                 next = drum_at_[i];
         if(roll_ticks_ > 0 && roll_next_ < next)
             next = roll_next_;
+        if(rat_left_ > 0 && rat_pos_ < next)
+            next = rat_pos_;
         if(gate_off_ >= 0.0 && gate_off_ < next)
             next = gate_off_;
         return next;
@@ -236,6 +242,8 @@ class Sequencer
         }
         if(step_pos_ <= pos_ + 1e-9)
             StartStep(off, ev, count);
+        if(rat_left_ > 0 && rat_pos_ <= pos_ + 1e-9 && count < kMaxEvents - 4)
+            RatchetHit(off, ev, count);
         for(int i = 0; i < drum_count_ && count < kMaxEvents - 4;)
             if(drum_at_[i] <= pos_ + 1e-9)
             {
@@ -294,6 +302,10 @@ class Sequencer
 
     void StartStep(uint32_t off, Event* ev, int& count)
     {
+        // A ratchet cut short (this step early, the last one late): its
+        // slide or tie still holds.
+        if(rat_left_ > 0)
+            hold_ = rat_hold_, rat_left_ = 0;
         // Wrap: back to the top, and a queued pattern takes over.
         if(next_step_ == 0 && step_ >= 0)
         {
@@ -368,10 +380,36 @@ class Sequencer
         // this step slides into it.
         const Step next  = At(next_step_);
         hold_            = playing_ >= 0 && next.on && (next.tie || s.slide);
-        // Half a step, but never past the next step's start (a late step
-        // leaves less room).
-        const double off_at = StepStart(step_) + StepTicks() / 2.0;
+        // Half a step (of a ratchet: half its share), but never past the
+        // next step's start (a late step leaves less room).
+        const int    hits   = s.on && !s.tie && playing_ >= 0 ? s.Hits() : 1;
+        const double share  = StepTicks() / static_cast<double>(hits);
+        const double off_at = StepStart(step_) + share / 2.0;
+        if(hits > 1)
+        {
+            // The rest of the ratchet; the hold waits for its last hit.
+            rat_left_ = hits - 1, rat_share_ = share, rat_pos_ = StepStart(step_) + share;
+            rat_note_ = playing_, rat_accent_ = s.accent, rat_hold_ = hold_;
+            hold_     = false;
+        }
         gate_off_ = hold_ || playing_ < 0 ? -1.0 : (off_at < step_pos_ ? off_at : step_pos_);
+    }
+
+    /** A ratchet's next hit: the step's note again. */
+    void RatchetHit(uint32_t off, Event* ev, int& count)
+    {
+        const double at = rat_pos_;
+        rat_left_--;
+        rat_pos_ += rat_share_;
+        ReleaseIfPlaying(off, ev, count);
+        Event e{Event::NOTE_ON, off};
+        e.note = rat_note_, e.accent = rat_accent_;
+        ev[count++] = e;
+        playing_    = rat_note_;
+        if(rat_left_ == 0)
+            hold_ = rat_hold_;
+        const double off_at = at + rat_share_ / 2.0;
+        gate_off_ = hold_ ? -1.0 : (off_at < step_pos_ ? off_at : step_pos_);
     }
 
     void ReleaseIfPlaying(uint32_t off, Event* ev, int& count)
@@ -411,12 +449,20 @@ class Sequencer
     double     grid_pos_      = 0.0;
     double     grid_base_     = 0.0;
     double     last_grid_pos_ = 0.0;
-    static constexpr int kMaxDrums = 16;
+    static constexpr int kMaxDrums = 32; // late hits and drum ratchets
     double     drum_at_[kMaxDrums]  = {};
     int        drum_pay_[kMaxDrums] = {};
     int        drum_count_          = 0;
     int        roll_ticks_          = 0;
     double     roll_next_           = 0.0;
+    // The ratchet playing: hits to come, the next one's place, the spacing.
+    int        rat_left_   = 0;
+    double     rat_pos_    = 0.0;
+    double     rat_share_  = 0.0;
+    int        rat_note_   = -1;
+    bool       rat_accent_ = false;
+    bool       rat_hold_   = false; // the gate holds after the last hit
+
 };
 
 } // namespace x0x

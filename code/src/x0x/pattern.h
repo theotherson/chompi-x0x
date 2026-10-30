@@ -64,6 +64,10 @@ inline int ParsePatternName(const char* p)
 constexpr int kKeyNotes  = 25; // the keybed as a keyboard: C3 to C5
 constexpr int kBaseNote  = 36; // MIDI note the lowest key plays (C2)
 
+constexpr int kMaxRatchet = 4;
+/** A stored ratchet count as hits, 1-4 (0, as zeroed memory, is 1). */
+constexpr int Ratchets(int r) { return r < 1 ? 1 : r > kMaxRatchet ? kMaxRatchet : r; }
+
 struct Step
 {
     uint8_t note   = 0; // 0-24, semitones above the lowest key
@@ -73,12 +77,14 @@ struct Step
     bool    slide  = false;
     bool    tie    = false;
     uint8_t nudge  = 0; // ticks after the step's start, within it (0-5 at 1/16)
+    uint8_t ratchet = 1; // hits within the step, 1-4 (Ratchets)
 
     int Midi() const { return kBaseNote + note + 12 * octave; }
+    int Hits() const { return Ratchets(ratchet); }
     bool operator==(const Step& o) const
     {
         return note == o.note && octave == o.octave && on == o.on && accent == o.accent
-               && slide == o.slide && tie == o.tie && nudge == o.nudge;
+               && slide == o.slide && tie == o.tie && nudge == o.nudge && Hits() == o.Hits();
     }
 };
 
@@ -127,20 +133,32 @@ struct Pattern
     uint8_t drum_nudge[kSteps][kDrumVoices] = {};
     /** Each hit's pitch, -12..12 semitones (recorded from the keys, live). */
     int8_t drum_pitch[kSteps][kDrumVoices] = {};
+    /** Each hit's ratchet: hits within the step (0 or 1 = one). */
+    uint8_t drum_ratchet[kSteps][kDrumVoices] = {};
+    int DrumHits(int step, int voice) const { return Ratchets(drum_ratchet[step][voice]); }
 
     /** Sets or clears a hit (on the grid). */
     void SetDrumHit(int step, int voice, bool on)
     {
         const uint8_t bit = static_cast<uint8_t>(1 << voice);
         drums[step]       = static_cast<uint8_t>(on ? drums[step] | bit : drums[step] & ~bit);
-        drum_nudge[step][voice] = 0;
-        drum_pitch[step][voice] = 0;
+        drum_nudge[step][voice]   = 0;
+        drum_pitch[step][voice]   = 0;
+        drum_ratchet[step][voice] = 0;
     }
     bool DrumPitched() const
     {
         for(int i = 0; i < kSteps; i++)
             for(int v = 0; v < kDrumVoices; v++)
                 if(drum_pitch[i][v])
+                    return true;
+        return false;
+    }
+    bool DrumRatcheted() const
+    {
+        for(int i = 0; i < kSteps; i++)
+            for(int v = 0; v < kDrumVoices; v++)
+                if(DrumHits(i, v) > 1)
                     return true;
         return false;
     }
@@ -228,6 +246,7 @@ struct Pattern
         memcpy(drums, o.drums, sizeof drums);
         memcpy(drum_nudge, o.drum_nudge, sizeof drum_nudge);
         memcpy(drum_pitch, o.drum_pitch, sizeof drum_pitch);
+        memcpy(drum_ratchet, o.drum_ratchet, sizeof drum_ratchet);
         drum_length = o.drum_length;
     }
 
@@ -237,7 +256,7 @@ struct Pattern
         {
             drums[i] = 0;
             for(int v = 0; v < kDrumVoices; v++)
-                drum_nudge[i][v] = 0, drum_pitch[i][v] = 0;
+                drum_nudge[i][v] = 0, drum_pitch[i][v] = 0, drum_ratchet[i][v] = 0;
         }
         drum_length = kSteps;
     }
@@ -261,6 +280,10 @@ struct Pattern
                || memcmp(drum_nudge[i], o.drum_nudge[i], kDrumVoices) != 0
                || memcmp(drum_pitch[i], o.drum_pitch[i], kDrumVoices) != 0)
                 return false;
+        for(int i = 0; i < kSteps; i++)
+            for(int v = 0; v < kDrumVoices; v++)
+                if(DrumHits(i, v) != o.DrumHits(i, v))
+                    return false;
         return true;
     }
 };
@@ -289,9 +312,9 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
         for(int i = 0; i < kSteps; i++)
         {
             const Step& s = pat.steps[i];
-            w = snprintf(buf + len, size - len, "step %d %d %d %d %d %d %d %d\n", i + 1, s.note,
+            w = snprintf(buf + len, size - len, "step %d %d %d %d %d %d %d %d %d\n", i + 1, s.note,
                          s.octave, s.on ? 1 : 0, s.accent ? 1 : 0, s.slide ? 1 : 0, s.tie ? 1 : 0,
-                         s.nudge);
+                         s.nudge, s.Hits());
             if(w <= 0 || static_cast<size_t>(w) >= size - len)
                 return 0;
             len += w;
@@ -349,6 +372,29 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
                 d[0] = ' ';
                 for(int v = 0; v < kDrumVoices; v++)
                     d[1 + v] = static_cast<char>('m' + ClampInt(pat.drum_pitch[i][v], -12, 12));
+                d[kDrumVoices + 1] = '\0';
+                w = snprintf(buf + len, size - len, "%s", d);
+                if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                    return 0;
+                len += w;
+            }
+            if(len + 1 >= size)
+                return 0;
+            buf[len++] = '\n';
+            buf[len]   = '\0';
+        }
+        if(pat.DrumRatcheted())
+        {
+            w = snprintf(buf + len, size - len, "drum_ratchet");
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+            for(int i = 0; i < kSteps; i++)
+            {
+                char d[kDrumVoices + 2];
+                d[0] = ' ';
+                for(int v = 0; v < kDrumVoices; v++)
+                    d[1 + v] = static_cast<char>('0' + pat.DrumHits(i, v));
                 d[kDrumVoices + 1] = '\0';
                 w = snprintf(buf + len, size - len, "%s", d);
                 if(w <= 0 || static_cast<size_t>(w) >= size - len)
@@ -421,6 +467,24 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                     p++; // anything more in this step's group: skipped
             }
         }
+        else if(pat && strncmp(line, "drum_ratchet ", 13) == 0)
+        {
+            const char* p = line + 13;
+            for(int i = 0; i < kSteps; i++)
+            {
+                while(*p == ' ')
+                    p++;
+                for(int v = 0; v < kDrumVoices; v++)
+                {
+                    if(*p < '1' || *p > '0' + kMaxRatchet)
+                        break;
+                    pat->drum_ratchet[i][v] = static_cast<uint8_t>(*p - '0');
+                    p++;
+                }
+                while(*p && *p != ' ')
+                    p++;
+            }
+        }
         else if(pat && strncmp(line, "drum_pitch ", 11) == 0)
         {
             const char* p = line + 11;
@@ -446,9 +510,9 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
         else if(pat && strncmp(line, "step ", 5) == 0)
         {
             char* p    = line + 5;
-            long  v[8] = {};
+            long  v[9] = {};
             int   got  = 0;
-            for(; got < 8; got++)
+            for(; got < 9; got++)
             {
                 char* end;
                 v[got] = strtol(p, &end, 10);
@@ -456,7 +520,7 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                     break;
                 p = end;
             }
-            // 7 numbers: written before nudge existed.
+            // 7 numbers: written before nudge existed; 8, before ratchets.
             if(got >= 7 && v[0] >= 1 && v[0] <= kSteps && v[1] >= 0 && v[1] < kKeyNotes
                && v[2] >= -1 && v[2] <= 1)
             {
@@ -468,6 +532,7 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                 s.slide  = v[5] != 0;
                 s.tie    = v[6] != 0;
                 s.nudge  = static_cast<uint8_t>(ClampInt(static_cast<int>(v[7]), 0, 9));
+                s.ratchet = static_cast<uint8_t>(got >= 9 ? Ratchets(static_cast<int>(v[8])) : 1);
             }
         }
         line = next;

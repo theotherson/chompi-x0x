@@ -442,7 +442,8 @@ class Machine
         if(live_count_ < kLive)
             live_[live_count_++] = note;
         voice_.NoteOn(note, accent, live_count_ > 1);
-        voice_note_ = note;
+        voice_note_     = note;
+        live_rat_clock_ = 0.f; // a live ratchet's repeats count from here
         if(options.notes_out)
             PushMidi(0x90 | (options.channel_out - 1), note, accent ? 127 : 100);
         if(recording_ && Running())
@@ -483,6 +484,11 @@ class Machine
         while(live_count_ > 0)
             LiveNoteOff(live_[live_count_ - 1]);
     }
+
+    /** Live ratchet: held notes repeat, 2-4 times a step, and are recorded
+     *  so; 1 = off. */
+    void SetLiveRatchet(int hits) { live_ratchet_ = Ratchets(hits); }
+    int  LiveRatchet() const { return live_ratchet_; }
 
     bool Recording() const { return recording_; }
     void SetRecording(bool r)
@@ -710,6 +716,28 @@ class Machine
                 }
             }
             roll_since_ += static_cast<float>(n);
+        }
+
+        // Live ratchet: the held note again, every share of a step, its gate
+        // half that.
+        if(live_ratchet_ > 1 && live_count_ > 0 && !ArpEngaged())
+        {
+            const float share = sr_ * 60.f / (seq_.Tempo() * 24.f) * (Running() ? seq_.StepTicks() : Current().StepTicks()) / live_ratchet_;
+            const float was   = live_rat_clock_;
+            live_rat_clock_ += static_cast<float>(n);
+            if(was < share * 0.5f && live_rat_clock_ >= share * 0.5f)
+            {
+                voice_.NoteOff();
+                if(options.notes_out)
+                    PushMidi(0x80 | (options.channel_out - 1), voice_note_, 0);
+            }
+            if(live_rat_clock_ >= share)
+            {
+                live_rat_clock_ -= share;
+                voice_.NoteOn(voice_note_, false, false);
+                if(options.notes_out)
+                    PushMidi(0x90 | (options.channel_out - 1), voice_note_, 100);
+            }
         }
 
         Sequencer::Event ev[Sequencer::kMaxEvents + 4];
@@ -960,10 +988,16 @@ class Machine
                 const bool acc   = (s & kDrumAccent) != 0;
                 const int  nudge = quant ? 0 : ClampInt(pat.drum_nudge[drum_pos_][v], 0, seq_.StepTicks() - 1); // within the step
                 const int  semis = pat.drum_pitch[drum_pos_][v];
+                const int  pay   = v | (acc ? kDrumAccent : 0) | ((semis + 64) << 8);
                 if(nudge == 0)
                     PlayDrum(v, acc, semis);
                 else
-                    seq_.ScheduleDrum(nudge, v | (acc ? kDrumAccent : 0) | ((semis + 64) << 8));
+                    seq_.ScheduleDrum(nudge, pay);
+                // A ratchet: the rest of its hits, evenly through the step.
+                const int    hits  = pat.DrumHits(drum_pos_, v);
+                const double share = seq_.StepTicks() / static_cast<double>(hits);
+                for(int h = 1; h < hits; h++)
+                    seq_.ScheduleDrum(nudge + h * share, pay);
             }
     }
 
@@ -975,7 +1009,8 @@ class Machine
     /** A live hit into the drum part. Quantize on: to the nearest point of
      *  the grid (every 1, 2 or 4 steps). Off: to the step it falls in, late
      *  by as many ticks as it was played (or the next step, on time). A roll
-     *  keeps the first of its hits in a step. */
+     *  keeps the first of its hits in a step; one faster than a step counts
+     *  the rest as the hit's ratchet. */
     void RecordDrum(int v, bool accent, bool roll = false, int semis = 0)
     {
         if(drum_pos_ < 0)
@@ -997,11 +1032,20 @@ class Machine
                 step = (step + 1) % len, nudge = 0;
         }
         if(roll && roll_rec_step_[v] == step && pat.DrumHit(step, v))
+        {
+            const int rt = kRollTicks[StepIndex(settings.params[DRUM_ROLL_RATE], kRollRates)];
+            if(rt < seq_.StepTicks() && pat.DrumHits(step, v) < kMaxRatchet)
+            {
+                pat.drum_ratchet[step][v] = static_cast<uint8_t>(pat.DrumHits(step, v) + 1);
+                pattern_changes++;
+            }
             return;
+        }
         roll_rec_step_[v] = static_cast<int8_t>(step); // (a roll's key hit counts as its first)
         pat.drums[step]   = static_cast<uint8_t>(pat.drums[step] | (1 << v) | (accent ? kDrumAccent : 0));
         pat.drum_nudge[step][v] = static_cast<uint8_t>(nudge);
         pat.drum_pitch[step][v] = static_cast<int8_t>(ClampInt(semis, -12, 12)); // played on the keys
+        pat.drum_ratchet[step][v] = 0;
         if(step != drum_pos_)
             rec_skip_ = static_cast<uint8_t>(rec_skip_ | (1 << v)); // played just now: not again at its step
         pattern_changes++;
@@ -1115,12 +1159,15 @@ class Machine
                 step_count_++;
                 if(ArpEngaged() && (arp_.Active() || arp_note_ >= 0))
                     ArpStep(e.offset, e.step);
-                // A key held while recording ties through the steps it covers.
+                // A key held while recording ties through the steps it
+                // covers (with a live ratchet, repeats its note there).
                 if(rec_key_ >= 0 && e.step != rec_step_)
                 {
                     Step& s = patterns[settings.pattern].steps[e.step];
+                    if(live_ratchet_ > 1 && rec_step_ >= 0)
+                        s = patterns[settings.pattern].steps[rec_step_], s.nudge = 0;
                     s.on    = true;
-                    s.tie   = true;
+                    s.tie   = live_ratchet_ <= 1;
                     rec_step_ = e.step;
                     pattern_changes++;
                 }
@@ -1162,13 +1209,13 @@ class Machine
             if(nudge >= seq_.StepTicks())
                 step = seq_.NextStep(), nudge = 0;
         }
-        RecordAt(step, midi, nudge);
+        RecordAt(step, midi, nudge, live_ratchet_);
         rec_key_  = midi;
         rec_step_ = step;
     }
 
-    /** Writes `midi` into `step` as a plain note. */
-    void RecordAt(int step, int midi, int nudge)
+    /** Writes `midi` into `step` as a plain note (ratcheted: `hits`). */
+    void RecordAt(int step, int midi, int nudge, int hits = 1)
     {
         int rel = midi - kBaseNote, oct = 0;
         while(rel < 0 && oct > -1)
@@ -1183,6 +1230,7 @@ class Machine
         s.octave = static_cast<int8_t>(oct);
         s.on     = true;
         s.nudge  = static_cast<uint8_t>(nudge);
+        s.ratchet = static_cast<uint8_t>(Ratchets(hits));
         pattern_changes++;
         record_count_++;
     }
@@ -1275,6 +1323,8 @@ class Machine
     bool recording_  = false;
     int  rec_key_    = -1;
     int  rec_step_   = -1;
+    int   live_ratchet_   = 1;   // SetLiveRatchet
+    float live_rat_clock_ = 0.f; // samples since the held note's last hit
 
     uint32_t since_ext_ = 0x7FFFFFFF; // samples since the last MIDI clock
     int      ext_ticks_ = 0;

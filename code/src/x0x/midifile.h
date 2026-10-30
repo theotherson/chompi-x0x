@@ -75,8 +75,9 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
         e[i] = pat.PlayedStep(i, grid);
     auto start = [&](int i) { return static_cast<uint32_t>(i * stp + e[i].nudge * kMidiTicksPerNudge); };
 
-    detail::MidiEvent ev[2 * kSteps * (1 + 7)];
-    int               n = 0;
+    // Static: too big for the stack (one export at a time, from the main loop).
+    static detail::MidiEvent ev[2 * kSteps * (1 + 7) * kMaxRatchet];
+    int                      n = 0;
     for(int i = 0; i < len; i++)
     {
         if(!e[i].on || e[i].tie)
@@ -84,7 +85,8 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
         int j = i; // the last step it holds through: ties
         while(j + 1 < len && e[j + 1].on && e[j + 1].tie)
             j++;
-        uint32_t end;
+        uint32_t   end;
+        const bool held = j > i || (e[j].slide && j + 1 < len && e[j + 1].on); // tied or sliding on
         if(e[j].slide && j + 1 < len && e[j + 1].on)
             end = start(j + 1) + 2; // into the next note, overlapping it
         else
@@ -93,10 +95,22 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
             if(j + 1 < len && end > start(j + 1))
                 end = start(j + 1);                 // ...never past the next step
         }
-        const int note = ClampInt(e[i].Midi(), 0, 127);
-        ev[n++]        = {start(i), 0x90, static_cast<uint8_t>(note),
-                          static_cast<uint8_t>(e[i].accent ? kMidiAccentVel : kMidiNormalVel)};
-        ev[n++]        = {end, 0x80, static_cast<uint8_t>(note), 0};
+        const int     note = ClampInt(e[i].Midi(), 0, 127);
+        const uint8_t vel  = static_cast<uint8_t>(e[i].accent ? kMidiAccentVel : kMidiNormalVel);
+        // A ratchet: its hits evenly through the step, each half its share;
+        // the last one held on by a tie or slide as the note would be.
+        const int hits = e[i].Hits();
+        for(int h = 0; h < hits; h++)
+        {
+            const uint32_t at  = start(i) + static_cast<uint32_t>(h * stp / hits);
+            uint32_t       off = at + static_cast<uint32_t>(stp / hits / 2);
+            if(h + 1 == hits && held)
+                off = end;
+            else if(i + 1 < len && off > start(i + 1))
+                off = start(i + 1); // never past the next step
+            ev[n++] = {at, 0x90, static_cast<uint8_t>(note), vel};
+            ev[n++] = {off, 0x80, static_cast<uint8_t>(note), 0};
+        }
     }
     // The drum part, channel 10: each hit an eighth of a beat long.
     const bool drums = !pat.DrumsEmpty();
@@ -106,9 +120,14 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
             {
                 const uint32_t t = static_cast<uint32_t>(
                     i * stp + (drums_quantized ? 0 : pat.drum_nudge[i][v] * kMidiTicksPerNudge));
-                const uint8_t  vel = static_cast<uint8_t>(pat.DrumAccent(i) ? kMidiAccentVel : kMidiNormalVel);
-                ev[n++] = {t, 0x99, kGmDrum[v], vel};
-                ev[n++] = {t + static_cast<uint32_t>(stp / 2), 0x89, kGmDrum[v], 0};
+                const uint8_t  vel  = static_cast<uint8_t>(pat.DrumAccent(i) ? kMidiAccentVel : kMidiNormalVel);
+                const int      hits = pat.DrumHits(i, v);
+                for(int h = 0; h < hits; h++)
+                {
+                    const uint32_t at = t + static_cast<uint32_t>(h * stp / hits);
+                    ev[n++]           = {at, 0x99, kGmDrum[v], vel};
+                    ev[n++]           = {at + static_cast<uint32_t>(stp / hits / 2), 0x89, kGmDrum[v], 0};
+                }
             }
     // In time order; at the same tick, offs before ons.
     for(int a = 1; a < n; a++)

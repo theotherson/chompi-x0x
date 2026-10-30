@@ -23,7 +23,8 @@
  *    black keys 1-5                parameter pages: octave DOWN, octave UP,
  *                                  ACCENT, SLIDE, TIE. On a page the step keys
  *                                  toggle that flag; the page key again goes
- *                                  back to notes
+ *                                  back to notes. TIE again: the RATCHET
+ *                                  page, a step key cycles its hits 1-4
  *    black key 6 (C#4)             transpose mode on: while on, any key sets
  *                                  the transpose (middle C = none); tap a key
  *                                  twice quickly to set it and leave (or hold
@@ -87,6 +88,8 @@
  *                                  random, as played
  *    CHOMPI + the blinking step's      in note entry: a rest
  *      white key
+ *    CHOMPI + white keys 13-15     live ratchet 2 / 3 / 4 (again: off): held
+ *                                  notes repeat in time, recorded so
  *
  *  CHOMPI double tap (two quick taps, nothing else touched): swap the panel
  *  between the bass and the drums (a TR-606). Both always play; this only
@@ -99,8 +102,9 @@
  *                                  it; held 2 s: solo it (mutes the rest;
  *                                  again, when it's the only one left: all
  *                                  back)
- *    C#4                           step mode: the ACCENT page (on release);
- *                                  held 2 s: every voice unmuted
+ *    C#4                           step mode: the ACCENT page (on release),
+ *                                  again the voice's RATCHET page, again its
+ *                                  hits; held 2 s: every voice unmuted
  *    live mode                     every voice its own key: BD SD LT HT CY on
  *                                  C#3-A#3, CH and OH on C#4 and D#4;
  *                                  CHOMPI + LOOP: hits accented on / off
@@ -171,6 +175,7 @@ class Ui
         SLIDE,
         TIE,
         PATTERN,
+        RATCHET, // TIE again
     };
 
     static constexpr int kWhiteKeys = 15;
@@ -182,6 +187,7 @@ class Ui
     static constexpr int kKeyPattern   = 18; // black key 8
     static constexpr int kKeyCopy      = 20; // black key 9
     static constexpr int kKeyClear     = 22; // black key 10
+    static constexpr int kRatchetWhite = 12; // white keys 13-15: live ratchets (CHOMPI held)
 
     static constexpr uint32_t kClearHoldMs  = 1000;
     static constexpr uint32_t kTransposeExitMs = 2000;
@@ -953,7 +959,18 @@ class Ui
                     const uint8_t b    = pat.drums[step];
                     const float   past = step >= pat.drum_length ? 0.3f : 1.f;
                     Rgb           c;
-                    if(drum_acc_page_)
+                    if(drum_rat_page_)
+                    {
+                        // The ratchet page: this voice's ratchets pink,
+                        // brighter for more hits; its other hits dim.
+                        const bool hit  = (b >> drum_sel_) & 1;
+                        const int  hits = pat.DrumHits(step, drum_sel_);
+                        if(hits > 1)
+                            c = Scale(kPageColour[static_cast<int>(Page::RATCHET)], RatchetLevel(hits) * past * (hit ? 1.f : 0.4f));
+                        else if(hit)
+                            c = Scale(kDrumCol[drum_sel_], 0.12f * past);
+                    }
+                    else if(drum_acc_page_)
                     {
                         // The accent page: accented steps blue, other hits dim.
                         if(b & kDrumAccent)
@@ -1007,7 +1024,8 @@ class Ui
             }
         if(mode_ == Mode::STEP)
         {
-            f.key[kBlack[5]] = Scale(kDrumAccentCol, drum_acc_page_ ? 1.f : 0.12f);
+            f.key[kBlack[5]] = drum_rat_page_ ? kPageColour[static_cast<int>(Page::RATCHET)]
+                                              : Scale(kDrumAccentCol, drum_acc_page_ ? 1.f : 0.12f);
             f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         }
         f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentDrumPattern())),
@@ -1321,10 +1339,10 @@ class Ui
             if(mode_ == Mode::STEP)
             {
                 // Its page; the toms' and hats' keys again: the other one.
-                if(pair && drum_sel_ == VoiceOfKey(b) && !drum_acc_page_)
+                if(pair && drum_sel_ == VoiceOfKey(b) && !drum_acc_page_ && !drum_rat_page_)
                     FlipPair(b);
                 drum_sel_      = VoiceOfKey(b);
-                drum_acc_page_ = false;
+                drum_acc_page_ = drum_rat_page_ = false;
             }
             else
             {
@@ -1357,7 +1375,9 @@ class Ui
         if(w != 7)
             half_ = w > 7 ? 1 : 0;
         Pattern& pat = m_->DrumPattern();
-        if(drum_acc_page_)
+        if(drum_rat_page_)
+            pat.drum_ratchet[step][drum_sel_] = static_cast<uint8_t>(pat.DrumHits(step, drum_sel_) % kMaxRatchet + 1);
+        else if(drum_acc_page_)
             pat.drums[step] ^= kDrumAccent;
         else
             pat.SetDrumHit(step, drum_sel_, !pat.DrumHit(step, drum_sel_)); // on the grid
@@ -1370,8 +1390,12 @@ class Ui
             voice_key_ = -1;
         if(k == kBlack[5] && acc_key_down_)
         {
-            acc_key_down_  = false;
-            drum_acc_page_ = !drum_acc_page_;
+            // The ACCENT page; again: the selected voice's RATCHET page;
+            // again: back to its hits.
+            acc_key_down_       = false;
+            const bool was_rat  = drum_rat_page_;
+            drum_rat_page_      = drum_acc_page_;
+            drum_acc_page_      = !drum_acc_page_ && !was_rat;
         }
         const int b = BlackIndex(k);
         if(b >= 0 && b < VoiceKeys() && mode_ == Mode::PITCH)
@@ -1408,15 +1432,23 @@ class Ui
             drum_clear_down_ = false;
             if(!clear_done_)
             {
-                // A tap: this voice's hits (or the accents, on their page).
+                // A tap: this voice's hits (or the accents, or its
+                // ratchets, on their pages).
                 SaveUndo(true);
                 Pattern&      p    = m_->DrumPattern();
+                if(drum_rat_page_ && mode_ == Mode::STEP)
+                {
+                    for(int i = 0; i < kSteps; i++)
+                        p.drum_ratchet[i][drum_sel_] = 0;
+                    m_->PatternEdited();
+                    return;
+                }
                 const uint8_t mask = drum_acc_page_ && mode_ == Mode::STEP ? kDrumAccent : static_cast<uint8_t>(1 << drum_sel_);
                 for(int i = 0; i < kSteps; i++)
                 {
                     p.drums[i] = static_cast<uint8_t>(p.drums[i] & ~mask);
                     if(mask != kDrumAccent)
-                        p.drum_nudge[i][drum_sel_] = 0, p.drum_pitch[i][drum_sel_] = 0;
+                        p.drum_nudge[i][drum_sel_] = 0, p.drum_pitch[i][drum_sel_] = 0, p.drum_ratchet[i][drum_sel_] = 0;
                 }
                 m_->PatternEdited();
             }
@@ -1641,7 +1673,10 @@ class Ui
          {}, {}},
     };
     // clang-format on
-    static constexpr Rgb kPageColour[7] = {
+    /** A ratchet's brightness on its page, by hits (2-4). */
+    static float RatchetLevel(int hits) { return hits >= 4 ? 1.f : hits == 3 ? 0.45f : 0.15f; }
+
+    static constexpr Rgb kPageColour[8] = {
         {1.f, 0.f, 0.f},   // notes      red
         {.6f, 0.f, 1.f},   // DOWN       purple
         {0.f, .9f, 1.f},   // UP         cyan
@@ -1649,6 +1684,7 @@ class Ui
         {0.f, .3f, 1.f},   // SLIDE      blue
         {0.f, 1.f, .2f},   // TIE        green
         {.25f, .65f, 1.f}, // PATTERN    light blue (see PatternColour)
+        {1.f, .3f, .6f},   // RATCHET    pink
     };
 
   private:
@@ -1766,7 +1802,10 @@ class Ui
             case 1: TogglePage(Page::UP); break;
             case 2: TogglePage(Page::ACCENT); break;
             case 3: TogglePage(Page::SLIDE); break;
-            case 4: TogglePage(Page::TIE); break;
+            case 4:
+                // TIE, again: the RATCHET page; again: back to notes.
+                page_ = page_ == Page::TIE ? Page::RATCHET : page_ == Page::RATCHET ? Page::NOTES : Page::TIE;
+                break;
             case 5: transpose_mode_ = true, tap_key_ = -1; break;
             case 6: half_ = ShownSecondHalf() ? 0 : 1; break;
             case 7:
@@ -1922,6 +1961,7 @@ class Ui
             case Page::ACCENT: s.accent = !s.accent; break;
             case Page::SLIDE: s.slide = !s.slide; break;
             case Page::TIE: s.tie = !s.tie; break;
+            case Page::RATCHET: s.ratchet = static_cast<uint8_t>(s.Hits() % kMaxRatchet + 1); break; // 1-4, round
             case Page::PATTERN:
                 // Picked when let go (KeyUp); held 2 s it exports instead.
                 pat_key_step_  = step;
@@ -1963,14 +2003,18 @@ class Ui
                     const int w = WhiteIndex(k);
                     // Note entry: the next step's key (the one blinking)
                     // enters a rest. Middle C counts for step 8 or 9.
-                    if(w >= 0 && NoteEntry())
-                    {
-                        if(StepOfWhite(w) == cursor_ || (w == 7 && (cursor_ == 7 || cursor_ == 8)))
-                            Append(Step{});
-                    }
+                    if(w >= 0 && NoteEntry() && (StepOfWhite(w) == cursor_ || (w == 7 && (cursor_ == 7 || cursor_ == 8))))
+                        Append(Step{});
                     // White keys 1-3 pick the quantize grid while it's on.
                     else if(w >= 0 && w < 3 && Quantizing())
                         m_->SetParam(QUANT_GRID, StepValue(w, 3));
+                    // White keys 13-15: the live ratchet, 2-4 hits a step;
+                    // the one on again: off.
+                    else if(w >= kRatchetWhite)
+                    {
+                        const int hits = w - kRatchetWhite + 2;
+                        m_->SetLiveRatchet(m_->LiveRatchet() == hits ? 1 : hits);
+                    }
                     break;
                 }
             }
@@ -1992,8 +2036,9 @@ class Ui
         {
             Step s;
             s.note   = static_cast<uint8_t>(k);
-            s.octave = static_cast<int8_t>(kbd_octave_);
-            s.on     = true;
+            s.octave  = static_cast<int8_t>(kbd_octave_);
+            s.on      = true;
+            s.ratchet = static_cast<uint8_t>(m_->LiveRatchet());
             Append(s);
         }
     }
@@ -2186,6 +2231,13 @@ class Ui
                                       Clamp((now - pat_key_at_) / static_cast<float>(kExportHoldMs), 0.f, 1.f));
                         break;
                     }
+                    case Page::RATCHET:
+                        // Brighter for more hits; one hit: as the flags' pages.
+                        if(s.Hits() > 1)
+                            c = Scale(pc, RatchetLevel(s.Hits()) * (past_end ? 0.3f : 1.f) * (s.on ? 1.f : 0.4f));
+                        else if(s.on)
+                            c = Scale(kRed, 0.12f);
+                        break;
                     default:
                     {
                         bool flag = false;
@@ -2214,6 +2266,8 @@ class Ui
         const Page pages[5] = {Page::DOWN, Page::UP, Page::ACCENT, Page::SLIDE, Page::TIE};
         for(int i = 0; i < 5; i++)
             f.key[kBlack[i]] = Scale(kPageColour[static_cast<int>(pages[i])], page_ == pages[i] ? 1.f : 0.1f);
+        if(page_ == Page::RATCHET)
+            f.key[kBlack[4]] = kPageColour[static_cast<int>(Page::RATCHET)]; // TIE's key, in the ratchet's colour
         f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
         f.key[kKeyView]      = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         // The pattern key: its side's colour (PatternColour).
@@ -2317,6 +2371,17 @@ class Ui
             f.key[kBlack[7]] = Scale(kPageColour[1], 0.15f + 0.425f * StepIndex(p[ARP_OCT_DOWN], 3));
             f.key[kBlack[8]] = kArpColour;
             f.key[kBlack[9]] = Scale(kPageColour[2], 0.15f + 0.425f * StepIndex(p[ARP_OCT_UP], 3));
+        }
+        // The live ratchet: white keys 13-15 (2-4 hits) with CHOMPI held,
+        // the one on bright; let go, the one on stays dimly lit.
+        const Rgb rc = kPageColour[static_cast<int>(Page::RATCHET)];
+        for(int i = 0; i < 3; i++)
+        {
+            const bool on = m_->LiveRatchet() == i + 2;
+            if(chompi_)
+                f.key[kWhite[kRatchetWhite + i]] = Scale(rc, on ? 1.f : 0.1f);
+            else if(on)
+                f.key[kWhite[kRatchetWhite + i]] = Scale(rc, 0.3f);
         }
         for(int i = 0; i < kKeyNotes; i++)
             if(held_[i])
@@ -2585,6 +2650,7 @@ class Ui
     int      voice_key_voice_       = 0;
     uint32_t solo_at_               = 0x80000000u;
     bool     drum_acc_page_         = false; // step mode: the accent page
+    bool     drum_rat_page_         = false; // step mode: the selected voice's ratchet page
     int      drum_knob1_page_       = 0;     // level / pan, accent / length, the LFO, its target / depth
     int      drum_knob4_page_       = 0;     // reverb, delay, crush
     int      drum_knob2_page_       = 0;     // attack, the filter
@@ -2667,6 +2733,6 @@ constexpr Rgb Ui::kQuantizeColour;
 constexpr Rgb Ui::kLatchColour;
 constexpr Rgb Ui::kArpColour;
 constexpr Rgb Ui::kKnobColour[6][kMaxKnobPages][2];
-constexpr Rgb Ui::kPageColour[7];
+constexpr Rgb Ui::kPageColour[8];
 
 } // namespace x0x

@@ -310,6 +310,8 @@ static void TestPagesCopyClear()
     r.Black(3), r.White(4);
     r.Black(4), r.White(5);
     CHECK(r.S(4).slide && r.S(5).tie);
+    r.Black(4); // TIE again: the RATCHET page
+    CHECK(r.ui.GetPage() == Ui::Page::RATCHET);
     r.Black(4);
     CHECK(r.ui.GetPage() == Ui::Page::NOTES);
 
@@ -2950,8 +2952,13 @@ static void TestDrumTimingAndLiveKeys()
     for(int i = 0; i < kSteps; i++)
         sd += p.DrumHit(i, SD);
     CHECK(sd >= 8 && sd <= 9);
+    int sd2 = 0; // ...and its second hit in each step, that hit's ratchet
     for(int i = 0; i < kSteps; i++)
-        CHECK(p.drum_nudge[i][SD] == 0);
+        {
+            CHECK(p.drum_nudge[i][SD] == 0);
+            sd2 += p.DrumHits(i, SD) == 2;
+        }
+    CHECK(sd2 >= 7);
     r.m.Stop();
 
     // Files: the timing round-trips through the pattern text and MIDI.
@@ -2982,11 +2989,12 @@ static void TestDrumTimingAndLiveKeys()
             full[i].steps[st].accent = full[i].steps[st].slide = full[i].steps[st].tie = true;
             full[i].steps[st].nudge = 5;
             full[i].drums[st]       = 0xff;
+            full[i].steps[st].ratchet = 4;
             for(int v = 0; v < kDrumVoices; v++)
-                full[i].drum_nudge[st][v] = 5;
+                full[i].drum_nudge[st][v] = 5, full[i].drum_pitch[st][v] = -12, full[i].drum_ratchet[st][v] = 4;
         }
     }
-    static char big[24576];
+    static char big[32768]; // storage.h's buffer
     CHECK(WritePatterns(full, kPatterns, big, sizeof big) > 0);
 }
 
@@ -4121,6 +4129,215 @@ static void TestScale()
     }
 }
 
+static void TestRatchet()
+{
+    printf("ratchets: 2-4 hits a step, bass and drums; pages, live, saved, exported\n");
+    // Note ons and offs on the MIDI out, by the ms they came in.
+    auto notes = [](Rig& r, int ms, std::vector<int>& on, std::vector<int>& off) {
+        Machine::MidiOut mo;
+        for(int t = 0; t < ms; t++)
+        {
+            r.Run(1);
+            while(r.m.PopMidi(Machine::kUart, mo))
+                if((mo.b[0] & 0xf0) == 0x90 && mo.len == 3 && mo.b[2] > 0 && (mo.b[0] & 0x0f) == r.m.options.channel_out - 1)
+                    on.push_back(t);
+                else if((mo.b[0] & 0xf0) == 0x80 && (mo.b[0] & 0x0f) == r.m.options.channel_out - 1)
+                    off.push_back(t);
+        }
+    };
+    // Three hits in the step (125 ms at 120): 0, 42, 83 ms, each gate half its share.
+    {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        p.steps[0].on = true, p.steps[0].ratchet = 3;
+        r.m.Loaded();
+        r.m.Play();
+        std::vector<int> on, off;
+        notes(r, 124, on, off);
+        CHECK(on.size() == 3 && off.size() == 3);
+        CHECK(on.size() == 3 && on[0] <= 1 && abs(on[1] - 42) <= 1 && abs(on[2] - 83) <= 1);
+        CHECK(off.size() == 3 && abs(off[0] - 21) <= 1 && abs(off[2] - 104) <= 1);
+    }
+    // A slide out of a ratchet holds its last hit into the next note.
+    {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        p.steps[0].on = true, p.steps[0].ratchet = 2, p.steps[0].slide = true;
+        p.steps[1].on = true, p.steps[1].note = 5;
+        r.m.Loaded();
+        r.m.Play();
+        std::vector<int> on, off;
+        notes(r, 200, on, off);
+        CHECK(on.size() == 3 && abs(on[1] - 62) <= 1 && abs(on[2] - 125) <= 1);
+        CHECK(off.size() >= 2 && abs(off[0] - 31) <= 1 && off[1] >= 125); // no gap before the slide
+    }
+    // Ties after a ratchet hold its last hit; a ratchet on a tie does nothing.
+    {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        p.steps[0].on = true, p.steps[0].ratchet = 2;
+        p.steps[1].on = true, p.steps[1].tie = true, p.steps[1].ratchet = 4;
+        r.m.Loaded();
+        r.m.Play();
+        std::vector<int> on, off;
+        notes(r, 249, on, off);
+        CHECK(on.size() == 2 && off.size() == 2 && off[1] >= 186);
+    }
+    // Drums: four BD hits in step 1, the SD once.
+    {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        p.drums[0] = (1 << BD) | (1 << SD), p.drum_ratchet[0][BD] = 4;
+        r.m.Loaded();
+        r.m.Play();
+        r.Run(124);
+        CHECK(r.m.DrumHitCount(BD) == 4 && r.m.DrumHitCount(SD) == 1);
+        r.Run(2000); // and again next time round
+        CHECK(r.m.DrumHitCount(BD) == 8);
+    }
+    // On a triplet scale (1/8T: 167 ms a step), spread through that step.
+    {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        p.SetScale(kScale8T);
+        p.steps[0].on = true, p.steps[0].ratchet = 2;
+        r.m.Loaded();
+        r.m.Play();
+        std::vector<int> on, off;
+        notes(r, 160, on, off);
+        CHECK(on.size() == 2 && abs(on[1] - 83) <= 1);
+    }
+    // The external clock: whole ticks, so 3 a step at 1/16 lands on 0, 2, 4.
+    {
+        Pattern p;
+        p.Clear();
+        p.steps[0].on = true, p.steps[0].ratchet = 3;
+        Sequencer s;
+        s.Init(48000.f), s.SetPattern(&p), s.Start();
+        Sequencer::Event ev[Sequencer::kMaxEvents + 4];
+        std::vector<int> ons;
+        for(int t = 0; t < 6; t++)
+        {
+            const int c = s.ExternalTick(0, ev);
+            for(int i = 0; i < c; i++)
+                if(ev[i].type == Sequencer::Event::NOTE_ON)
+                    ons.push_back(t);
+        }
+        CHECK(ons.size() == 3 && ons[0] == 0 && ons[1] == 2 && ons[2] == 4);
+    }
+    // Saved: a 9th number on the step lines, a drum_ratchet line; old files
+    // (8 numbers) read as one hit.
+    {
+        Pattern pats[kPatterns], back[kPatterns];
+        pats[1].steps[3].on = true, pats[1].steps[3].ratchet = 3;
+        pats[1].drums[2] = 1 << SD, pats[1].drum_ratchet[2][SD] = 2;
+        static char buf[32768];
+        const size_t n = WritePatterns(pats, kPatterns, buf, sizeof buf);
+        buf[n] = '\0';
+        CHECK(strstr(buf, "step 4 0 0 1 0 0 0 0 3\n") != nullptr);
+        CHECK(strstr(buf, "drum_ratchet 1111111 1111111 1211111 ") != nullptr);
+        CHECK(strstr(buf, "pattern 1A") && !strstr(strstr(buf, "pattern 1A"), "drum_ratchet 1111111 1111111 1111111"));
+        ReadPatterns(buf, back, kPatterns);
+        CHECK(back[1] == pats[1] && back[1].steps[3].Hits() == 3 && back[1].DrumHits(2, SD) == 2);
+        char old[] = "pattern 1A\nlength 16\nstep 1 0 0 1 0 0 0 0\n";
+        back[0].steps[0].ratchet = 4;
+        ReadPatterns(old, back, 1);
+        CHECK(back[0].steps[0].on && back[0].steps[0].Hits() == 1);
+    }
+    // MIDI export: the hits in the file (12 ticks apart for two in a sixteenth).
+    {
+        Pattern p;
+        p.Clear();
+        p.steps[0].on = true, p.steps[0].ratchet = 2;
+        std::vector<uint8_t> v(1024);
+        WriteMidiFile(p, 120.f, 0, "", v.data(), v.size());
+        const size_t at = 22 + 7 + 8 + 4;
+        CHECK(v[at] == 0 && v[at + 1] == 0x90);      // on at 0
+        CHECK(v[at + 4] == 6 && v[at + 5] == 0x80);  // off at 6
+        CHECK(v[at + 8] == 6 && v[at + 9] == 0x90);  // on at 12
+        CHECK(v[at + 12] == 6 && v[at + 13] == 0x80); // off at 18 (half the step's last half)
+        Pattern d;
+        d.Clear();
+        d.drums[0] = 1 << BD, d.drum_ratchet[0][BD] = 4;
+        WriteMidiFile(d, 120.f, 0, "", v.data(), v.size());
+        int ons = 0;
+        for(size_t i = at; i + 2 < v.size(); i++)
+            ons += v[i] == 0x99 && v[i + 1] == kGmDrum[BD];
+        CHECK(ons == 4);
+    }
+    // The panel, bass: TIE twice, the RATCHET page; a step key cycles 1-4.
+    {
+        Rig r;
+        r.S(2).on = true;
+        r.Black(4), r.Black(4);
+        CHECK(r.ui.GetPage() == Ui::Page::RATCHET);
+        r.White(2);
+        CHECK(r.S(2).Hits() == 2);
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kWhite[2]].r > 0.1f && f.key[Ui::kBlack[4]].r > 0.9f && f.key[Ui::kBlack[4]].b > 0.5f);
+        r.White(2), r.White(2);
+        CHECK(r.S(2).Hits() == 4);
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kWhite[2]].r > 0.9f);
+        r.White(2);
+        CHECK(r.S(2).Hits() == 1);
+        r.Black(2); // another page from here: that page
+        CHECK(r.ui.GetPage() == Ui::Page::ACCENT);
+    }
+    // The panel, drums: ACCENT twice, the selected voice's ratchets; CLEAR
+    // tap there clears its ratchets, not its hits.
+    {
+        Rig r;
+        r.ui.Loop(r.now); // step mode: LOOP swaps to the drums
+        CHECK(r.ui.OnDrums());
+        r.Black(1); // SD
+        r.White(0); // a hit on step 1
+        r.Black(5), r.Black(5); // ACCENT, then RATCHET
+        r.White(0), r.White(0);
+        Pattern& p = r.m.DrumPattern();
+        CHECK(p.DrumHit(0, SD) && p.DrumHits(0, SD) == 3 && p.DrumHits(0, BD) == 1 && !p.DrumAccent(0));
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kBlack[5]].r > 0.9f && f.key[Ui::kBlack[5]].b > 0.5f);
+        r.Key(Ui::kKeyClear);
+        CHECK(p.DrumHit(0, SD) && p.DrumHits(0, SD) == 1);
+        r.Black(5); // back to the voice's hits
+        r.White(0);
+        CHECK(!p.DrumHit(0, SD));
+    }
+    // Live, bass: CHOMPI + white key 13 / 14 / 15: held notes repeat 2-4
+    // times a step (here stopped: 4 in 125 ms); again: off.
+    {
+        Rig r;
+        r.ui.SetMode(Ui::Mode::PITCH);
+        r.ui.Chompi(true), r.White(14), r.ui.Chompi(false);
+        CHECK(r.m.LiveRatchet() == 4);
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kWhite[14]].r > 0.2f);
+        r.ui.KeyDown(5, r.now);
+        std::vector<int> on, off;
+        notes(r, 249, on, off);
+        r.ui.KeyUp(5, r.now);
+        CHECK(on.size() == 8); // the key's own, then every 31 ms
+        r.ui.Chompi(true), r.White(14), r.ui.Chompi(false);
+        CHECK(r.m.LiveRatchet() == 1);
+        // Recording, running: the note goes in with its ratchet, and a key
+        // held on repeats it through the steps it covers.
+        r.ui.Chompi(true), r.White(12), r.ui.Chompi(false); // 2
+        r.m.Play();
+        r.ui.Loop(r.now); // record on
+        r.Run(250 - 1);   // step 3 (quantize off)
+        r.ui.KeyDown(7, r.now);
+        r.Run(250);
+        r.ui.KeyUp(7, r.now);
+        r.ui.Loop(r.now);
+        CHECK(r.S(2).on && r.S(2).note == 7 && r.S(2).Hits() == 2);
+        CHECK(r.S(3).on && !r.S(3).tie && r.S(3).note == 7 && r.S(3).Hits() == 2);
+    }
+}
+
 int main()
 {
     TestQuadrature();
@@ -4159,6 +4376,7 @@ int main()
     TestDrumFilterEnvelope();
     TestDrumFilterLfo();
     TestDrumTimingAndLiveKeys();
+    TestRatchet();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();
