@@ -104,6 +104,7 @@ class Machine
         drum_pos_ = -1; // the first step is the drums' first
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
         metro_ticks_ = 0; // the metronome's first beat: the downbeat
+        seq_.SetDrumTicks(DrumPattern().DrumStepTicks()); // the drums' grid, by their scale
         seq_.Start();
         // On our own clock we lead, and keep leading, stopped or not, until
         // another device sends Start: a DAW synced to us echoes our clock
@@ -991,6 +992,8 @@ class Machine
         if(drum_pos_ < 0)
             drum_early_ = 0; // from the top (PLAY, a new pattern): nothing played ahead
         drum_pos_        = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
+        if(drum_pos_ == 0)
+            seq_.SetDrumTicks(pat.DrumStepTicks()); // a new drum scale: from the top of the part
         const bool quant = StepIndex(settings.params[DRUM_QUANTIZE], 2) == 1;
         const uint8_t erase = erase_mask_;
         if(erase & pat.drums[drum_pos_])
@@ -1012,7 +1015,7 @@ class Machine
                 // Within the step; set by hand, it plays as set, quantize or
                 // not, and may be early: then it was played ahead, from the
                 // step before (below), or on the grid if there wasn't one.
-                const int  lim   = seq_.StepTicks() - 1;
+                const int  lim   = seq_.DrumTicks() - 1;
                 const bool timed = pat.DrumTimed(drum_pos_, v);
                 int        nudge = quant && !timed ? 0 : ClampInt(pat.drum_nudge[drum_pos_][v], timed ? -lim : 0, lim);
                 if(nudge < 0)
@@ -1029,7 +1032,7 @@ class Machine
                     seq_.ScheduleDrum(nudge, pay);
                 // A ratchet: the rest of its hits, evenly through the step.
                 const int    hits  = pat.DrumHits(drum_pos_, v);
-                const double share = seq_.StepTicks() / static_cast<double>(hits);
+                const double share = seq_.DrumTicks() / static_cast<double>(hits);
                 for(int h = 1; h < hits; h++)
                     seq_.ScheduleDrum(nudge + h * share, pay);
             }
@@ -1037,7 +1040,7 @@ class Machine
         // place on the grid (ratchets and all).
         drum_early_    = 0;
         const int  nx  = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
-        const int  lim = seq_.StepTicks() - 1;
+        const int  lim = seq_.DrumTicks() - 1;
         const double gap = seq_.GridSpacing();
         for(int v = 0; v < kDrumVoices; v++)
         {
@@ -1047,7 +1050,7 @@ class Machine
             const int    semis = pat.drum_pitch[nx][v];
             const int    pay   = v | (pat.DrumAccent(nx) ? kDrumAccent : 0) | ((semis + 64) << 8);
             const int    hits  = pat.DrumHits(nx, v);
-            const double share = seq_.StepTicks() / static_cast<double>(hits);
+            const double share = seq_.DrumTicks() / static_cast<double>(hits);
             for(int h = 0; h < hits; h++)
                 seq_.ScheduleDrum(gap + early + h * share, pay);
             drum_early_ = Bit(drum_early_, v, true);
@@ -1080,14 +1083,14 @@ class Machine
         else
         {
             step  = drum_pos_;
-            nudge = static_cast<int>(phase * seq_.StepTicks() + 0.5f); // the grid's step: the bass's scale
-            if(nudge >= seq_.StepTicks())
+            nudge = static_cast<int>(phase * seq_.DrumTicks() + 0.5f); // a step of the drums' own grid
+            if(nudge >= seq_.DrumTicks())
                 step = (step + 1) % len, nudge = 0;
         }
         if(roll && roll_rec_step_[v] == step && pat.DrumHit(step, v))
         {
             const int rt = kRollTicks[StepIndex(settings.params[DRUM_ROLL_RATE], kRollRates)];
-            if(rt < seq_.StepTicks() && pat.DrumHits(step, v) < kMaxRatchet)
+            if(rt < seq_.DrumTicks() && pat.DrumHits(step, v) < kMaxRatchet)
             {
                 pat.drum_ratchet[step][v] = static_cast<uint8_t>(pat.DrumHits(step, v) + 1);
                 pattern_changes++;
@@ -1193,15 +1196,18 @@ class Machine
                 if(metronome_ && metro_ticks_ % 24 == 0)
                     StartClick(e.offset, metro_ticks_ % 96 == 0);
                 metro_ticks_ += static_cast<uint32_t>(seq_.StepTicks());
-                // The drums step on the grid; at the top, a pattern queued for
-                // both sides takes them over too, from their first step (before
-                // a late first bass note starts the bass's).
+                // At the top, a pattern queued for both sides takes the drums
+                // over too, from their first step, their grid restarted with
+                // the bass's (before a late first bass note starts it).
                 if(e.step == 0 && queued_ >= 0 && both_)
                 {
                     settings.drum_pattern = queued_, drum_pos_ = -1, drum_queued_ = -1;
                     both_                 = false;
+                    seq_.SyncDrumGrid();
                 }
-                DrumStep();
+                break;
+            case Sequencer::Event::DRUM_GRID:
+                DrumStep(); // the drums step on their own grid
                 break;
             case Sequencer::Event::DRUM:
             {

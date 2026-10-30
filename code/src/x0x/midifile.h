@@ -69,7 +69,8 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
                             bool drums_quantized = false)
 {
     const int len = pat.length;
-    const int stp = pat.StepTicks() * kMidiTicksPerNudge; // a step, by the scale (24 a sixteenth)
+    const int stp  = pat.StepTicks() * kMidiTicksPerNudge;     // a bass step, by its scale (24 a sixteenth)
+    const int dstp = pat.DrumStepTicks() * kMidiTicksPerNudge; // a drum step, by the drums' own
     Step      e[kSteps];
     for(int i = 0; i < len; i++)
         e[i] = pat.PlayedStep(i, grid);
@@ -128,15 +129,15 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
         for(int v = 0; v < 7; v++)
             if(pat.DrumHit(i, v))
             {
-                const int      at0 = i * stp + (drums_quantized && !pat.DrumTimed(i, v) ? 0 : pat.drum_nudge[i][v] * kMidiTicksPerNudge);
-                const uint32_t t   = static_cast<uint32_t>(at0 < 0 ? at0 + pat.drum_length * stp : at0); // early first: at the end
+                const int      at0 = i * dstp + (drums_quantized && !pat.DrumTimed(i, v) ? 0 : pat.drum_nudge[i][v] * kMidiTicksPerNudge);
+                const uint32_t t   = static_cast<uint32_t>(at0 < 0 ? at0 + pat.drum_length * dstp : at0); // early first: at the end
                 const uint8_t  vel  = static_cast<uint8_t>(pat.DrumAccent(i) ? kMidiAccentVel : kMidiNormalVel);
                 const int      hits = pat.DrumHits(i, v);
                 for(int h = 0; h < hits; h++)
                 {
-                    const uint32_t at = t + static_cast<uint32_t>(h * stp / hits);
+                    const uint32_t at = t + static_cast<uint32_t>(h * dstp / hits);
                     ev[n++]           = {at, 0x99, kGmDrum[v], vel};
-                    ev[n++]           = {at + static_cast<uint32_t>(stp / hits / 2), 0x89, kGmDrum[v], 0};
+                    ev[n++]           = {at + static_cast<uint32_t>(dstp / hits / 2), 0x89, kGmDrum[v], 0};
                 }
             }
     // In time order; at the same tick, offs before ons.
@@ -176,8 +177,8 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
         t = ev[i].t;
     }
     // The end of the track: the end of the pattern (or the last note off).
-    const int      bars_len = drums && pat.drum_length > len ? pat.drum_length : len;
-    const uint32_t end      = static_cast<uint32_t>(bars_len * stp);
+    const int      bass_end = len * stp, drum_end = drums ? pat.drum_length * dstp : 0;
+    const uint32_t end      = static_cast<uint32_t>(drum_end > bass_end ? drum_end : bass_end);
     w.Var(end > t ? end - t : 0), w.Byte(0xff), w.Byte(0x2f), w.Byte(0);
 
     if(!w.ok)

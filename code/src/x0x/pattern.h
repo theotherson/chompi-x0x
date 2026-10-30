@@ -18,8 +18,9 @@
  *
  *    pattern 1A
  *    length 16
- *    scale 1                   the step scale: 1 = 1/16 triplets, 2 = 1/8
- *                              triplets (absent: 1/16)
+ *    scale 1                   the bassline's step scale: 1 = 1/16 triplets,
+ *                              2 = 1/8 triplets (absent: 1/16)
+ *    drum_scale 0              the drum part's (absent: as the bassline's)
  *    step 1 12 0 1 1 0 0 0 1 0 step, note 0-24, octave, on, accent, slide, tie,
  *                              nudge, ratchet (hits), timed (nudge set by hand)
  *    ...
@@ -116,7 +117,8 @@ struct Pattern
 {
     Step    steps[kSteps];
     uint8_t length = kSteps;
-    uint8_t scale  = kScale16; // the step scale (Scale), for the bass and the drums
+    uint8_t scale      = kScale16; // the bassline's step scale (Scale)
+    uint8_t drum_scale = kScale16; // the drum part's, its own (bass and drums can cross: 4 against 3)
     /** Steps in a bar (or half a bar) on a scale: 16 sixteenths, 12 triplets. */
     static int BarSteps(int sc) { return sc == kScale16 ? kSteps : 12; }
     /** A new scale from the panel: a part a bar long on the old scale
@@ -126,26 +128,34 @@ struct Pattern
     {
         const int was = scale;
         SetScale(sc);
-        if(scale == was)
-            return;
-        if(length == BarSteps(was))
+        if(scale != was && length == BarSteps(was))
             length = static_cast<uint8_t>(BarSteps(scale));
-        if(drum_length == BarSteps(was))
-            drum_length = static_cast<uint8_t>(BarSteps(scale));
     }
-    /** MIDI clock ticks a step, by the scale. */
+    void ChangeDrumScale(int sc)
+    {
+        const int was = drum_scale;
+        SetDrumScale(sc);
+        if(drum_scale != was && drum_length == BarSteps(was))
+            drum_length = static_cast<uint8_t>(BarSteps(drum_scale));
+    }
+    /** MIDI clock ticks a step, by the scale: the bassline's, the drums'. */
     int StepTicks() const { return kScaleTicks[scale < kScales ? scale : 0]; }
+    int DrumStepTicks() const { return kScaleTicks[drum_scale < kScales ? drum_scale : 0]; }
     /** A new scale; recorded timing kept within the (maybe shorter) step. */
     void SetScale(int sc)
     {
         scale         = static_cast<uint8_t>(ClampInt(sc, 0, kScales - 1));
         const int max = StepTicks() - 1;
         for(int i = 0; i < kSteps; i++)
-        {
             steps[i].nudge = static_cast<int8_t>(ClampInt(steps[i].nudge, -max, max));
+    }
+    void SetDrumScale(int sc)
+    {
+        drum_scale    = static_cast<uint8_t>(ClampInt(sc, 0, kScales - 1));
+        const int max = DrumStepTicks() - 1;
+        for(int i = 0; i < kSteps; i++)
             for(int v = 0; v < kDrumVoices; v++)
                 drum_nudge[i][v] = static_cast<int8_t>(ClampInt(drum_nudge[i][v], -max, max));
-        }
     }
     /** The drum part, linked to the bassline: per step, a bit for each
      *  voice and one for the accent; its own length (polymeters). */
@@ -288,6 +298,7 @@ struct Pattern
         memcpy(drum_ratchet, o.drum_ratchet, sizeof drum_ratchet);
         memcpy(drum_timed, o.drum_timed, sizeof drum_timed);
         drum_length = o.drum_length;
+        drum_scale  = o.drum_scale;
     }
 
     /** The bassline shifted `d` steps later (earlier if negative), round
@@ -331,6 +342,7 @@ struct Pattern
                 drum_nudge[i][v] = 0, drum_pitch[i][v] = 0, drum_ratchet[i][v] = 0;
         }
         drum_length = kSteps;
+        drum_scale  = kScale16;
     }
 
     bool BassEmpty() const
@@ -345,7 +357,7 @@ struct Pattern
 
     bool operator==(const Pattern& o) const
     {
-        if(length != o.length || drum_length != o.drum_length || scale != o.scale)
+        if(length != o.length || drum_length != o.drum_length || scale != o.scale || drum_scale != o.drum_scale)
             return false;
         for(int i = 0; i < kSteps; i++)
             if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i] || drum_timed[i] != o.drum_timed[i]
@@ -377,6 +389,13 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
         if(pat.scale != kScale16)
         {
             w = snprintf(buf + len, size - len, "scale %d\n", pat.scale);
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+        }
+        if(pat.drum_scale != pat.scale) // (absent: as the bassline's, as files before it had)
+        {
+            w = snprintf(buf + len, size - len, "drum_scale %d\n", pat.drum_scale);
             if(w <= 0 || static_cast<size_t>(w) >= size - len)
                 return 0;
             len += w;
@@ -615,7 +634,9 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
         else if(pat && strncmp(line, "length ", 7) == 0)
             pat->length = static_cast<uint8_t>(ClampInt(atoi(line + 7), 1, kSteps));
         else if(pat && strncmp(line, "scale ", 6) == 0)
-            pat->scale = static_cast<uint8_t>(ClampInt(atoi(line + 6), 0, kScales - 1));
+            pat->scale = pat->drum_scale = static_cast<uint8_t>(ClampInt(atoi(line + 6), 0, kScales - 1)); // both, unless drum_scale follows
+        else if(pat && strncmp(line, "drum_scale ", 11) == 0)
+            pat->drum_scale = static_cast<uint8_t>(ClampInt(atoi(line + 11), 0, kScales - 1));
         else if(pat && strncmp(line, "step ", 5) == 0)
         {
             char* p    = line + 5;
@@ -657,7 +678,8 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
             for(int v = 0; v < kDrumVoices; v++)
                 if(pt.drum_nudge[i][v] < 0 && !pt.DrumTimed(i, v))
                     pt.drum_nudge[i][v] = 0; // only timing set by hand is early
-        pt.SetScale(pt.scale);             // timing within each step
+        pt.SetScale(pt.scale); // timing within each step
+        pt.SetDrumScale(pt.drum_scale);
     }
 }
 

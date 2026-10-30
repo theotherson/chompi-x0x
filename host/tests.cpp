@@ -4085,17 +4085,25 @@ static void TestScale()
     // Saved with the pattern; absent is 1/16; timing clamped into a shorter step.
     {
         Pattern pats[kPatterns], back[kPatterns];
-        pats[2].SetScale(kScale8T);
+        pats[2].SetScale(kScale8T), pats[2].SetDrumScale(kScale8T);
         pats[2].steps[0].on = true, pats[2].steps[0].nudge = 7;
         pats[2].drums[0] = 1, pats[2].drum_nudge[0][0] = 6;
+        pats[3].SetScale(kScale8T); // the bass in triplets, its drums in sixteenths
+        pats[4].SetDrumScale(kScale16T);
         static char buf[16384];
         const size_t n = WritePatterns(pats, kPatterns, buf, sizeof buf);
         buf[n] = '\0';
         CHECK(strstr(buf, "scale 2\n") != nullptr);
         ReadPatterns(buf, back, kPatterns);
-        CHECK(back[2] == pats[2] && back[0].scale == kScale16);
-        back[2].SetScale(kScale16T);
+        CHECK(back[2] == pats[2] && back[0].scale == kScale16 && back[0].drum_scale == kScale16);
+        CHECK(back[3].scale == kScale8T && back[3].drum_scale == kScale16);
+        CHECK(back[4].scale == kScale16 && back[4].drum_scale == kScale16T);
+        back[2].SetScale(kScale16T), back[2].SetDrumScale(kScale16T);
         CHECK(back[2].steps[0].nudge == 3 && back[2].drum_nudge[0][0] == 3);
+        // A file from v1.3.0 (one scale for both): both sides on it.
+        char old[] = "pattern 1A\nlength 16\nscale 1\n";
+        ReadPatterns(old, back, 1);
+        CHECK(back[0].scale == kScale16T && back[0].drum_scale == kScale16T);
     }
     // MIDI export: steps 16 file ticks apart at 1/16T (24 at 1/16).
     {
@@ -4118,7 +4126,8 @@ static void TestScale()
         r.ui.KnobDown(0);
         r.ui.KnobTurn(0, 1, false); // the jog, ignored
         r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
-        CHECK(r.m.Current().scale == kScale16T && r.m.Current().length == 12 && r.m.Current().drum_length == 12); // a bar: 12
+        CHECK(r.m.Current().scale == kScale16T && r.m.Current().length == 12); // a bar: 12
+        CHECK(r.m.Current().drum_scale == kScale16 && r.m.Current().drum_length == 16); // the drums: their own
         LedFrame f;
         r.ui.Draw(f, r.now);
         CHECK(f.key[Ui::kWhite[1]].b > 0.9f && f.key[Ui::kWhite[0]].b < 0.2f);
@@ -4130,13 +4139,25 @@ static void TestScale()
         r.Run(100);
         r.ui.KnobTurn(0, -1, false), r.ui.KnobTurn(0, -1, false); // not pushed: the length
         CHECK(r.m.Current().length == 11 && r.m.Current().scale == kScale8T);
-        // Back to 1/16: the bar-long drums go back to 16, the bass's own 11 stays.
+        // Back to 1/16: the bass's own 11 stays.
         r.ui.KnobDown(0);
         r.ui.KnobTurn(0, -1, false); // the jog
         for(int i = 0; i < 4; i++)
             r.ui.KnobTurn(0, -1, false);
         r.ui.KnobUp(0, r.now);
         CHECK(r.m.Current().scale == kScale16 && r.m.Current().length == 11 && r.m.Current().drum_length == 16);
+        // The drums' side: knob 1 pushed and turned on its page 2 sets the drum
+        // part's scale, and its length follows; the bassline's stays.
+        r.ui.Loop(r.now); // the drums
+        r.ui.KnobClick(0, r.now); // page 2
+        r.Run(100);
+        r.ui.KnobDown(0);
+        r.ui.KnobTurn(0, 1, false); // the jog
+        for(int i = 0; i < 4; i++)
+            r.ui.KnobTurn(0, 1, false);
+        r.ui.KnobUp(0, r.now);
+        CHECK(r.m.DrumPattern().drum_scale == kScale8T && r.m.DrumPattern().drum_length == 12);
+        CHECK(r.m.Current().scale == kScale16 && r.m.Current().length == 11);
         // Steps past the length are kept: the 16 come back with the length.
         Pattern q;
         DemoPattern(q);
@@ -4730,6 +4751,109 @@ static void TestTripletKeys()
     CHECK(r.ui.Selected() == 9);
 }
 
+static void TestCrossScales()
+{
+    printf("cross scales: the bassline and the drum part each on their own step scale\n");
+    // Bass 1/16 (8 steps a second at 120), drums 1/8T (6): 4 against 3.
+    Rig r;
+    Pattern& p = r.m.patterns[0];
+    for(int i = 0; i < kSteps; i++)
+        p.steps[i].on = true;
+    for(int i = 0; i < kSteps; i++)
+        p.drums[i] = 1 << BD;
+    p.ChangeDrumScale(kScale8T);
+    CHECK(p.drum_length == 12);
+    r.m.Loaded();
+    r.m.Play();
+    std::vector<int> bd;
+    uint32_t c = r.m.DrumHitCount(BD);
+    const uint32_t s0 = r.m.StepCount();
+    for(int t = 0; t < 2000; t++)
+    {
+        r.Run(1);
+        if(r.m.DrumHitCount(BD) != c)
+            c = r.m.DrumHitCount(BD), bd.push_back(t);
+    }
+    CHECK(r.m.StepCount() - s0 == 16); // the bass: a bar of sixteenths
+    CHECK(bd.size() == 12);            // the drums: a bar of eighth triplets
+    bool even = true;
+    for(size_t i = 1; i < bd.size(); i++)
+        even &= abs(bd[i] - bd[i - 1] - 167) <= 1;
+    CHECK(even);
+    CHECK(bd.size() == 12 && bd[3] >= 499 && bd[3] <= 501); // three to a quarter note
+    // Swing moves the bass, not the triplet drums.
+    r.m.Stop(), r.Run(50);
+    r.m.settings.params[SWING] = 1.f;
+    r.m.Loaded();
+    r.m.Play();
+    bd.clear();
+    c = r.m.DrumHitCount(BD);
+    for(int t = 0; t < 400; t++)
+    {
+        r.Run(1);
+        if(r.m.DrumHitCount(BD) != c)
+            c = r.m.DrumHitCount(BD), bd.push_back(t);
+    }
+    CHECK(bd.size() >= 2 && abs(bd[1] - 167) <= 1);
+    r.m.Stop(), r.Run(50);
+    r.m.settings.params[SWING] = 0.f;
+    // A drum scale change waits for the top of the drum part.
+    p.SetDrumScale(kScale16), p.drum_length = 16;
+    r.m.Loaded();
+    r.m.Play();
+    r.Run(510); // drum step 5 of 16
+    p.ChangeDrumScale(kScale8T); // length 12 now: its top at step 12, 1.5 s in
+    bd.clear();
+    c = r.m.DrumHitCount(BD);
+    for(int t = 0; t < 1990 + 1000; t++)
+    {
+        r.Run(1);
+        if(r.m.DrumHitCount(BD) != c)
+            c = r.m.DrumHitCount(BD), bd.push_back(t);
+    }
+    // sixteenths up to 1.5 s (steps 5-11), then eighth triplets
+    int six = 0, trip = 0;
+    for(size_t i = 1; i < bd.size(); i++)
+        six += abs(bd[i] - bd[i - 1] - 125) <= 1, trip += abs(bd[i] - bd[i - 1] - 167) <= 1;
+    CHECK(six >= 6 && trip >= 6);
+    // Both sides switched together at the bass's top: the drums restart with
+    // it, even off their own grid (drums 1/8T, 7 steps: not a bar).
+    {
+        Rig q;
+        Pattern& a = q.m.patterns[0];
+        Pattern& b = q.m.patterns[1];
+        for(int i = 0; i < kSteps; i++)
+            a.steps[i].on = b.steps[i].on = true;
+        a.drums[0] = 1 << SD, a.drum_length = 7, a.SetDrumScale(kScale8T);
+        b.drums[0] = 1 << BD, b.SetDrumScale(kScale16T);
+        q.m.Loaded();
+        q.m.Play();
+        q.Run(1000);
+        q.m.SelectPattern(1, false); // both sides, at the bass's top (2 s in)
+        const uint32_t c0 = q.m.DrumHitCount(BD);
+        int first = -1;
+        for(int t = 0; t < 1100 && first < 0; t++)
+        {
+            q.Run(1);
+            if(q.m.DrumHitCount(BD) != c0)
+                first = t;
+        }
+        CHECK(first >= 998 && first <= 1002); // with the bass's first step
+        CHECK(q.m.CurrentDrumPattern() == 1);
+    }
+    // MIDI export: the drums on their own grid (here 1/8T: 32 file ticks a step).
+    Pattern e;
+    e.Clear();
+    e.drums[0] = e.drums[1] = 1 << BD;
+    e.SetDrumScale(kScale8T);
+    std::vector<uint8_t> v(1024);
+    WriteMidiFile(e, 120.f, 0, "", v.data(), v.size());
+    const size_t at = 22 + 7 + 8 + 4;
+    CHECK(v[at] == 0 && v[at + 1] == 0x99);
+    CHECK(v[at + 4] == 16 && v[at + 5] == 0x89); // off half a step on
+    CHECK(v[at + 8] == 16 && v[at + 9] == 0x99); // the next at 32
+}
+
 int main()
 {
     TestQuadrature();
@@ -4774,6 +4898,7 @@ int main()
     TestShift();
     TestStepTiming();
     TestTripletKeys();
+    TestCrossScales();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();

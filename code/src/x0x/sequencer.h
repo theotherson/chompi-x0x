@@ -17,8 +17,11 @@
  *  caller (Machine) turns them into voice notes and MIDI.
  *
  *  GRID marks each step's place on the grid (swing included, but not the
- *  bass note's own timing): the drums step on it. Drum hits recorded late
- *  are scheduled from there (ScheduleDrum) and come back as DRUM events.
+ *  bass note's own timing). The drums have a grid of their own, with its
+ *  own step length (SetDrumTicks: the drum part's scale), from the same
+ *  start: DRUM_GRID, which they step on. Drum hits played late (or early,
+ *  from the step before) are scheduled from the last DRUM_GRID
+ *  (ScheduleDrum) and come back as DRUM events.
  */
 #pragma once
 #include "pattern.h"
@@ -43,6 +46,7 @@ class Sequencer
             GRID,           // a step's place on the grid (step = its index)
             DRUM,           // a drum hit scheduled late (step = its payload)
             ROLL,           // a drum roll's next hit (SetRoll)
+            DRUM_GRID,      // the drums' next step's place on their own grid
         };
         Type     type;
         uint32_t offset; // sample in the block
@@ -76,24 +80,48 @@ class Sequencer
      *  pattern with another) takes over at the top of the pattern. */
     int StepTicks() const { return ticks_; }
 
-    /** Ticks from the last GRID to the next (for drum hits early to it). */
-    double GridSpacing() const { return grid_pos_ - last_grid_pos_; }
+    /** The drums' grid: ticks a step (by the drum part's scale). Called at
+     *  the drum part's first step (its DRUM_GRID), it takes over from there,
+     *  and the swing counts from there. Before Start: from the start. */
+    void SetDrumTicks(int ticks)
+    {
+        ticks = ticks > 0 ? ticks : kStepTicks;
+        if(running_)
+            dgrid_base_ = dgrid_last_unswung_, dgrid_n_ = 1;
+        dticks_    = ticks;
+        dgrid_pos_ = running_ ? DrumGridAt(dgrid_n_) : 0.0;
+    }
+    int DrumTicks() const { return dticks_; }
 
-    /** How far from the last GRID to the next, 0..1 (recording drums). */
+    /** The drums' grid from the last GRID (a pattern played on both sides
+     *  starting together): its next step now, unless one just came with it. */
+    void SyncDrumGrid()
+    {
+        if(!running_ || fabs(dgrid_last_ - last_grid_pos_) < 1e-6)
+            return;
+        dgrid_base_ = dgrid_last_unswung_ = last_grid_pos_;
+        dgrid_n_    = 0;
+        dgrid_pos_  = last_grid_pos_;
+    }
+
+    /** Ticks from the last DRUM_GRID to the next (for drum hits early to it). */
+    double GridSpacing() const { return dgrid_pos_ - dgrid_last_; }
+
+    /** How far from the last DRUM_GRID to the next, 0..1 (recording drums). */
     float GridPhase() const
     {
         if(!running_)
             return 0.f;
-        const double len = grid_pos_ - last_grid_pos_;
-        return len > 0.0 ? Clamp(static_cast<float>((pos_ - last_grid_pos_) / len), 0.f, 1.f) : 0.f;
+        const double len = dgrid_pos_ - dgrid_last_;
+        return len > 0.0 ? Clamp(static_cast<float>((pos_ - dgrid_last_) / len), 0.f, 1.f) : 0.f;
     }
 
-    /** A DRUM event `ticks` after the last GRID, carrying `payload`. */
+    /** A DRUM event `ticks` after the last DRUM_GRID, carrying `payload`. */
     void ScheduleDrum(double ticks, int payload)
     {
         if(!running_ || drum_count_ >= kMaxDrums)
             return;
-        drum_at_[drum_count_]  = last_grid_pos_ + ticks;
+        drum_at_[drum_count_]  = dgrid_last_ + ticks;
         drum_pay_[drum_count_] = payload;
         drum_count_++;
     }
@@ -133,6 +161,7 @@ class Sequencer
         drum_count_ = 0;
         roll_next_  = 0.0;
         rat_left_   = 0;
+        dgrid_base_ = dgrid_last_ = dgrid_last_unswung_ = 0.0, dgrid_n_ = 0, dgrid_pos_ = 0.0;
         ticks_      = pat_ ? pat_->StepTicks() : kStepTicks;
         ScheduleStep();
         if(step_pos_ < 0.0)
@@ -210,6 +239,8 @@ class Sequencer
             next = step_pos_;
         if(grid_pos_ < next)
             next = grid_pos_;
+        if(dgrid_pos_ < next)
+            next = dgrid_pos_;
         for(int i = 0; i < drum_count_; i++)
             if(drum_at_[i] < next)
                 next = drum_at_[i];
@@ -246,6 +277,15 @@ class Sequencer
                 grid_step_ = 0, grid_base_ += pat_->length * StepTicks(); // a wrap is never swung
             grid_pos_ = grid_base_ + GridStart(grid_step_);
         }
+        if(dgrid_pos_ <= pos_ + 1e-9)
+        {
+            // The drums' grid, after the bass's at the same moment.
+            ev[count++]         = {Event::DRUM_GRID, off};
+            dgrid_last_         = dgrid_pos_;
+            dgrid_last_unswung_ = dgrid_base_ + dgrid_n_ * static_cast<double>(dticks_);
+            dgrid_n_++;
+            dgrid_pos_ = DrumGridAt(dgrid_n_);
+        }
         if(step_pos_ <= pos_ + 1e-9)
             StartStep(off, ev, count);
         if(rat_left_ > 0 && rat_pos_ <= pos_ + 1e-9 && count < kMaxEvents - 4)
@@ -273,6 +313,13 @@ class Sequencer
                 ev[count++] = {Event::TICK, off};
             next_tick_ += 1.0;
         }
+    }
+
+    /** The drums' grid point n from its base, swing included (1/16 only). */
+    double DrumGridAt(int n) const
+    {
+        const double swing = dticks_ == kScaleTicks[kScale16] && n % 2 == 1 ? swing_ticks_ : 0.0;
+        return dgrid_base_ + n * static_cast<double>(dticks_) + swing;
     }
 
     /** Swing, in ticks: the 1/16 scale only. */
@@ -328,6 +375,7 @@ class Sequencer
             if(gate_off_ >= 0.0)
                 gate_off_ -= l;
             grid_base_ -= l, grid_pos_ -= l, last_grid_pos_ -= l;
+            dgrid_base_ -= l, dgrid_pos_ -= l, dgrid_last_ -= l, dgrid_last_unswung_ -= l;
             for(int i = 0; i < drum_count_; i++)
                 drum_at_[i] -= l;
             roll_next_ -= l;
@@ -466,6 +514,14 @@ class Sequencer
     int        drum_count_          = 0;
     int        roll_ticks_          = 0;
     double     roll_next_           = 0.0;
+    // The drums' grid: ticks a step, where its count started, its count
+    // next, its next point, the last one (and that one unswung).
+    int        dticks_             = kStepTicks;
+    double     dgrid_base_         = 0.0;
+    int        dgrid_n_            = 0;
+    double     dgrid_pos_          = 0.0;
+    double     dgrid_last_         = 0.0;
+    double     dgrid_last_unswung_ = 0.0;
     // The ratchet playing: hits to come, the next one's place, the spacing.
     int        rat_left_   = 0;
     double     rat_pos_    = 0.0;

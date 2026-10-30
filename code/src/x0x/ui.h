@@ -10,7 +10,8 @@
  *  step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other
  *  dimmed; the view follows the half you last pressed a key in, and while the
  *  pattern runs it follows the playhead once the second half has notes.
- *  On a triplet scale the white keys are steps 1-15 one for one (OneToOne).
+ *  On a triplet scale (each side its own) the white keys are that side's
+ *  steps 1-15 one for one (OneToOne).
  *
  *  Step lights: on = red, accent = bright red, tie = dim red.
  *
@@ -529,13 +530,22 @@ class Ui
         }
         if(knob == 0 && knob_down_[0] && (drums_ ? drum_knob1_page_ == 1 : KnobPage(0) == 1))
         {
-            // Knob 1 pushed and turned on its length page, either side: the
-            // step scale (1/16, 1/16T, 1/8T) of the bass's pattern, which
-            // sets the grid for both; from the top of its next loop.
-            Pattern& pat = m_->Current();
+            // Knob 1 pushed and turned on its length page: this side's step
+            // scale (1/16, 1/16T, 1/8T), the bassline's or the drum part's,
+            // each its own; from the top of its next loop. A bar's length
+            // follows (16 <-> 12).
             if(const int d = SlowStep(0, inc))
             {
-                pat.ChangeScale(ClampInt(pat.scale + d, 0, kScales - 1)); // a bar's length follows
+                if(drums_)
+                {
+                    Pattern& pat = m_->DrumPattern();
+                    pat.ChangeDrumScale(ClampInt(pat.drum_scale + d, 0, kScales - 1));
+                }
+                else
+                {
+                    Pattern& pat = m_->Current();
+                    pat.ChangeScale(ClampInt(pat.scale + d, 0, kScales - 1));
+                }
                 m_->PatternEdited();
             }
             scale_shown_at_ = last_tick_;
@@ -1539,7 +1549,7 @@ class Ui
                 return false;
             ticks = s.timed || !Quantizing() ? s.nudge : 0;
         }
-        const int lim = m_->Current().StepTicks() - 1;
+        const int lim = SideStepTicks() - 1;
         ticks         = ClampInt(ticks, -lim, lim);
         return true;
     }
@@ -1573,7 +1583,7 @@ class Ui
         int ticks;
         if(!HeldTiming(ticks))
             return;
-        const int lim = m_->Current().StepTicks() - 1; // the grid: the bass's scale
+        const int lim = SideStepTicks() - 1;
         SetHeldTiming(ClampInt(ticks + inc, -lim, lim));
     }
 
@@ -1909,7 +1919,14 @@ class Ui
      *  or with COPY held, where the keys are pattern numbers 1-16. */
     bool OneToOne() const
     {
-        return m_->Current().scale != kScale16 && page_ != Page::PATTERN && !held_[kKeyCopy];
+        return SideScale() != kScale16 && page_ != Page::PATTERN && !held_[kKeyCopy];
+    }
+
+    /** This side's step scale, and ticks a step: the bassline's, or the drum part's. */
+    int SideScale() const { return drums_ ? m_->DrumPattern().drum_scale : m_->Current().scale; }
+    int SideStepTicks() const
+    {
+        return drums_ ? m_->DrumPattern().DrumStepTicks() : m_->Current().StepTicks();
     }
 
     /** The step white key w (0-14) stands for. */
@@ -2644,7 +2661,7 @@ class Ui
      *  show the step scale (1/16, 1/16T, 1/8T), this one bright. */
     void DrawScale(LedFrame& f) const
     {
-        const int sc = m_->Current().scale;
+        const int sc = SideScale();
         for(int i = 0; i < kScales; i++)
             f.key[kWhite[i]] = Scale(kScaleColour, i == sc ? 1.f : 0.08f);
     }
@@ -2658,7 +2675,7 @@ class Ui
         int ticks;
         if(!HeldTiming(ticks))
             return;
-        const int lim = m_->Current().StepTicks() - 1;
+        const int lim = SideStepTicks() - 1;
         const int mid = 7; // middle C
         for(int i = 0; i < kWhiteKeys; i++)
         {
