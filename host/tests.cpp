@@ -4118,44 +4118,43 @@ static void TestScale()
         CHECK(v[at + 4] == 8 && v[at + 5] == 0x80);
         CHECK(v[at + 8] == 8 && v[at + 9] == 0x90);
     }
-    // The panel: knob 1 pushed and turned on its length page, either side, two clicks a step.
+    // The panel: D#4 held + the purple knob pressed, this side's scale round
+    // 1/16, 1/16T, 1/8T, shown on the purple knob; the length follows.
     {
         Rig r;
-        r.ui.KnobClick(0, r.now); // page 2: length
-        r.Run(100);
-        r.ui.KnobDown(0);
-        r.ui.KnobTurn(0, 1, false); // the jog, ignored
-        r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
+        LedFrame f;
+        r.Run(10);
+        r.ui.KeyDown(Ui::kKeyView, r.now);
+        r.ui.Draw(f, r.now);
+        CHECK(f.knob[4].g > 0.9f && f.knob[4].r < 0.1f && f.big_right.g > 0.9f); // green: 1/16
+        CHECK(f.key[Ui::kWhite[0]].g > 0.9f);                                    // the marker: step 1
+        r.ui.KnobClick(4, r.now);
         CHECK(r.m.Current().scale == kScale16T && r.m.Current().length == 12); // a bar: 12
         CHECK(r.m.Current().drum_scale == kScale16 && r.m.Current().drum_length == 16); // the drums: their own
-        LedFrame f;
+        CHECK(r.m.settings.params[TEMPO] == kParams[TEMPO].def); // not tap tempo
         r.ui.Draw(f, r.now);
-        CHECK(f.key[Ui::kWhite[1]].b > 0.9f && f.key[Ui::kWhite[0]].b < 0.2f);
-        r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
-        r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false); // past the last: stays
-        CHECK(r.m.Current().scale == kScale8T);
-        r.ui.KnobUp(0, r.now);
-        CHECK(r.ui.KnobPage(0) == 1); // turned while pushed: no click
+        CHECK(f.knob[4].r > 0.9f && f.knob[4].b > 0.9f && f.knob[4].g < 0.1f); // magenta
+        r.ui.KnobClick(4, r.now);
+        r.ui.Draw(f, r.now);
+        CHECK(r.m.Current().scale == kScale8T && f.knob[4].r > 0.9f && f.knob[4].g > 0.3f && f.knob[4].b < 0.1f); // orange
+        const bool half = r.ui.SecondHalf();
+        r.ui.KeyUp(Ui::kKeyView, r.now);
+        CHECK(r.ui.SecondHalf() == half); // not a view tap
+        r.ui.KnobClick(0, r.now); // knob 1, page 2: the length
         r.Run(100);
-        r.ui.KnobTurn(0, -1, false), r.ui.KnobTurn(0, -1, false); // not pushed: the length
-        CHECK(r.m.Current().length == 11 && r.m.Current().scale == kScale8T);
-        // Back to 1/16: the bass's own 11 stays.
         r.ui.KnobDown(0);
-        r.ui.KnobTurn(0, -1, false); // the jog
-        for(int i = 0; i < 4; i++)
-            r.ui.KnobTurn(0, -1, false);
+        r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
         r.ui.KnobUp(0, r.now);
+        CHECK(r.m.Current().scale == kScale8T && r.m.Current().length == 13); // knob 1 pushed and turned: just the length now
+        r.m.SetLength(11);
+        // Round to 1/16: the bass's own 11 stays.
+        r.ui.KeyDown(Ui::kKeyView, r.now), r.ui.KnobClick(4, r.now), r.ui.KeyUp(Ui::kKeyView, r.now);
         CHECK(r.m.Current().scale == kScale16 && r.m.Current().length == 11 && r.m.Current().drum_length == 16);
-        // The drums' side: knob 1 pushed and turned on its page 2 sets the drum
-        // part's scale, and its length follows; the bassline's stays.
+        // The drums' side: its own scale, its length following.
         r.ui.Loop(r.now); // the drums
-        r.ui.KnobClick(0, r.now); // page 2
-        r.Run(100);
-        r.ui.KnobDown(0);
-        r.ui.KnobTurn(0, 1, false); // the jog
-        for(int i = 0; i < 4; i++)
-            r.ui.KnobTurn(0, 1, false);
-        r.ui.KnobUp(0, r.now);
+        r.ui.KeyDown(Ui::kKeyView, r.now);
+        r.ui.KnobClick(4, r.now), r.ui.KnobClick(4, r.now);
+        r.ui.KeyUp(Ui::kKeyView, r.now);
         CHECK(r.m.DrumPattern().drum_scale == kScale8T && r.m.DrumPattern().drum_length == 12);
         CHECK(r.m.Current().scale == kScale16 && r.m.Current().length == 11);
         // Steps past the length are kept: the 16 come back with the length.
@@ -4539,6 +4538,7 @@ static void TestShift()
         r.ui.KeyUp(Ui::kKeyView, r.now);
         CHECK(p.drums[0] == was.drums[7] && p.DrumHits(0, SD) == 2 && p.drum_pitch[0][SD] == -3);
         CHECK(p.drums[1] == was.drums[0] && p.drums[8] == was.drums[8]);
+        CHECK(p.drum_origin == 1); // the marker went with it
         for(int i = 0; i < kSteps; i++)
             CHECK(p.steps[i] == was.steps[i]);
     }
@@ -4854,6 +4854,39 @@ static void TestCrossScales()
     CHECK(v[at + 8] == 16 && v[at + 9] == 0x99); // the next at 32
 }
 
+static void TestOrigin()
+{
+    printf("first-step marker: D#4 held shows it, a shift moves it, D#4 + a step key puts it there\n");
+    Rig r;
+    Pattern& p = r.m.Current();
+    DemoPattern(p);
+    r.Run(10);
+    LedFrame f;
+    r.ui.KeyDown(Ui::kKeyView, r.now);
+    r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, 1, false); // two steps later
+    CHECK(p.origin == 2);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[2]].g > 0.9f && f.key[Ui::kWhite[2]].r < 0.1f); // green on step 3
+    r.White(0); // D#4 + step 1: the marker there; the step itself untouched
+    CHECK(p.origin == 0);
+    const Step s0 = p.steps[0];
+    r.ui.KeyUp(Ui::kKeyView, r.now);
+    CHECK(p.steps[0] == s0);
+    // Saved; absent is step 1.
+    Pattern pats[kPatterns], back[kPatterns];
+    pats[5].origin = 9, pats[5].drum_origin = 3;
+    static char buf[40960];
+    const size_t n = WritePatterns(pats, kPatterns, buf, sizeof buf);
+    buf[n] = '\0';
+    CHECK(strstr(buf, "origin 10 4\n") != nullptr);
+    ReadPatterns(buf, back, kPatterns);
+    CHECK(back[5].origin == 9 && back[5].drum_origin == 3 && back[0].origin == 0);
+    // Not shown without D#4: step 1's key back to its note's red.
+    r.Run(10);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[0]].g < f.key[Ui::kWhite[0]].r); // (whitened: the selected step)
+}
+
 int main()
 {
     TestQuadrature();
@@ -4899,6 +4932,7 @@ int main()
     TestStepTiming();
     TestTripletKeys();
     TestCrossScales();
+    TestOrigin();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();

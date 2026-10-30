@@ -35,9 +35,14 @@
  *                                  the transpose (middle C = none); tap a key
  *                                  twice quickly to set it and leave (or hold
  *                                  C#4 2 s)
- *    black key 7 (D#4)             view steps 1-8 / 9-16 (when let go); held +
- *                                  the purple knob: shift the pattern a step
- *                                  a click, round its length
+ *    black key 7 (D#4)             view steps 1-8 / 9-16 (when let go); held:
+ *                                  the purple knob shows the step scale
+ *                                  (green 1/16, magenta 1/16T, orange 1/8T)
+ *                                  and the first step's marker lights in it;
+ *                                  + turn the purple knob: shift the pattern
+ *                                  a step a click (the marker moves with it);
+ *                                  + press it: the next scale; + a step key:
+ *                                  the marker there
  *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16
  *                                  (when let go). Running, it waits for the
  *                                  bar; the same key again switches at once.
@@ -528,29 +533,6 @@ class Ui
             view_shifted_ = true;
             return;
         }
-        if(knob == 0 && knob_down_[0] && (drums_ ? drum_knob1_page_ == 1 : KnobPage(0) == 1))
-        {
-            // Knob 1 pushed and turned on its length page: this side's step
-            // scale (1/16, 1/16T, 1/8T), the bassline's or the drum part's,
-            // each its own; from the top of its next loop. A bar's length
-            // follows (16 <-> 12).
-            if(const int d = SlowStep(0, inc))
-            {
-                if(drums_)
-                {
-                    Pattern& pat = m_->DrumPattern();
-                    pat.ChangeDrumScale(ClampInt(pat.drum_scale + d, 0, kScales - 1));
-                }
-                else
-                {
-                    Pattern& pat = m_->Current();
-                    pat.ChangeScale(ClampInt(pat.scale + d, 0, kScales - 1));
-                }
-                m_->PatternEdited();
-            }
-            scale_shown_at_ = last_tick_;
-            return;
-        }
         if(drums_ && knob != 5)
         {
             DrumKnobTurn(knob, inc, dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
@@ -622,6 +604,25 @@ class Ui
         if(drums_ && knob == 4 && chompi_)
         {
             m_->SetParam(SWING, kParams[SWING].def);
+            return;
+        }
+        if(knob == 4 && view_down_ && held_[kKeyView] && mode_ == Mode::STEP)
+        {
+            // D#4 held + the purple knob pressed: this side's step scale,
+            // round 1/16, 1/16T, 1/8T (shown on the knob); from the top of
+            // its next loop, a bar's length following (16 <-> 12).
+            if(drums_)
+            {
+                Pattern& pat = m_->DrumPattern();
+                pat.ChangeDrumScale((pat.drum_scale + 1) % kScales);
+            }
+            else
+            {
+                Pattern& pat = m_->Current();
+                pat.ChangeScale((pat.scale + 1) % kScales);
+            }
+            m_->PatternEdited();
+            view_shifted_ = true; // not a tap of D#4
             return;
         }
         if(knob == 4 && step_held_ >= 0 && held_[step_key_] && mode_ == Mode::STEP)
@@ -846,8 +847,6 @@ class Ui
             DrawArpSetting(f);
         if(now - delay_shown_at_ < kShowValueMs)
             DrawDelayTime(f);
-        if(now - scale_shown_at_ < kShowValueMs)
-            DrawScale(f);
         if(step_held_ >= 0 && held_[step_key_] && mode_ == Mode::STEP && (step_timed_ || now - step_held_at_ > kTimingShowMs))
             DrawTiming(f);
 
@@ -954,6 +953,17 @@ class Ui
         for(int k = 0; k < 3; k++)
             if(now - knob_reset_at_[k] < 300)
                 f.knob[k] = {1.f, 1.f, 1.f};
+        // D#4 held (step mode): the purple knob shows this side's step scale
+        // (green 1/16, magenta 1/16T, orange 1/8T), and the first step's
+        // marker lights in that colour where the part's first step is now.
+        if(mode_ == Mode::STEP && view_down_ && held_[kKeyView] && page_ != Page::PATTERN)
+        {
+            const Rgb c = kMeterColour[ClampInt(SideScale(), 0, kScales - 1)];
+            f.knob[4] = f.big_right = c;
+            const int k = WhiteOfStep(drums_ ? m_->DrumPattern().drum_origin : m_->Current().origin);
+            if(k >= 0)
+                f.key[k] = c;
+        }
     }
 
     /** Before any clear: the side's part as it was, for COPY + CLEAR. */
@@ -1166,8 +1176,6 @@ class Ui
         }
         if(now - drum_len_shown_at_ < kShowLengthMs)
             DrawLength(f, pat.drum_length);
-        if(now - scale_shown_at_ < kShowValueMs)
-            DrawScale(f);
         if(step_held_ >= 0 && held_[step_key_] && mode_ == Mode::STEP && (step_timed_ || now - step_held_at_ > kTimingShowMs))
             DrawTiming(f);
         if(now - cleared_at_ < 300)
@@ -1476,6 +1484,14 @@ class Ui
         if(w != 7)
             half_ = w > 7 ? 1 : 0;
         Pattern& pat = m_->DrumPattern();
+        if(view_down_ && held_[kKeyView])
+        {
+            // D#4 held + a step key: the drum part's first-step marker there.
+            pat.drum_origin = static_cast<uint8_t>(step);
+            m_->PatternEdited();
+            view_shifted_ = true;
+            return;
+        }
         if(paste_)
         {
             // Pasting: the first step key picks the step (every voice, its
@@ -1842,7 +1858,8 @@ class Ui
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
     static constexpr Rgb kBassColour         = {.55f, 0.f, 1.f};  // the bass's side: purple
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
-    static constexpr Rgb kScaleColour        = {.55f, .35f, 1.f}; // the step scale (DrawScale): lavender
+    // The step scales on the purple knob (D#4 held): 1/16 green, 1/16T magenta, 1/8T orange.
+    static constexpr Rgb kMeterColour[kScales] = {{0.f, 1.f, .2f}, {1.f, 0.f, 1.f}, {1.f, .45f, 0.f}};
     static constexpr Rgb kTimingColour       = {1.f, .75f, .3f};  // a step's timing (DrawTiming): warm white
     static constexpr Rgb kProtectColour      = {1.f, 0.f, 1.f};   // write protect on, side A: magenta
     static constexpr Rgb kUnprotectColour    = {.25f, .65f, 1.f}; // write protect off, side A: light blue
@@ -2012,6 +2029,14 @@ class Ui
             return;
         }
         const int w = WhiteIndex(k);
+        if(w >= 0 && view_down_ && held_[kKeyView] && page_ != Page::PATTERN)
+        {
+            // D#4 held + a step key: the first step's marker there.
+            m_->Current().origin = static_cast<uint8_t>(StepOfWhite(w));
+            m_->PatternEdited();
+            view_shifted_ = true;
+            return;
+        }
         if(w >= 0 && paste_ && page_ != Page::PATTERN && !held_[kKeyCopy])
         {
             // Pasting: the selected step onto this one, which is selected
@@ -2657,14 +2682,6 @@ class Ui
     /** Turning the synced delay time: white keys 1-9 are its nine settings
      *  (1/16T, 1/16, 1/8T, 1/8, 1/4T, 3/16, 1/4, 3/8, 1/2), the one chosen
      *  bright, in knob 4's delay-time white. */
-    /** After knob 1 pushed and turned on the length page: white keys 1-3
-     *  show the step scale (1/16, 1/16T, 1/8T), this one bright. */
-    void DrawScale(LedFrame& f) const
-    {
-        const int sc = SideScale();
-        for(int i = 0; i < kScales; i++)
-            f.key[kWhite[i]] = Scale(kScaleColour, i == sc ? 1.f : 0.08f);
-    }
 
     /** A step held (a moment, or as soon as it's timed): its timing on the
      *  white keys, middle C the grid, early to the left and late to the
@@ -2937,7 +2954,6 @@ class Ui
     int      slow_[6]               = {};    // clicks toward a stepped control's next step (SlowStep)
     uint32_t knob_reset_at_[3]      = {0x80000000u, 0x80000000u, 0x80000000u};
     uint32_t delay_shown_at_        = 0x80000000u;
-    uint32_t scale_shown_at_        = 0x80000000u; // the step scale on the keys (DrawScale)
     uint32_t pat_key_at_            = 0;
     uint32_t copied_at_             = 0x80000000u;
     uint32_t last_export_seen_      = 0;
@@ -3036,7 +3052,7 @@ constexpr Rgb Ui::kDrumCol[kDrumVoices];
 constexpr Rgb Ui::kImportColour;
 constexpr Rgb Ui::kSideBColour;
 constexpr Rgb Ui::kProtectBColour;
-constexpr Rgb Ui::kScaleColour;
+constexpr Rgb Ui::kMeterColour[kScales];
 constexpr Rgb Ui::kTimingColour;
 constexpr Rgb Ui::kClearColour;
 constexpr Rgb Ui::kUnprotectColour;

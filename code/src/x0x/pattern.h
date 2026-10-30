@@ -21,6 +21,9 @@
  *    scale 1                   the bassline's step scale: 1 = 1/16 triplets,
  *                              2 = 1/8 triplets (absent: 1/16)
  *    drum_scale 0              the drum part's (absent: as the bassline's)
+ *    origin 3 1                where the bassline's and the drum part's
+ *                              first steps are now (markers moved by a
+ *                              shift; absent: 1 1)
  *    step 1 12 0 1 1 0 0 0 1 0 step, note 0-24, octave, on, accent, slide, tie,
  *                              nudge, ratchet (hits), timed (nudge set by hand)
  *    ...
@@ -119,6 +122,10 @@ struct Pattern
     uint8_t length = kSteps;
     uint8_t scale      = kScale16; // the bassline's step scale (Scale)
     uint8_t drum_scale = kScale16; // the drum part's, its own (bass and drums can cross: 4 against 3)
+    /** Where the part's first step is now, a marker only (D#4 held shows
+     *  it): it moves with a shift, and can be put anywhere. */
+    uint8_t origin      = 0;
+    uint8_t drum_origin = 0;
     /** Steps in a bar (or half a bar) on a scale: 16 sixteenths, 12 triplets. */
     static int BarSteps(int sc) { return sc == kScale16 ? kSteps : 12; }
     /** A new scale from the panel: a part a bar long on the old scale
@@ -279,6 +286,7 @@ struct Pattern
             steps[i] = Step{};
         length = kSteps;
         scale  = kScale16;
+        origin = 0;
     }
     /** The bassline alone (steps, length) from another pattern. */
     void CopyBassFrom(const Pattern& o)
@@ -287,6 +295,7 @@ struct Pattern
             steps[i] = o.steps[i];
         length = o.length;
         scale  = o.scale;
+        origin = o.origin;
     }
 
     /** The drum part alone (hits, timing, length) from another pattern. */
@@ -299,6 +308,7 @@ struct Pattern
         memcpy(drum_timed, o.drum_timed, sizeof drum_timed);
         drum_length = o.drum_length;
         drum_scale  = o.drum_scale;
+        drum_origin = o.drum_origin;
     }
 
     /** The bassline shifted `d` steps later (earlier if negative), round
@@ -312,6 +322,8 @@ struct Pattern
             was[i] = steps[i];
         for(int i = 0; i < len; i++)
             steps[(i + d) % len] = was[i];
+        if(origin < len)
+            origin = static_cast<uint8_t>((origin + d) % len);
     }
 
     /** The drum part shifted `d` steps later (earlier if negative), round
@@ -330,6 +342,8 @@ struct Pattern
             memcpy(drum_ratchet[to], was.drum_ratchet[i], kDrumVoices);
             drum_timed[to] = was.drum_timed[i];
         }
+        if(drum_origin < len)
+            drum_origin = static_cast<uint8_t>((drum_origin + d) % len);
     }
 
     void ClearDrums()
@@ -343,6 +357,7 @@ struct Pattern
         }
         drum_length = kSteps;
         drum_scale  = kScale16;
+        drum_origin = 0;
     }
 
     bool BassEmpty() const
@@ -357,7 +372,8 @@ struct Pattern
 
     bool operator==(const Pattern& o) const
     {
-        if(length != o.length || drum_length != o.drum_length || scale != o.scale || drum_scale != o.drum_scale)
+        if(length != o.length || drum_length != o.drum_length || scale != o.scale || drum_scale != o.drum_scale
+           || origin != o.origin || drum_origin != o.drum_origin)
             return false;
         for(int i = 0; i < kSteps; i++)
             if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i] || drum_timed[i] != o.drum_timed[i]
@@ -389,6 +405,13 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
         if(pat.scale != kScale16)
         {
             w = snprintf(buf + len, size - len, "scale %d\n", pat.scale);
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+        }
+        if(pat.origin || pat.drum_origin)
+        {
+            w = snprintf(buf + len, size - len, "origin %d %d\n", pat.origin + 1, pat.drum_origin + 1);
             if(w <= 0 || static_cast<size_t>(w) >= size - len)
                 return 0;
             len += w;
@@ -635,6 +658,14 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
             pat->length = static_cast<uint8_t>(ClampInt(atoi(line + 7), 1, kSteps));
         else if(pat && strncmp(line, "scale ", 6) == 0)
             pat->scale = pat->drum_scale = static_cast<uint8_t>(ClampInt(atoi(line + 6), 0, kScales - 1)); // both, unless drum_scale follows
+        else if(pat && strncmp(line, "origin ", 7) == 0)
+        {
+            char*      end;
+            const long a = strtol(line + 7, &end, 10);
+            const long b = strtol(end, nullptr, 10);
+            pat->origin      = static_cast<uint8_t>(ClampInt(static_cast<int>(a), 1, kSteps) - 1);
+            pat->drum_origin = static_cast<uint8_t>(ClampInt(static_cast<int>(b), 1, kSteps) - 1);
+        }
         else if(pat && strncmp(line, "drum_scale ", 11) == 0)
             pat->drum_scale = static_cast<uint8_t>(ClampInt(atoi(line + 11), 0, kScales - 1));
         else if(pat && strncmp(line, "step ", 5) == 0)
