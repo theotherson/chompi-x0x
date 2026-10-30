@@ -8,7 +8,9 @@
  *    tie     holds the note before through this step (its own note unused)
  *    nudge   0-5 MIDI clock ticks late: the timing of a note recorded with
  *            quantize off. With quantize on these notes play on the grid
- *            instead (PlayedStep); the timing is kept for when it's off
+ *            instead (PlayedStep); the timing is kept for when it's off.
+ *            Set by hand in step mode (timed), it can be early too (-5..5
+ *            at 1/16), and plays as set with quantize on or off
  *
  *  There are 16 pattern numbers, each with an A and a B side, as on a
  *  TB-303. Patterns are stored as plain text, one pattern after another
@@ -18,15 +20,19 @@
  *    length 16
  *    scale 1                   the step scale: 1 = 1/16 triplets, 2 = 1/8
  *                              triplets (absent: 1/16)
- *    step 1 12 0 1 1 0 0 0     step, note 0-24, octave, on, accent, slide, tie, nudge
+ *    step 1 12 0 1 1 0 0 0 1 0 step, note 0-24, octave, on, accent, slide, tie,
+ *                              nudge, ratchet (hits), timed (nudge set by hand)
  *    ...
  *    drums 16 81 00 40 ...     the drum part: its length, then each step as
  *                              hex: bits 0-6 the voices (BD SD LT HT CY OH
  *                              CH), bit 7 the accent (absent: no drums)
  *    drum_nudge 0000000 0300000 ...
  *                              each step's hits' timing, a digit a voice:
- *                              ticks late, as a step's nudge (absent:
- *                              all on the grid)
+ *                              ticks late, as a step's nudge; a-i: 1-9
+ *                              early, set by hand (absent: all on the grid)
+ *    drum_timed 00 02 ...      each step's hits timed by hand, hex, a bit a
+ *                              voice
+ *    drum_ratchet 1111111 ...  each hit's ratchet, a digit a voice (1-4)
  *    drum_pitch mmmmmmm mmmmmqm ...
  *                              each hit's pitch, played on the keys in live
  *                              mode, a letter a voice: a-y = -12..+12
@@ -76,9 +82,9 @@ struct Step
     bool    accent = false;
     bool    slide  = false;
     bool    tie    = false;
-    uint8_t nudge  = 0; // ticks after the step's start, within it (0-5 at 1/16)
+    int8_t  nudge  = 0; // ticks after the step's start, within it (0-5 at 1/16); timed: also before
     uint8_t ratchet = 1; // hits within the step, 1-4 (Ratchets)
-    bool    timed   = false; // nudge set by hand (step mode): kept with quantize on
+    bool    timed   = false; // nudge set by hand (step mode): early or late, kept with quantize on
 
     int Midi() const { return kBaseNote + note + 12 * octave; }
     int Hits() const { return Ratchets(ratchet); }
@@ -120,11 +126,9 @@ struct Pattern
         const int max = StepTicks() - 1;
         for(int i = 0; i < kSteps; i++)
         {
-            if(steps[i].nudge > max)
-                steps[i].nudge = static_cast<uint8_t>(max);
+            steps[i].nudge = static_cast<int8_t>(ClampInt(steps[i].nudge, -max, max));
             for(int v = 0; v < kDrumVoices; v++)
-                if(drum_nudge[i][v] > max)
-                    drum_nudge[i][v] = static_cast<uint8_t>(max);
+                drum_nudge[i][v] = static_cast<int8_t>(ClampInt(drum_nudge[i][v], -max, max));
         }
     }
     /** The drum part, linked to the bassline: per step, a bit for each
@@ -132,7 +136,7 @@ struct Pattern
     uint8_t drums[kSteps] = {};
     uint8_t drum_length   = kSteps;
     /** Each hit's timing, recorded with quantize off: ticks late, within the step. */
-    uint8_t drum_nudge[kSteps][kDrumVoices] = {};
+    int8_t drum_nudge[kSteps][kDrumVoices] = {}; // timed: early (negative) too
     /** Each hit's pitch, -12..12 semitones (recorded from the keys, live). */
     int8_t drum_pitch[kSteps][kDrumVoices] = {};
     /** Each hit's ratchet: hits within the step (0 or 1 = one). */
@@ -400,7 +404,10 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
                 char d[kDrumVoices + 2];
                 d[0] = ' ';
                 for(int v = 0; v < kDrumVoices; v++)
-                    d[1 + v] = static_cast<char>('0' + ClampInt(pat.drum_nudge[i][v], 0, 9));
+                {
+                    const int n = ClampInt(pat.drum_nudge[i][v], -9, 9);
+                    d[1 + v]    = static_cast<char>(n >= 0 ? '0' + n : 'a' - n - 1); // early: a-i
+                }
                 d[kDrumVoices + 1] = '\0';
                 w = snprintf(buf + len, size - len, "%s", d);
                 if(w <= 0 || static_cast<size_t>(w) >= size - len)
@@ -528,9 +535,12 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                     p++;
                 for(int v = 0; v < kDrumVoices; v++)
                 {
-                    if(*p < '0' || *p > '9')
+                    if(*p >= '0' && *p <= '9')
+                        pat->drum_nudge[i][v] = static_cast<int8_t>(*p - '0');
+                    else if(*p >= 'a' && *p <= 'i')
+                        pat->drum_nudge[i][v] = static_cast<int8_t>('a' - *p - 1); // early
+                    else
                         break;
-                    pat->drum_nudge[i][v] = static_cast<uint8_t>(ClampInt(*p - '0', 0, 9));
                     p++;
                 }
                 while(*p && *p != ' ')
@@ -615,15 +625,24 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                 s.accent = v[4] != 0;
                 s.slide  = v[5] != 0;
                 s.tie    = v[6] != 0;
-                s.nudge  = static_cast<uint8_t>(ClampInt(static_cast<int>(v[7]), 0, 9));
+                s.nudge  = static_cast<int8_t>(ClampInt(static_cast<int>(v[7]), -9, 9));
                 s.ratchet = static_cast<uint8_t>(got >= 9 ? Ratchets(static_cast<int>(v[8])) : 1);
                 s.timed   = got >= 10 && v[9] != 0;
+                if(!s.timed && s.nudge < 0)
+                    s.nudge = 0; // only timing set by hand is early
             }
         }
         line = next;
     }
     for(int p = 0; p < count; p++)
-        pats[p].SetScale(pats[p].scale); // timing within each step
+    {
+        Pattern& pt = pats[p];
+        for(int i = 0; i < kSteps; i++)
+            for(int v = 0; v < kDrumVoices; v++)
+                if(pt.drum_nudge[i][v] < 0 && !pt.DrumTimed(i, v))
+                    pt.drum_nudge[i][v] = 0; // only timing set by hand is early
+        pt.SetScale(pt.scale);             // timing within each step
+    }
 }
 
 /** A starter pattern for a fresh card, so PLAY does something. */

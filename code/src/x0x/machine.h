@@ -988,6 +988,8 @@ class Machine
             settings_changes++;
         }
         Pattern&   pat   = DrumPattern();
+        if(drum_pos_ < 0)
+            drum_early_ = 0; // from the top (PLAY, a new pattern): nothing played ahead
         drum_pos_        = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
         const bool quant = StepIndex(settings.params[DRUM_QUANTIZE], 2) == 1;
         const uint8_t erase = erase_mask_;
@@ -1007,8 +1009,18 @@ class Machine
             if(((s >> v) & 1) && DrumAudible(v) && !((skip >> v) & 1))
             {
                 const bool acc   = (s & kDrumAccent) != 0;
-                // Within the step; set by hand, it plays as set, quantize or not.
-                const int  nudge = quant && !pat.DrumTimed(drum_pos_, v) ? 0 : ClampInt(pat.drum_nudge[drum_pos_][v], 0, seq_.StepTicks() - 1);
+                // Within the step; set by hand, it plays as set, quantize or
+                // not, and may be early: then it was played ahead, from the
+                // step before (below), or on the grid if there wasn't one.
+                const int  lim   = seq_.StepTicks() - 1;
+                const bool timed = pat.DrumTimed(drum_pos_, v);
+                int        nudge = quant && !timed ? 0 : ClampInt(pat.drum_nudge[drum_pos_][v], timed ? -lim : 0, lim);
+                if(nudge < 0)
+                {
+                    if((drum_early_ >> v) & 1)
+                        continue;
+                    nudge = 0;
+                }
                 const int  semis = pat.drum_pitch[drum_pos_][v];
                 const int  pay   = v | (acc ? kDrumAccent : 0) | ((semis + 64) << 8);
                 if(nudge == 0)
@@ -1021,6 +1033,25 @@ class Machine
                 for(int h = 1; h < hits; h++)
                     seq_.ScheduleDrum(nudge + h * share, pay);
             }
+        // The next step's hits timed early: from here, that far before its
+        // place on the grid (ratchets and all).
+        drum_early_    = 0;
+        const int  nx  = (drum_pos_ + 1) % ClampInt(pat.drum_length, 1, kSteps);
+        const int  lim = seq_.StepTicks() - 1;
+        const double gap = seq_.GridSpacing();
+        for(int v = 0; v < kDrumVoices; v++)
+        {
+            const int early = ClampInt(pat.drum_nudge[nx][v], -lim, lim);
+            if(!pat.DrumHit(nx, v) || !pat.DrumTimed(nx, v) || early >= 0 || !DrumAudible(v) || ((erase >> v) & 1))
+                continue;
+            const int    semis = pat.drum_pitch[nx][v];
+            const int    pay   = v | (pat.DrumAccent(nx) ? kDrumAccent : 0) | ((semis + 64) << 8);
+            const int    hits  = pat.DrumHits(nx, v);
+            const double share = seq_.StepTicks() / static_cast<double>(hits);
+            for(int h = 0; h < hits; h++)
+                seq_.ScheduleDrum(gap + early + h * share, pay);
+            drum_early_ = Bit(drum_early_, v, true);
+        }
     }
 
     static uint8_t Bit(uint8_t bits, int v, bool on)
@@ -1065,7 +1096,7 @@ class Machine
         }
         roll_rec_step_[v] = static_cast<int8_t>(step); // (a roll's key hit counts as its first)
         pat.drums[step]   = static_cast<uint8_t>(pat.drums[step] | (1 << v) | (accent ? kDrumAccent : 0));
-        pat.drum_nudge[step][v] = static_cast<uint8_t>(nudge);
+        pat.drum_nudge[step][v] = static_cast<int8_t>(nudge);
         pat.SetDrumTimed(step, v, false); // played live: recorded timing
         pat.drum_pitch[step][v] = static_cast<int8_t>(ClampInt(semis, -12, 12)); // played on the keys
         pat.drum_ratchet[step][v] = 0;
@@ -1256,7 +1287,7 @@ class Machine
         s.note   = static_cast<uint8_t>(rel);
         s.octave = static_cast<int8_t>(oct);
         s.on     = true;
-        s.nudge  = static_cast<uint8_t>(nudge);
+        s.nudge  = static_cast<int8_t>(nudge);
         s.ratchet = static_cast<uint8_t>(Ratchets(hits));
         pattern_changes++;
         record_count_++;
@@ -1329,6 +1360,7 @@ class Machine
     volatile uint8_t roll_mask_  = 0; // voices rolling
     volatile bool    roll_accent_ = false;
     uint8_t     roll_prev_  = 0;
+    uint8_t     drum_early_ = 0; // voices whose next hit, timed early, was already scheduled
     float       roll_since_ = 0.f;   // samples since a roll started
     float       roll_clock_ = 0.f;   // stopped: samples to its next hit
     bool        roll_skip_  = false; // too soon after the key's own hit

@@ -17,7 +17,11 @@
  *
  *  STEP mode
  *    white key                     select that step; the selected step again
- *                                  turns it on or off (its note is kept)
+ *                                  turns it on or off when let go (its note
+ *                                  is kept). Held + the purple knob: its
+ *                                  timing, early / late a tick a click (white
+ *                                  keys: middle C the grid); held + the
+ *                                  purple knob pressed: back on the grid
  *    hold CHOMPI                   the keybed is a keyboard: a key sets the
  *                                  selected step's note and turns it on
  *    black keys 1-5                parameter pages: octave DOWN, octave UP,
@@ -213,6 +217,7 @@ class Ui
     static constexpr uint32_t kKnobResetHoldMs = 2000; // CHOMPI + a knob pushed: all its pages reset
     static constexpr uint32_t kKnobJogMs       = 60;   // a detent this soon after letting go is a jog
     static constexpr int      kSlowClicks      = 2;    // clicks a step, for stepped controls
+    static constexpr uint32_t kTimingShowMs    = 250;  // a step held this long shows its timing
     static constexpr uint32_t kCurrentFlashMs = 400; // the current pattern's slow flash (queued: fast)
 
     void Init(Machine* m) { m_ = m; }
@@ -608,6 +613,16 @@ class Ui
             m_->SetParam(SWING, kParams[SWING].def);
             return;
         }
+        if(knob == 4 && step_held_ >= 0 && held_[step_key_] && mode_ == Mode::STEP)
+        {
+            // A step held + the purple knob pressed: that step's timing back
+            // on the grid (not tap tempo).
+            int ticks;
+            if(HeldTiming(ticks))
+                SetHeldTiming(0);
+            step_timed_ = true;
+            return;
+        }
         if(chompi_ && knob == 5)
         {
             // CHOMPI + the volume knob pushed: the metronome on / off.
@@ -822,7 +837,7 @@ class Ui
             DrawDelayTime(f);
         if(now - scale_shown_at_ < kShowValueMs)
             DrawScale(f);
-        if(now - timing_shown_at_ < kShowValueMs)
+        if(step_held_ >= 0 && held_[step_key_] && mode_ == Mode::STEP && (step_timed_ || now - step_held_at_ > kTimingShowMs))
             DrawTiming(f);
 
         if(now - cleared_at_ < 300)
@@ -1142,7 +1157,7 @@ class Ui
             DrawLength(f, pat.drum_length);
         if(now - scale_shown_at_ < kShowValueMs)
             DrawScale(f);
-        if(now - timing_shown_at_ < kShowValueMs)
+        if(step_held_ >= 0 && held_[step_key_] && mode_ == Mode::STEP && (step_timed_ || now - step_held_at_ > kTimingShowMs))
             DrawTiming(f);
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -1493,42 +1508,72 @@ class Ui
      *  go; turning the purple knob meanwhile sets its timing instead. */
     void HoldStep(int k, int step, bool act)
     {
-        step_key_   = k;
-        step_held_  = step;
-        step_act_   = act;
-        step_timed_ = false;
+        step_key_     = k;
+        step_held_    = step;
+        step_act_     = act;
+        step_timed_   = false;
+        step_held_at_ = last_tick_;
     }
 
-    /** Step mode, a step held + the purple knob: its timing, a tick a click,
-     *  from on the grid to the end of the step (late only: a step's notes
-     *  never come before it). Set so, it plays as set with quantize on. The
-     *  bass's step if it plays a note; the drums', the selected voice's hit. */
-    void TimeStep(int inc)
+    /** The held step's timing as it plays, ticks (negative: early); false
+     *  if it has none (the bass: off or a tie; the drums: no hit for the
+     *  selected voice). Recorded timing counts only with quantize off. */
+    bool HeldTiming(int& ticks) const
     {
-        step_timed_   = true;
-        const int max = m_->Current().StepTicks() - 1; // the grid: the bass's scale
-        const int st  = step_held_;
+        if(step_held_ < 0)
+            return false;
+        const int st = step_held_;
         if(drums_)
         {
-            Pattern& pat = m_->DrumPattern();
+            const Pattern& pat = m_->DrumPattern();
             if(!pat.DrumHit(st, drum_sel_))
-                return;
-            const int n                   = ClampInt(pat.drum_nudge[st][drum_sel_] + inc, 0, max);
-            pat.drum_nudge[st][drum_sel_] = static_cast<uint8_t>(n);
-            pat.SetDrumTimed(st, drum_sel_, n > 0);
-            timing_shown_ = n;
+                return false;
+            const bool timed = pat.DrumTimed(st, drum_sel_);
+            ticks = timed || !StepIndex(m_->settings.params[DRUM_QUANTIZE], 2) ? pat.drum_nudge[st][drum_sel_] : 0;
+        }
+        else
+        {
+            const Step& s = m_->Current().steps[st];
+            if(!s.on || s.tie)
+                return false;
+            ticks = s.timed || !Quantizing() ? s.nudge : 0;
+        }
+        const int lim = m_->Current().StepTicks() - 1;
+        ticks         = ClampInt(ticks, -lim, lim);
+        return true;
+    }
+
+    /** The held step's timing set to `ticks` (by hand; 0: on the grid). */
+    void SetHeldTiming(int ticks)
+    {
+        const int st = step_held_;
+        if(drums_)
+        {
+            Pattern& pat                  = m_->DrumPattern();
+            pat.drum_nudge[st][drum_sel_] = static_cast<int8_t>(ticks);
+            pat.SetDrumTimed(st, drum_sel_, ticks != 0);
         }
         else
         {
             Step& s = m_->Current().steps[st];
-            if(!s.on || s.tie)
-                return;
-            s.nudge       = static_cast<uint8_t>(ClampInt(s.nudge + inc, 0, max));
-            s.timed       = s.nudge > 0;
-            timing_shown_ = s.nudge;
+            s.nudge = static_cast<int8_t>(ticks);
+            s.timed = ticks != 0;
         }
         m_->PatternEdited();
-        timing_shown_at_ = last_tick_;
+    }
+
+    /** Step mode, a step held + the purple knob: its timing, a tick a click,
+     *  early to the left and late to the right, up to a tick short of a step
+     *  either way. Set so, it plays as set with quantize on. The bass's step
+     *  if it plays a note; on the drums, the selected voice's hit. */
+    void TimeStep(int inc)
+    {
+        step_timed_ = true; // no toggle when let go
+        int ticks;
+        if(!HeldTiming(ticks))
+            return;
+        const int lim = m_->Current().StepTicks() - 1; // the grid: the bass's scale
+        SetHeldTiming(ClampInt(ticks + inc, -lim, lim));
     }
 
     void DrumKeyUp(int k)
@@ -2590,13 +2635,31 @@ class Ui
             f.key[kWhite[i]] = Scale(kScaleColour, i == sc ? 1.f : 0.08f);
     }
 
-    /** A step's timing just set: white keys 1-6 (1/16; 4 or 8 on the
-     *  triplet scales) are on the grid to 5 ticks late, this one bright. */
+    /** A step held (a moment, or as soon as it's timed): its timing on the
+     *  white keys, middle C the grid, early to the left and late to the
+     *  right, a key a tick: the keys from middle C to it lit, it bright. The
+     *  keys within reach (a tick short of a step) glow faintly. */
     void DrawTiming(LedFrame& f) const
     {
-        const int ticks = m_->Current().StepTicks();
-        for(int i = 0; i < ticks && i < kWhiteKeys; i++)
-            f.key[kWhite[i]] = Scale(kTimingColour, i == timing_shown_ ? 1.f : 0.08f);
+        int ticks;
+        if(!HeldTiming(ticks))
+            return;
+        const int lim = m_->Current().StepTicks() - 1;
+        const int mid = 7; // middle C
+        for(int i = 0; i < kWhiteKeys; i++)
+        {
+            const int d = i - mid;
+            Rgb       c;
+            if(d == ticks)
+                c = d == 0 ? Rgb{1.f, 1.f, 1.f} : kTimingColour;
+            else if(d == 0)
+                c = {.35f, .35f, .35f};
+            else if((d > 0 && d < ticks) || (d < 0 && d > ticks))
+                c = Scale(kTimingColour, 0.3f);
+            else if(d >= -lim && d <= lim)
+                c = Scale(kTimingColour, 0.05f);
+            f.key[kWhite[i]] = c;
+        }
     }
 
     void DrawDelayTime(LedFrame& f) const
@@ -2860,8 +2923,7 @@ class Ui
     int      step_held_             = -1;    // ...its step, -1 when none
     bool     step_act_              = false; // ...toggle it when let go
     bool     step_timed_            = false; // ...timed meanwhile: no toggle
-    int      timing_shown_          = 0;     // the timing just set (DrawTiming)
-    uint32_t timing_shown_at_       = 0x80000000u;
+    uint32_t step_held_at_          = 0;     // ...when it went down
     bool     view_shifted_          = false; // ...and the part shifted meanwhile
     bool     copy_tap_              = false; // COPY down, nothing else pressed yet
     bool     paste_                 = false; // step mode, COPY tapped: the next step key pastes

@@ -76,6 +76,9 @@ class Sequencer
      *  pattern with another) takes over at the top of the pattern. */
     int StepTicks() const { return ticks_; }
 
+    /** Ticks from the last GRID to the next (for drum hits early to it). */
+    double GridSpacing() const { return grid_pos_ - last_grid_pos_; }
+
     /** How far from the last GRID to the next, 0..1 (recording drums). */
     float GridPhase() const
     {
@@ -132,6 +135,8 @@ class Sequencer
         rat_left_   = 0;
         ticks_      = pat_ ? pat_->StepTicks() : kStepTicks;
         ScheduleStep();
+        if(step_pos_ < 0.0)
+            step_pos_ = 0.0; // an early first step: at PLAY
     }
 
     /** Carry on from where it stopped (MIDI Continue). */
@@ -167,7 +172,8 @@ class Sequencer
                 pos_ += left / spt;
                 break;
             }
-            pos_ = next;
+            if(next > pos_)
+                pos_ = next; // (an early step can fall due before now: never back)
             done += until > 0.0 ? until : 0.0;
             left -= until > 0.0 ? until : 0.0;
             const double   r   = done + 0.5;
@@ -272,8 +278,13 @@ class Sequencer
     /** Swing, in ticks: the 1/16 scale only. */
     double Swing() const { return ticks_ == kScaleTicks[kScale16] ? swing_ticks_ : 0.0; }
 
-    /** A step's recorded timing, within its step. */
-    int Nudge(const Step& s) const { return s.nudge < StepTicks() ? s.nudge : StepTicks() - 1; }
+    /** A step's timing, within its step: late, or set by hand early too
+     *  (the step's note before its place on the grid). */
+    int Nudge(const Step& s) const
+    {
+        const int lim = StepTicks() - 1;
+        return ClampInt(s.nudge, s.timed ? -lim : 0, lim);
+    }
 
     /** Where step `step` sits on the grid, swing included. */
     double GridStart(int step) const

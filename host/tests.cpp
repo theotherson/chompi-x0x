@@ -4510,14 +4510,14 @@ static void TestShift()
 
 static void TestStepTiming()
 {
-    printf("step timing: a step held + purple knob, a tick a click; kept with quantize on\n");
-    // When step 1's note starts after PLAY, in ms.
+    printf("step timing: a step held + purple knob, early or late a tick a click; LEDs; press resets\n");
+    // When the bass's first note starts after PLAY, in ms (-1: none in 300).
     auto first_on = [](Rig& r) {
         Machine::MidiOut mo;
         while(r.m.PopMidi(Machine::kUart, mo))
             ;
         r.m.Play();
-        for(int t = 0; t < 120; t++)
+        for(int t = 0; t < 300; t++)
         {
             r.Run(1);
             while(r.m.PopMidi(Machine::kUart, mo))
@@ -4526,43 +4526,78 @@ static void TestStepTiming()
         }
         return -1;
     };
+    // The LEDs while a step is held: middle C the grid, a key a tick.
+    auto lit = [](Rig& r, int key) {
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        return f.key[Ui::kWhite[key]];
+    };
     {
         Rig r;
         r.S(0).on = true;
         CHECK(StepIndex(r.m.settings.params[QUANTIZE], 2) == 1); // quantize on (the default)
         const Settings before = r.m.settings;
+        r.Run(1);
         r.ui.KeyDown(Ui::kWhite[0], r.now);
+        CHECK(lit(r, 7).r < 0.01f); // a tap's moment: not shown yet...
+        r.Run(300);
+        CHECK(lit(r, 7).r > 0.9f && lit(r, 7).b > 0.9f); // ...held: on the grid, middle C white
         r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, 1, false);
         CHECK(r.S(0).nudge == 2 && r.S(0).timed);
         CHECK(memcmp(r.m.settings.params, before.params, sizeof before.params) == 0); // not the cutoff
-        LedFrame f;
-        r.ui.Draw(f, r.now);
-        CHECK(f.key[Ui::kWhite[2]].r > 0.9f && f.key[Ui::kWhite[1]].r < 0.2f); // tick 2 shown
+        CHECK(lit(r, 9).r > 0.9f && lit(r, 8).r > 0.2f && lit(r, 8).r < 0.5f && lit(r, 6).r < 0.1f);
         r.ui.KeyUp(Ui::kWhite[0], r.now);
         CHECK(r.S(0).on); // timed: no toggle when let go
-        // Clamped to the step: at 1/16, 5 ticks late at most.
-        r.ui.KeyDown(Ui::kWhite[0], r.now);
-        for(int i = 0; i < 8; i++)
+        // Held again later: it shows what it has, straight after the hold.
+        r.ui.KeyDown(Ui::kWhite[0], r.now), r.Run(300);
+        CHECK(lit(r, 9).r > 0.9f);
+        // Early to the left, clamped a tick short of a step either way.
+        for(int i = 0; i < 9; i++)
+            r.ui.KnobTurn(4, -1, false);
+        CHECK(r.S(0).nudge == -5 && r.S(0).timed);
+        CHECK(lit(r, 2).r > 0.9f && lit(r, 1).r < 0.1f && lit(r, 4).r > 0.2f);
+        for(int i = 0; i < 11; i++)
             r.ui.KnobTurn(4, 1, false);
         CHECK(r.S(0).nudge == 5);
-        for(int i = 0; i < 3; i++)
-            r.ui.KnobTurn(4, -1, false);
+        // The purple knob pressed: back on the grid (not tap tempo), this step only.
+        r.S(4).on = true, r.S(4).nudge = 3, r.S(4).timed = true;
+        r.ui.KnobClick(4, r.now);
+        CHECK(r.S(0).nudge == 0 && !r.S(0).timed && r.S(4).nudge == 3);
+        CHECK(memcmp(r.m.settings.params, before.params, sizeof before.params) == 0);
         r.ui.KeyUp(Ui::kWhite[0], r.now);
-        CHECK(r.S(0).nudge == 2 && r.S(0).on);
-        // Plays 2 ticks late (42 ms at 120) with quantize on; recorded timing would snap.
-        const int at = first_on(r);
+        CHECK(r.S(0).on); // and no toggle
+        // Late 2 ticks plays 42 ms in with quantize on; untimed (recorded) it snaps.
+        r.S(0).nudge = 2, r.S(0).timed = true;
+        int at = first_on(r);
         CHECK(at >= 41 && at <= 43);
         r.m.Stop(), r.Run(50);
         r.S(0).timed = false;
         CHECK(first_on(r) <= 1);
         r.m.Stop(), r.Run(50);
-        r.S(0).timed = true;
-        // Back to the grid: no longer timed by hand.
-        r.ui.KeyDown(Ui::kWhite[0], r.now);
-        r.ui.KnobTurn(4, -1, false), r.ui.KnobTurn(4, -1, false), r.ui.KnobTurn(4, -1, false);
-        r.ui.KeyUp(Ui::kWhite[0], r.now);
-        CHECK(r.S(0).nudge == 0 && !r.S(0).timed && r.S(0).on);
+        // Early: step 2 two ticks early is 42 ms before 125 ms.
+        r.S(0).on = false, r.S(0).nudge = 0;
+        r.S(1).on = true, r.S(1).nudge = -2, r.S(1).timed = true;
+        at = first_on(r);
+        CHECK(at >= 82 && at <= 84);
+        r.m.Stop(), r.Run(50);
+        // An early first step: at PLAY, then early each time round.
+        r.S(1).on = false, r.S(4).on = false;
+        r.S(0).on = true, r.S(0).nudge = -2, r.S(0).timed = true;
+        CHECK(first_on(r) <= 1);
+        Machine::MidiOut mo;
+        int second = -1;
+        for(int t = 0; t < 2100 && second < 0; t++)
+        {
+            r.Run(1);
+            while(r.m.PopMidi(Machine::kUart, mo))
+                if((mo.b[0] & 0xf0) == 0x90 && mo.b[2] > 0 && (mo.b[0] & 0x0f) == r.m.options.channel_out - 1)
+                    second = t;
+        }
+        CHECK(second >= 1955 && second <= 1960); // 2000 - 42 ms (from 1 ms in)
+        r.m.Stop(), r.Run(50);
         // A tap still toggles (when let go); a step that's off has no timing.
+        r.S(0) = Step{};
+        r.S(0).on = true;
         r.White(0);
         CHECK(!r.S(0).on);
         r.ui.KeyDown(Ui::kWhite[0], r.now), r.ui.KnobTurn(4, 1, false), r.ui.KeyUp(Ui::kWhite[0], r.now);
@@ -4570,51 +4605,83 @@ static void TestStepTiming()
         // On a flag page, holding a step to time it doesn't toggle the flag.
         r.S(3).on = true;
         r.Black(2); // ACCENT
-        r.ui.KeyDown(Ui::kWhite[3], r.now), r.ui.KnobTurn(4, 1, false), r.ui.KeyUp(Ui::kWhite[3], r.now);
-        CHECK(!r.S(3).accent && r.S(3).nudge == 1);
+        r.ui.KeyDown(Ui::kWhite[3], r.now), r.ui.KnobTurn(4, -1, false), r.ui.KeyUp(Ui::kWhite[3], r.now);
+        CHECK(!r.S(3).accent && r.S(3).nudge == -1);
         r.White(3);
         CHECK(r.S(3).accent);
-        // Saved.
+        // Saved, early included (and exported: an early first step at the loop's end).
         Pattern pats[kPatterns], back[kPatterns];
         pats[0] = r.m.Current();
-        pats[0].drums[2] = 1 << SD, pats[0].drum_nudge[2][SD] = 4, pats[0].SetDrumTimed(2, SD, true);
+        pats[0].drums[2] = 1 << SD, pats[0].drum_nudge[2][SD] = -4, pats[0].SetDrumTimed(2, SD, true);
+        pats[0].drums[3] = 1 << SD, pats[0].drum_nudge[3][SD] = 2;
         static char buf[40960];
         const size_t n = WritePatterns(pats, kPatterns, buf, sizeof buf);
         buf[n] = '\0';
         CHECK(strstr(buf, "drum_timed 00 00 02 ") != nullptr);
+        CHECK(strstr(buf, "step 4 0 0 1 1 0 0 -1 1 1\n") != nullptr);
+        CHECK(strstr(buf, " 0d00000 0200000 ") != nullptr);
         ReadPatterns(buf, back, kPatterns);
-        CHECK(back[0] == pats[0] && back[0].steps[3].timed && back[0].DrumTimed(2, SD));
+        CHECK(back[0] == pats[0] && back[0].steps[3].nudge == -1 && back[0].drum_nudge[2][SD] == -4);
+        Pattern e;
+        e.Clear();
+        e.steps[0].on = true, e.steps[0].nudge = -1, e.steps[0].timed = true;
+        std::vector<uint8_t> v(1024);
+        WriteMidiFile(e, 120.f, 0, "", v.data(), v.size());
+        const size_t at0 = 22 + 7 + 8 + 4; // delta of the first event: 16 steps less a tick (4 file ticks)
+        CHECK(v[at0] == 0x82 && v[at0 + 1] == 0x7c && v[at0 + 2] == 0x90); // on at 380
+        CHECK(v[at0 + 5] == 12 && v[at0 + 6] == 0x80);                     // off half a step later
     }
-    // Drums: the selected voice's hit on the step held; plays late with
-    // drum quantize on; the key let go doesn't take the hit off.
+    // Drums: the selected voice's hit on the step held; early hits play
+    // from the step before (on the grid the first time, with none before).
     {
         Rig r;
         r.ui.Loop(r.now); // the drums
         Pattern& p = r.m.DrumPattern();
         r.Black(0); // BD
-        r.White(0); // a hit on step 1
-        CHECK(p.DrumHit(0, BD));
-        r.ui.KeyDown(Ui::kWhite[0], r.now);
-        r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, 1, false);
-        r.ui.KeyUp(Ui::kWhite[0], r.now);
-        CHECK(p.DrumHit(0, BD) && p.drum_nudge[0][BD] == 3 && p.DrumTimed(0, BD));
-        CHECK(r.m.settings.params[TEMPO] == kParams[TEMPO].def); // the drums' purple knob: not the tempo
-        const uint32_t c0 = r.m.DrumHitCount(BD);
+        r.White(1); // a hit on step 2
+        CHECK(p.DrumHit(1, BD));
+        r.ui.KeyDown(Ui::kWhite[1], r.now);
+        r.ui.KnobTurn(4, -1, false), r.ui.KnobTurn(4, -1, false), r.ui.KnobTurn(4, -1, false);
+        r.Run(300);
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kWhite[4]].r > 0.9f && f.key[Ui::kWhite[7]].r > 0.2f);
+        r.ui.KeyUp(Ui::kWhite[1], r.now);
+        CHECK(p.DrumHit(1, BD) && p.drum_nudge[1][BD] == -3 && p.DrumTimed(1, BD));
+        CHECK(r.m.settings.params[TEMPO] == kParams[TEMPO].def); // not the tempo
+        auto bd_hits = [&](int ms, std::vector<int>& at) {
+            uint32_t c = r.m.DrumHitCount(BD);
+            for(int t = 0; t < ms; t++)
+            {
+                r.Run(1);
+                if(r.m.DrumHitCount(BD) != c)
+                    c = r.m.DrumHitCount(BD), at.push_back(t);
+            }
+        };
         r.m.Play();
-        int at = -1;
-        for(int t = 0; t < 120 && at < 0; t++)
-        {
-            r.Run(1);
-            if(r.m.DrumHitCount(BD) != c0)
-                at = t;
-        }
-        CHECK(at >= 61 && at <= 64); // 3 ticks: 62.5 ms
-        // A recorded (live) hit's timing still snaps with quantize on.
+        std::vector<int> at;
+        bd_hits(2200, at);
+        CHECK(at.size() == 2 && at[0] >= 61 && at[0] <= 64 && at[1] >= 2061 && at[1] <= 64 + 2000); // 125 - 62.5 ms
+        r.m.Stop(), r.Run(50);
+        // On step 1: on the grid at PLAY (nothing before it), early after.
+        p.drums[1] = 0, p.drums[0] = 1 << BD, p.drum_nudge[0][BD] = -3, p.SetDrumTimed(0, BD, true);
+        r.m.Play();
+        at.clear();
+        bd_hits(2100, at);
+        CHECK(at.size() == 2 && at[0] <= 1 && at[1] >= 1936 && at[1] <= 1939);
+        r.m.Stop(), r.Run(50);
+        // Late 3 with drum quantize on, timed: 62.5 ms in; untimed, on the grid.
+        p.drum_nudge[0][BD] = 3;
+        r.m.Play();
+        at.clear();
+        bd_hits(100, at);
+        CHECK(at.size() == 1 && at[0] >= 61 && at[0] <= 64);
         r.m.Stop(), r.Run(50);
         p.SetDrumTimed(0, BD, false);
-        const uint32_t c1 = r.m.DrumHitCount(BD);
-        r.m.Play(), r.Run(2);
-        CHECK(r.m.DrumHitCount(BD) != c1);
+        r.m.Play();
+        at.clear();
+        bd_hits(100, at);
+        CHECK(at.size() == 1 && at[0] <= 1);
     }
 }
 
