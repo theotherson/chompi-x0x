@@ -29,7 +29,9 @@
  *                                  the transpose (middle C = none); tap a key
  *                                  twice quickly to set it and leave (or hold
  *                                  C#4 2 s)
- *    black key 7 (D#4)             view steps 1-8 / 9-16
+ *    black key 7 (D#4)             view steps 1-8 / 9-16 (when let go); held +
+ *                                  the purple knob: shift the pattern a step
+ *                                  a click, round its length
  *    black key 8 (F#4)             PATTERN page: step keys pick pattern 1-16
  *                                  (when let go). Running, it waits for the
  *                                  bar; the same key again switches at once.
@@ -258,6 +260,7 @@ class Ui
         mode_           = mode;
         page_           = Page::NOTES;
         paste_          = false;
+        view_down_      = false;
         transpose_mode_ = false;
         m_->SetRecording(false);
     }
@@ -330,6 +333,14 @@ class Ui
         held_[k] = false;
         if(k == kKeyTranspose)
             c4_held_ = false;
+        if(k == kKeyView && view_down_)
+        {
+            // D#4 let go: a tap views the other half; after a shift the
+            // pattern simply stays where it was moved to.
+            view_down_ = false;
+            if(!view_shifted_)
+                half_ = ShownSecondHalf() ? 0 : 1;
+        }
         if(k == kKeyCopy && copy_tap_)
         {
             // Step mode, COPY tapped: paste a step (it and COPY blink) to
@@ -480,6 +491,18 @@ class Ui
             return;
         if(knob_down_[knob])
             knob_turned_[knob] = true;
+        if(knob == 4 && view_down_ && held_[kKeyView] && mode_ == Mode::STEP)
+        {
+            // D#4 held + the purple wheel: this side's part shifted a step a
+            // click, later turning right, earlier left, round its length.
+            if(drums_)
+                m_->DrumPattern().ShiftDrums(inc);
+            else
+                m_->Current().ShiftBass(inc);
+            m_->PatternEdited();
+            view_shifted_ = true;
+            return;
+        }
         if(knob == 0 && knob_down_[0] && (drums_ ? drum_knob1_page_ == 1 : KnobPage(0) == 1))
         {
             // Knob 1 pushed and turned on its length page, either side: the
@@ -1056,7 +1079,7 @@ class Ui
         {
             f.key[kBlack[5]] = drum_rat_page_ ? kPageColour[static_cast<int>(Page::RATCHET)]
                                               : Scale(kDrumAccentCol, drum_acc_page_ ? 1.f : 0.12f);
-            f.key[kKeyView]  = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
+            f.key[kKeyView]  = view_down_ ? Rgb{1.f, 1.f, 1.f} : ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         }
         f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentDrumPattern())),
                                    page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
@@ -1329,7 +1352,7 @@ class Ui
         }
         if(b == 6 && mode_ == Mode::STEP)
         {
-            half_ = ShownSecondHalf() ? 0 : 1;
+            view_down_ = true, view_shifted_ = false; // a tap or a hold and shift: see KeyUp, KnobTurn
             return;
         }
         if(b >= 0 && b < VoiceKeys())
@@ -1876,7 +1899,7 @@ class Ui
                 page_ = page_ == Page::TIE ? Page::RATCHET : page_ == Page::RATCHET ? Page::NOTES : Page::TIE;
                 break;
             case 5: transpose_mode_ = true, tap_key_ = -1; break;
-            case 6: half_ = ShownSecondHalf() ? 0 : 1; break;
+            case 6: view_down_ = true, view_shifted_ = false; break; // a tap or a hold and shift: see KeyUp, KnobTurn
             case 7:
                 if(held_[kKeyCopy])
                 {
@@ -1989,6 +2012,7 @@ class Ui
         drums_          = !drums_;
         transpose_mode_ = false;
         paste_          = false;
+        view_down_      = false;
         swapped_at_     = last_tick_;
     }
 
@@ -2346,7 +2370,7 @@ class Ui
         if(page_ == Page::RATCHET)
             f.key[kBlack[4]] = kPageColour[static_cast<int>(Page::RATCHET)]; // TIE's key, in the ratchet's colour
         f.key[kKeyTranspose] = Scale(kTransposeKeyColour, transpose_mode_ ? 1.f : 0.15f);
-        f.key[kKeyView]      = ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
+        f.key[kKeyView]      = view_down_ ? Rgb{1.f, 1.f, 1.f} : ShownSecondHalf() ? Rgb{.5f, .5f, .5f} : Rgb{.08f, .08f, .08f};
         // The pattern key: its side's colour (PatternColour).
         f.key[kKeyPattern] = Scale(PatternColour(PatternSide(m_->CurrentPattern())),
                                    page_ == Page::PATTERN ? 1.f : (m_->Protected() ? 0.3f : 0.1f));
@@ -2733,6 +2757,8 @@ class Ui
     bool     drum_acc_page_         = false; // step mode: the accent page
     bool     drum_rat_page_         = false; // step mode: the selected voice's ratchet page
     uint32_t metronome_at_          = 0x80000000u; // when the metronome last switched
+    bool     view_down_             = false; // step mode: D#4 down (a tap, or held to shift)
+    bool     view_shifted_          = false; // ...and the part shifted meanwhile
     bool     copy_tap_              = false; // COPY down, nothing else pressed yet
     bool     paste_                 = false; // step mode, COPY tapped: the next step key pastes
     int      paste_src_             = -1;    // the step to paste (drums: -1 until picked)

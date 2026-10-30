@@ -4453,6 +4453,58 @@ static void TestMetronome()
     CHECK(clicks == 0);
 }
 
+static void TestShift()
+{
+    printf("shift: D#4 held + purple knob moves the part a step a click, round its length\n");
+    // Bass: right is later, left earlier; back to the middle is where it was.
+    {
+        Rig r;
+        Pattern& p = r.m.Current();
+        DemoPattern(p);
+        p.length = 12;
+        p.steps[0].ratchet = 3, p.steps[0].nudge = 2;
+        const Pattern was = p;
+        const Settings before = r.m.settings;
+        r.ui.KeyDown(Ui::kKeyView, r.now);
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kKeyView].r > 0.9f);
+        r.ui.KnobTurn(4, 1, false);
+        CHECK(p.steps[1] == was.steps[0] && p.steps[0] == was.steps[11] && p.steps[12] == was.steps[12]);
+        CHECK(memcmp(r.m.settings.params, before.params, sizeof before.params) == 0); // not the knob's own job
+        r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, -1, false), r.ui.KnobTurn(4, -1, false);
+        CHECK(p == was);
+        r.ui.KnobTurn(4, -1, false); // one earlier
+        const bool half = r.ui.SecondHalf();
+        r.ui.KeyUp(Ui::kKeyView, r.now);
+        CHECK(p.steps[11] == was.steps[0] && r.ui.SecondHalf() == half); // kept; no view flip
+        // A plain tap still flips the view; the wheel alone does its own job (the cutoff).
+        r.Key(Ui::kKeyView);
+        CHECK(r.ui.SecondHalf() != half);
+        const Pattern now = p;
+        r.ui.KnobTurn(4, 1, false);
+        CHECK(p == now && memcmp(r.m.settings.params, before.params, sizeof before.params) != 0);
+    }
+    // Drums: the drum part (its own length), the bassline untouched.
+    {
+        Rig r;
+        r.ui.Loop(r.now); // the drums
+        Pattern& p = r.m.DrumPattern();
+        DemoPattern(p);
+        p.drum_length = 8;
+        p.drums[7] = (1 << SD) | kDrumAccent, p.drum_ratchet[7][SD] = 2, p.drum_pitch[7][SD] = -3;
+        p.drums[0] = 1 << BD;
+        const Pattern was = p;
+        r.ui.KeyDown(Ui::kKeyView, r.now);
+        r.ui.KnobTurn(4, 1, false);
+        r.ui.KeyUp(Ui::kKeyView, r.now);
+        CHECK(p.drums[0] == was.drums[7] && p.DrumHits(0, SD) == 2 && p.drum_pitch[0][SD] == -3);
+        CHECK(p.drums[1] == was.drums[0] && p.drums[8] == was.drums[8]);
+        for(int i = 0; i < kSteps; i++)
+            CHECK(p.steps[i] == was.steps[i]);
+    }
+}
+
 int main()
 {
     TestQuadrature();
@@ -4494,6 +4546,7 @@ int main()
     TestRatchet();
     TestStepPaste();
     TestMetronome();
+    TestShift();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();

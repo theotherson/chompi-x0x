@@ -250,6 +250,36 @@ struct Pattern
         drum_length = o.drum_length;
     }
 
+    /** The bassline shifted `d` steps later (earlier if negative), round
+     *  its length; each step keeps its note, flags, timing and ratchet. */
+    void ShiftBass(int d)
+    {
+        const int len = ClampInt(length, 1, kSteps);
+        d             = ((d % len) + len) % len;
+        Step was[kSteps];
+        for(int i = 0; i < len; i++)
+            was[i] = steps[i];
+        for(int i = 0; i < len; i++)
+            steps[(i + d) % len] = was[i];
+    }
+
+    /** The drum part shifted `d` steps later (earlier if negative), round
+     *  its own length: hits, accents, timing, pitch and ratchets. */
+    void ShiftDrums(int d)
+    {
+        const int len = ClampInt(drum_length, 1, kSteps);
+        d             = ((d % len) + len) % len;
+        Pattern was   = *this;
+        for(int i = 0; i < len; i++)
+        {
+            const int to = (i + d) % len;
+            drums[to]    = was.drums[i];
+            memcpy(drum_nudge[to], was.drum_nudge[i], kDrumVoices);
+            memcpy(drum_pitch[to], was.drum_pitch[i], kDrumVoices);
+            memcpy(drum_ratchet[to], was.drum_ratchet[i], kDrumVoices);
+        }
+    }
+
     void ClearDrums()
     {
         for(int i = 0; i < kSteps; i++)
