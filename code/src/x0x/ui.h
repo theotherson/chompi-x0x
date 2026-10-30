@@ -131,7 +131,8 @@
  *
  *  Knobs: clicking knob 1, knob 4 or volume steps through its pages;
  *  CHOMPI + click resets both functions of the knob's page to their
- *  defaults (knob 4: all the effects, every page). The big knob's click is
+ *  defaults (knob 4: all the effects, every page), but on the volume knob
+ *  turns the metronome on / off. The big knob's click is
  *  tap tempo. See params.h kKnobMap for what each turns.
  */
 #pragma once
@@ -564,6 +565,13 @@ class Ui
         if(drums_ && knob == 4 && chompi_)
         {
             m_->SetParam(SWING, kParams[SWING].def);
+            return;
+        }
+        if(chompi_ && knob == 5)
+        {
+            // CHOMPI + the volume knob pushed: the metronome on / off.
+            m_->SetMetronome(!m_->Metronome());
+            metronome_at_ = now;
             return;
         }
         if(chompi_)
@@ -2667,6 +2675,10 @@ class Ui
             // Never below a fifth, so the page's colour always shows.
             f.knob[k] = Scale(c, 0.2f + 0.8f * v);
         }
+        // The metronome just switched: the volume knob flashes green (on)
+        // or red (off).
+        if(now - metronome_at_ < 400)
+            f.knob[5] = m_->Metronome() ? Rgb{0.f, 1.f, .2f} : kRed;
     }
 
     Machine* m_       = nullptr;
@@ -2720,6 +2732,7 @@ class Ui
     uint32_t solo_at_               = 0x80000000u;
     bool     drum_acc_page_         = false; // step mode: the accent page
     bool     drum_rat_page_         = false; // step mode: the selected voice's ratchet page
+    uint32_t metronome_at_          = 0x80000000u; // when the metronome last switched
     bool     copy_tap_              = false; // COPY down, nothing else pressed yet
     bool     paste_                 = false; // step mode, COPY tapped: the next step key pastes
     int      paste_src_             = -1;    // the step to paste (drums: -1 until picked)

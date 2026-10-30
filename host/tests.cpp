@@ -2218,11 +2218,12 @@ static void TestDrumMuteSoloMix()
     CHECK(r.ui.KnobPage(5) == 2);
     r.ui.KnobTurn(5, -10, false);
     CHECK(r.m.settings.params[MIX] < 0.5f);
-    // CHOMPI: the effects' balance (not the mutes); CHOMPI + click resets.
+    // CHOMPI: the effects' balance (not the mutes); CHOMPI + click is the
+    // metronome, not a reset.
     r.ui.Chompi(true), r.ui.KnobTurn(5, 10, false), r.ui.Chompi(false);
     CHECK(r.m.settings.params[FX_MIX] > 0.5f && r.m.settings.params[MIX_MUTE] == 0.f);
     r.ui.Chompi(true), r.ui.KnobClick(5, r.now), r.ui.Chompi(false);
-    CHECK(r.m.settings.params[FX_MIX] == 0.5f && r.m.settings.params[MIX] == 0.5f);
+    CHECK(r.m.settings.params[FX_MIX] > 0.5f && r.m.settings.params[MIX] < 0.5f && r.m.Metronome());
 }
 
 static void TestDrumEffects()
@@ -4390,6 +4391,68 @@ static void TestStepPaste()
     }
 }
 
+static void TestMetronome()
+{
+    printf("metronome: CHOMPI + volume knob pushed; a click each beat, under the voices\n");
+    // Peak output, and clicks (sound starting after 20 ms of silence), over ms.
+    auto listen = [](Rig& r, int ms, float& peak, int& onsets) {
+        float l[kBlock], rr[kBlock];
+        peak = 0.f, onsets = 0;
+        int quiet = 1000;
+        for(int t = 0; t < ms; t++)
+        {
+            r.m.Process(l, rr, kBlock);
+            r.now++, r.ui.Tick(r.now);
+            for(size_t i = 0; i < kBlock; i++)
+            {
+                const float a = fabsf(l[i]);
+                peak = a > peak ? a : peak;
+                if(a > 1e-3f)
+                    onsets += quiet > 960, quiet = 0;
+                else
+                    quiet++;
+            }
+        }
+    };
+    Rig r;
+    CHECK(!r.m.Metronome());
+    r.ui.Chompi(true), r.ui.KnobClick(5, r.now), r.ui.Chompi(false);
+    CHECK(r.m.Metronome() && r.ui.KnobPage(5) == 0); // no page step, no reset
+    LedFrame f;
+    r.ui.Draw(f, r.now);
+    CHECK(f.knob[5].g > 0.9f && f.knob[5].r < 0.1f);
+    float peak;
+    int   clicks;
+    listen(r, 1000, peak, clicks);
+    CHECK(clicks == 0); // stopped: silent
+    r.m.Play();
+    listen(r, 2000, peak, clicks);
+    CHECK(clicks == 4 || clicks == 5); // 120 BPM: a beat every 500 ms
+    const float click_peak = peak;
+    // Quieter than the bass: the demo pattern's peak, metronome off.
+    Rig b;
+    DemoPattern(b.m.patterns[0]);
+    b.m.Loaded();
+    b.m.Play();
+    float bass_peak;
+    listen(b, 2000, bass_peak, clicks);
+    CHECK(click_peak > 0.01f && click_peak < 0.5f * bass_peak);
+    printf("  (click peak %.1f dB under the demo bassline's)\n", 20.f * log10f(bass_peak / click_peak));
+    // Triplets (1/8T): still on the beat, every 3 steps.
+    r.m.Stop(), r.Run(100);
+    r.m.Current().SetScale(kScale8T);
+    r.m.Play();
+    listen(r, 2000, peak, clicks);
+    CHECK(clicks == 4 || clicks == 5);
+    // Off again: red, silent.
+    r.ui.Chompi(true), r.ui.KnobClick(5, r.now), r.ui.Chompi(false);
+    r.ui.Draw(f, r.now);
+    CHECK(!r.m.Metronome() && f.knob[5].r > 0.9f);
+    r.Run(100);
+    listen(r, 1500, peak, clicks);
+    CHECK(clicks == 0);
+}
+
 int main()
 {
     TestQuadrature();
@@ -4430,6 +4493,7 @@ int main()
     TestDrumTimingAndLiveKeys();
     TestRatchet();
     TestStepPaste();
+    TestMetronome();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();

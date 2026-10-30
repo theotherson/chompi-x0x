@@ -103,6 +103,7 @@ class Machine
         queued_   = -1;
         drum_pos_ = -1; // the first step is the drums' first
         lfo_phase_ = 0.f, lfo_held_ = NextLfoRandom(); // the drums' LFO from the top
+        metro_ticks_ = 0; // the metronome's first beat: the downbeat
         seq_.Start();
         // On our own clock we lead, and keep leading, stopped or not, until
         // another device sends Start: a DAW synced to us echoes our clock
@@ -884,6 +885,21 @@ class Machine
         // The master compressor, on everything.
         comp_.Set(p[COMP]);
         comp_.Process(left, right, n);
+        // The metronome's click: after the compressor (it never ducks the
+        // mix), before the volume (it follows it).
+        for(size_t i = 0; i < n && click_left_ > 0; i++)
+        {
+            if(click_delay_ > 0)
+            {
+                click_delay_--;
+                continue;
+            }
+            const float c = click_env_ * FastSin2Pi(click_phase_);
+            left[i] += c, right[i] += c;
+            click_phase_ += click_inc_;
+            click_env_ *= click_decay_;
+            click_left_--;
+        }
         const float vol = settings.params[VOLUME] * settings.params[VOLUME] * 1.5f;
         for(size_t i = 0; i < n; i++)
         {
@@ -894,6 +910,11 @@ class Machine
                 left[i] = right[i] = 0.f, bad_out_++;
         }
     }
+
+    /** The metronome (CHOMPI + the volume knob pushed): a click on each
+     *  beat while the pattern runs, well under the voices. Not saved. */
+    bool Metronome() const { return metronome_; }
+    void SetMetronome(bool on) { metronome_ = on; }
 
     /** A side's mute (the bass, or the drums): silent, effects and all. */
     bool SideMuted(bool drums) const { return (StepIndex(settings.params[MIX_MUTE], 4) >> (drums ? 1 : 0)) & 1; }
@@ -1135,6 +1156,10 @@ class Machine
                     PushMidi(0x80 | ch, e.note, 0);
                 break;
             case Sequencer::Event::GRID:
+                // The metronome: a click on each beat, higher on the bar's first.
+                if(metronome_ && metro_ticks_ % 24 == 0)
+                    StartClick(e.offset, metro_ticks_ % 96 == 0);
+                metro_ticks_ += static_cast<uint32_t>(seq_.StepTicks());
                 // The drums step on the grid; at the top, a pattern queued for
                 // both sides takes them over too, from their first step (before
                 // a late first bass note starts the bass's).
@@ -1235,6 +1260,19 @@ class Machine
         record_count_++;
     }
 
+    /** A metronome click from sample `offset` of this block: 1.5 kHz on the
+     *  bar's first beat, 1 kHz on the others, 30 ms. */
+    void StartClick(uint32_t offset, bool downbeat)
+    {
+        click_delay_ = static_cast<int>(offset);
+        click_left_  = static_cast<int>(0.03f * sr_);
+        click_phase_ = 0.f;
+        click_inc_   = (downbeat ? 1500.f : 1000.f) / sr_;
+        click_env_   = kClickLevel * (downbeat ? 1.4f : 1.f);
+        click_decay_ = 1.f - TauToCoef(0.006f, sr_); // 6 ms
+    }
+    static constexpr float kClickLevel = 0.09f; // well under the bass and drums
+
     void PushMidi(uint8_t a, int b = -1, int c = -1)
     {
         MidiOut m;
@@ -1323,6 +1361,12 @@ class Machine
     bool recording_  = false;
     int  rec_key_    = -1;
     int  rec_step_   = -1;
+    // The metronome: on, ticks since PLAY, and the click sounding (a short
+    // sine blip: samples to wait in the block, samples left, its envelope).
+    bool     metronome_   = false;
+    uint32_t metro_ticks_ = 0;
+    int      click_delay_ = 0, click_left_ = 0;
+    float    click_phase_ = 0.f, click_inc_ = 0.f, click_env_ = 0.f, click_decay_ = 0.f;
     int   live_ratchet_   = 1;   // SetLiveRatchet
     float live_rat_clock_ = 0.f; // samples since the held note's last hit
 
