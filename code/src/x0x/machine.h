@@ -1007,7 +1007,8 @@ class Machine
             if(((s >> v) & 1) && DrumAudible(v) && !((skip >> v) & 1))
             {
                 const bool acc   = (s & kDrumAccent) != 0;
-                const int  nudge = quant ? 0 : ClampInt(pat.drum_nudge[drum_pos_][v], 0, seq_.StepTicks() - 1); // within the step
+                // Within the step; set by hand, it plays as set, quantize or not.
+                const int  nudge = quant && !pat.DrumTimed(drum_pos_, v) ? 0 : ClampInt(pat.drum_nudge[drum_pos_][v], 0, seq_.StepTicks() - 1);
                 const int  semis = pat.drum_pitch[drum_pos_][v];
                 const int  pay   = v | (acc ? kDrumAccent : 0) | ((semis + 64) << 8);
                 if(nudge == 0)
@@ -1065,6 +1066,7 @@ class Machine
         roll_rec_step_[v] = static_cast<int8_t>(step); // (a roll's key hit counts as its first)
         pat.drums[step]   = static_cast<uint8_t>(pat.drums[step] | (1 << v) | (accent ? kDrumAccent : 0));
         pat.drum_nudge[step][v] = static_cast<uint8_t>(nudge);
+        pat.SetDrumTimed(step, v, false); // played live: recorded timing
         pat.drum_pitch[step][v] = static_cast<int8_t>(ClampInt(semis, -12, 12)); // played on the keys
         pat.drum_ratchet[step][v] = 0;
         if(step != drum_pos_)

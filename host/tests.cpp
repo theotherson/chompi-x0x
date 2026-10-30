@@ -2990,13 +2990,16 @@ static void TestDrumTimingAndLiveKeys()
             full[i].steps[st].accent = full[i].steps[st].slide = full[i].steps[st].tie = true;
             full[i].steps[st].nudge = 5;
             full[i].drums[st]       = 0xff;
-            full[i].steps[st].ratchet = 4;
+            full[i].steps[st].ratchet = 4, full[i].steps[st].timed = true;
+            full[i].drum_timed[st] = 0x7f;
             for(int v = 0; v < kDrumVoices; v++)
                 full[i].drum_nudge[st][v] = 5, full[i].drum_pitch[st][v] = -12, full[i].drum_ratchet[st][v] = 4;
         }
     }
-    static char big[32768]; // storage.h's buffer
-    CHECK(WritePatterns(full, kPatterns, big, sizeof big) > 0);
+    static char big[40960]; // storage.h's buffer
+    const size_t worst = WritePatterns(full, kPatterns, big, sizeof big);
+    CHECK(worst > 0);
+    printf("  (every pattern full: %zu bytes of the card buffer's %zu)\n", worst, sizeof big);
 }
 
 static void TestFastMathAndGuards()
@@ -4235,7 +4238,7 @@ static void TestRatchet()
         static char buf[32768];
         const size_t n = WritePatterns(pats, kPatterns, buf, sizeof buf);
         buf[n] = '\0';
-        CHECK(strstr(buf, "step 4 0 0 1 0 0 0 0 3\n") != nullptr);
+        CHECK(strstr(buf, "step 4 0 0 1 0 0 0 0 3 0\n") != nullptr);
         CHECK(strstr(buf, "drum_ratchet 1111111 1111111 1211111 ") != nullptr);
         CHECK(strstr(buf, "pattern 1A") && !strstr(strstr(buf, "pattern 1A"), "drum_ratchet 1111111 1111111 1111111"));
         ReadPatterns(buf, back, kPatterns);
@@ -4505,6 +4508,116 @@ static void TestShift()
     }
 }
 
+static void TestStepTiming()
+{
+    printf("step timing: a step held + purple knob, a tick a click; kept with quantize on\n");
+    // When step 1's note starts after PLAY, in ms.
+    auto first_on = [](Rig& r) {
+        Machine::MidiOut mo;
+        while(r.m.PopMidi(Machine::kUart, mo))
+            ;
+        r.m.Play();
+        for(int t = 0; t < 120; t++)
+        {
+            r.Run(1);
+            while(r.m.PopMidi(Machine::kUart, mo))
+                if((mo.b[0] & 0xf0) == 0x90 && mo.b[2] > 0 && (mo.b[0] & 0x0f) == r.m.options.channel_out - 1)
+                    return t;
+        }
+        return -1;
+    };
+    {
+        Rig r;
+        r.S(0).on = true;
+        CHECK(StepIndex(r.m.settings.params[QUANTIZE], 2) == 1); // quantize on (the default)
+        const Settings before = r.m.settings;
+        r.ui.KeyDown(Ui::kWhite[0], r.now);
+        r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, 1, false);
+        CHECK(r.S(0).nudge == 2 && r.S(0).timed);
+        CHECK(memcmp(r.m.settings.params, before.params, sizeof before.params) == 0); // not the cutoff
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kWhite[2]].r > 0.9f && f.key[Ui::kWhite[1]].r < 0.2f); // tick 2 shown
+        r.ui.KeyUp(Ui::kWhite[0], r.now);
+        CHECK(r.S(0).on); // timed: no toggle when let go
+        // Clamped to the step: at 1/16, 5 ticks late at most.
+        r.ui.KeyDown(Ui::kWhite[0], r.now);
+        for(int i = 0; i < 8; i++)
+            r.ui.KnobTurn(4, 1, false);
+        CHECK(r.S(0).nudge == 5);
+        for(int i = 0; i < 3; i++)
+            r.ui.KnobTurn(4, -1, false);
+        r.ui.KeyUp(Ui::kWhite[0], r.now);
+        CHECK(r.S(0).nudge == 2 && r.S(0).on);
+        // Plays 2 ticks late (42 ms at 120) with quantize on; recorded timing would snap.
+        const int at = first_on(r);
+        CHECK(at >= 41 && at <= 43);
+        r.m.Stop(), r.Run(50);
+        r.S(0).timed = false;
+        CHECK(first_on(r) <= 1);
+        r.m.Stop(), r.Run(50);
+        r.S(0).timed = true;
+        // Back to the grid: no longer timed by hand.
+        r.ui.KeyDown(Ui::kWhite[0], r.now);
+        r.ui.KnobTurn(4, -1, false), r.ui.KnobTurn(4, -1, false), r.ui.KnobTurn(4, -1, false);
+        r.ui.KeyUp(Ui::kWhite[0], r.now);
+        CHECK(r.S(0).nudge == 0 && !r.S(0).timed && r.S(0).on);
+        // A tap still toggles (when let go); a step that's off has no timing.
+        r.White(0);
+        CHECK(!r.S(0).on);
+        r.ui.KeyDown(Ui::kWhite[0], r.now), r.ui.KnobTurn(4, 1, false), r.ui.KeyUp(Ui::kWhite[0], r.now);
+        CHECK(!r.S(0).on && r.S(0).nudge == 0);
+        // On a flag page, holding a step to time it doesn't toggle the flag.
+        r.S(3).on = true;
+        r.Black(2); // ACCENT
+        r.ui.KeyDown(Ui::kWhite[3], r.now), r.ui.KnobTurn(4, 1, false), r.ui.KeyUp(Ui::kWhite[3], r.now);
+        CHECK(!r.S(3).accent && r.S(3).nudge == 1);
+        r.White(3);
+        CHECK(r.S(3).accent);
+        // Saved.
+        Pattern pats[kPatterns], back[kPatterns];
+        pats[0] = r.m.Current();
+        pats[0].drums[2] = 1 << SD, pats[0].drum_nudge[2][SD] = 4, pats[0].SetDrumTimed(2, SD, true);
+        static char buf[40960];
+        const size_t n = WritePatterns(pats, kPatterns, buf, sizeof buf);
+        buf[n] = '\0';
+        CHECK(strstr(buf, "drum_timed 00 00 02 ") != nullptr);
+        ReadPatterns(buf, back, kPatterns);
+        CHECK(back[0] == pats[0] && back[0].steps[3].timed && back[0].DrumTimed(2, SD));
+    }
+    // Drums: the selected voice's hit on the step held; plays late with
+    // drum quantize on; the key let go doesn't take the hit off.
+    {
+        Rig r;
+        r.ui.Loop(r.now); // the drums
+        Pattern& p = r.m.DrumPattern();
+        r.Black(0); // BD
+        r.White(0); // a hit on step 1
+        CHECK(p.DrumHit(0, BD));
+        r.ui.KeyDown(Ui::kWhite[0], r.now);
+        r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, 1, false), r.ui.KnobTurn(4, 1, false);
+        r.ui.KeyUp(Ui::kWhite[0], r.now);
+        CHECK(p.DrumHit(0, BD) && p.drum_nudge[0][BD] == 3 && p.DrumTimed(0, BD));
+        CHECK(r.m.settings.params[TEMPO] == kParams[TEMPO].def); // the drums' purple knob: not the tempo
+        const uint32_t c0 = r.m.DrumHitCount(BD);
+        r.m.Play();
+        int at = -1;
+        for(int t = 0; t < 120 && at < 0; t++)
+        {
+            r.Run(1);
+            if(r.m.DrumHitCount(BD) != c0)
+                at = t;
+        }
+        CHECK(at >= 61 && at <= 64); // 3 ticks: 62.5 ms
+        // A recorded (live) hit's timing still snaps with quantize on.
+        r.m.Stop(), r.Run(50);
+        p.SetDrumTimed(0, BD, false);
+        const uint32_t c1 = r.m.DrumHitCount(BD);
+        r.m.Play(), r.Run(2);
+        CHECK(r.m.DrumHitCount(BD) != c1);
+    }
+}
+
 int main()
 {
     TestQuadrature();
@@ -4547,6 +4660,7 @@ int main()
     TestStepPaste();
     TestMetronome();
     TestShift();
+    TestStepTiming();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();

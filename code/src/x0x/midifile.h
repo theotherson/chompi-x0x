@@ -119,7 +119,7 @@ inline size_t WriteMidiFile(const Pattern& pat, float bpm, int grid, const char*
             if(pat.DrumHit(i, v))
             {
                 const uint32_t t = static_cast<uint32_t>(
-                    i * stp + (drums_quantized ? 0 : pat.drum_nudge[i][v] * kMidiTicksPerNudge));
+                    i * stp + (drums_quantized && !pat.DrumTimed(i, v) ? 0 : pat.drum_nudge[i][v] * kMidiTicksPerNudge));
                 const uint8_t  vel  = static_cast<uint8_t>(pat.DrumAccent(i) ? kMidiAccentVel : kMidiNormalVel);
                 const int      hits = pat.DrumHits(i, v);
                 for(int h = 0; h < hits; h++)

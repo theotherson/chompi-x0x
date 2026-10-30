@@ -78,13 +78,15 @@ struct Step
     bool    tie    = false;
     uint8_t nudge  = 0; // ticks after the step's start, within it (0-5 at 1/16)
     uint8_t ratchet = 1; // hits within the step, 1-4 (Ratchets)
+    bool    timed   = false; // nudge set by hand (step mode): kept with quantize on
 
     int Midi() const { return kBaseNote + note + 12 * octave; }
     int Hits() const { return Ratchets(ratchet); }
     bool operator==(const Step& o) const
     {
         return note == o.note && octave == o.octave && on == o.on && accent == o.accent
-               && slide == o.slide && tie == o.tie && nudge == o.nudge && Hits() == o.Hits();
+               && slide == o.slide && tie == o.tie && nudge == o.nudge && Hits() == o.Hits()
+               && timed == o.timed;
     }
 };
 
@@ -136,6 +138,22 @@ struct Pattern
     /** Each hit's ratchet: hits within the step (0 or 1 = one). */
     uint8_t drum_ratchet[kSteps][kDrumVoices] = {};
     int DrumHits(int step, int voice) const { return Ratchets(drum_ratchet[step][voice]); }
+    /** Per step, a bit for each voice whose timing was set by hand (step
+     *  mode): played as set, quantize or not. */
+    uint8_t drum_timed[kSteps] = {};
+    bool DrumTimed(int step, int voice) const { return (drum_timed[step] >> voice) & 1; }
+    void SetDrumTimed(int step, int voice, bool on)
+    {
+        const uint8_t bit = static_cast<uint8_t>(1 << voice);
+        drum_timed[step]  = static_cast<uint8_t>(on ? drum_timed[step] | bit : drum_timed[step] & ~bit);
+    }
+    bool AnyDrumTimed() const
+    {
+        for(int i = 0; i < kSteps; i++)
+            if(drum_timed[i])
+                return true;
+        return false;
+    }
 
     /** Sets or clears a hit (on the grid). */
     void SetDrumHit(int step, int voice, bool on)
@@ -145,6 +163,7 @@ struct Pattern
         drum_nudge[step][voice]   = 0;
         drum_pitch[step][voice]   = 0;
         drum_ratchet[step][voice] = 0;
+        SetDrumTimed(step, voice, false);
     }
     bool DrumPitched() const
     {
@@ -190,15 +209,15 @@ struct Pattern
     Step PlayedStep(int i, int grid) const
     {
         const Step& own = steps[i];
-        if(grid <= 0 || (own.on && !own.tie && own.nudge == 0))
-            return own;
+        if(grid <= 0 || (own.on && !own.tie && (own.nudge == 0 || own.timed)))
+            return own; // on its step, or its timing set by hand
         const int st   = StepTicks();
         const int gt   = grid * st;
         int       best = -1, best_d = 1 << 30;
         for(int j = 0; j < length; j++)
         {
             const Step& s = steps[j];
-            if(!s.on || s.tie || s.nudge == 0)
+            if(!s.on || s.tie || s.nudge == 0 || s.timed)
                 continue;
             const int tick   = j * st + s.nudge;
             const int target = (tick + gt / 2) / gt * gt; // nearest grid point, in ticks
@@ -247,6 +266,7 @@ struct Pattern
         memcpy(drum_nudge, o.drum_nudge, sizeof drum_nudge);
         memcpy(drum_pitch, o.drum_pitch, sizeof drum_pitch);
         memcpy(drum_ratchet, o.drum_ratchet, sizeof drum_ratchet);
+        memcpy(drum_timed, o.drum_timed, sizeof drum_timed);
         drum_length = o.drum_length;
     }
 
@@ -277,6 +297,7 @@ struct Pattern
             memcpy(drum_nudge[to], was.drum_nudge[i], kDrumVoices);
             memcpy(drum_pitch[to], was.drum_pitch[i], kDrumVoices);
             memcpy(drum_ratchet[to], was.drum_ratchet[i], kDrumVoices);
+            drum_timed[to] = was.drum_timed[i];
         }
     }
 
@@ -284,7 +305,8 @@ struct Pattern
     {
         for(int i = 0; i < kSteps; i++)
         {
-            drums[i] = 0;
+            drums[i]      = 0;
+            drum_timed[i] = 0;
             for(int v = 0; v < kDrumVoices; v++)
                 drum_nudge[i][v] = 0, drum_pitch[i][v] = 0, drum_ratchet[i][v] = 0;
         }
@@ -306,7 +328,7 @@ struct Pattern
         if(length != o.length || drum_length != o.drum_length || scale != o.scale)
             return false;
         for(int i = 0; i < kSteps; i++)
-            if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i]
+            if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i] || drum_timed[i] != o.drum_timed[i]
                || memcmp(drum_nudge[i], o.drum_nudge[i], kDrumVoices) != 0
                || memcmp(drum_pitch[i], o.drum_pitch[i], kDrumVoices) != 0)
                 return false;
@@ -342,9 +364,9 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
         for(int i = 0; i < kSteps; i++)
         {
             const Step& s = pat.steps[i];
-            w = snprintf(buf + len, size - len, "step %d %d %d %d %d %d %d %d %d\n", i + 1, s.note,
+            w = snprintf(buf + len, size - len, "step %d %d %d %d %d %d %d %d %d %d\n", i + 1, s.note,
                          s.octave, s.on ? 1 : 0, s.accent ? 1 : 0, s.slide ? 1 : 0, s.tie ? 1 : 0,
-                         s.nudge, s.Hits());
+                         s.nudge, s.Hits(), s.timed ? 1 : 0);
             if(w <= 0 || static_cast<size_t>(w) >= size - len)
                 return 0;
             len += w;
@@ -404,6 +426,24 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
                     d[1 + v] = static_cast<char>('m' + ClampInt(pat.drum_pitch[i][v], -12, 12));
                 d[kDrumVoices + 1] = '\0';
                 w = snprintf(buf + len, size - len, "%s", d);
+                if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                    return 0;
+                len += w;
+            }
+            if(len + 1 >= size)
+                return 0;
+            buf[len++] = '\n';
+            buf[len]   = '\0';
+        }
+        if(pat.AnyDrumTimed())
+        {
+            w = snprintf(buf + len, size - len, "drum_timed");
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+            for(int i = 0; i < kSteps; i++)
+            {
+                w = snprintf(buf + len, size - len, " %02x", pat.drum_timed[i]);
                 if(w <= 0 || static_cast<size_t>(w) >= size - len)
                     return 0;
                 len += w;
@@ -497,6 +537,19 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                     p++; // anything more in this step's group: skipped
             }
         }
+        else if(pat && strncmp(line, "drum_timed ", 11) == 0)
+        {
+            char* p = line + 11;
+            for(int i = 0; i < kSteps; i++)
+            {
+                char*      end;
+                const long v = strtol(p, &end, 16);
+                if(end == p)
+                    break;
+                pat->drum_timed[i] = static_cast<uint8_t>(v & 0x7f);
+                p                  = end;
+            }
+        }
         else if(pat && strncmp(line, "drum_ratchet ", 13) == 0)
         {
             const char* p = line + 13;
@@ -540,9 +593,9 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
         else if(pat && strncmp(line, "step ", 5) == 0)
         {
             char* p    = line + 5;
-            long  v[9] = {};
-            int   got  = 0;
-            for(; got < 9; got++)
+            long  v[10] = {};
+            int   got   = 0;
+            for(; got < 10; got++)
             {
                 char* end;
                 v[got] = strtol(p, &end, 10);
@@ -550,7 +603,8 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                     break;
                 p = end;
             }
-            // 7 numbers: written before nudge existed; 8, before ratchets.
+            // 7 numbers: written before nudge existed; 8, before ratchets;
+            // 9, before timing set by hand.
             if(got >= 7 && v[0] >= 1 && v[0] <= kSteps && v[1] >= 0 && v[1] < kKeyNotes
                && v[2] >= -1 && v[2] <= 1)
             {
@@ -563,6 +617,7 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                 s.tie    = v[6] != 0;
                 s.nudge  = static_cast<uint8_t>(ClampInt(static_cast<int>(v[7]), 0, 9));
                 s.ratchet = static_cast<uint8_t>(got >= 9 ? Ratchets(static_cast<int>(v[8])) : 1);
+                s.timed   = got >= 10 && v[9] != 0;
             }
         }
         line = next;

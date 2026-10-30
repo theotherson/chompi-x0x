@@ -261,6 +261,7 @@ class Ui
         page_           = Page::NOTES;
         paste_          = false;
         view_down_      = false;
+        step_held_      = -1;
         transpose_mode_ = false;
         m_->SetRecording(false);
     }
@@ -333,6 +334,18 @@ class Ui
         held_[k] = false;
         if(k == kKeyTranspose)
             c4_held_ = false;
+        if(k == step_key_ && step_held_ >= 0)
+        {
+            const int st = step_held_;
+            step_held_   = -1;
+            if(step_act_ && !step_timed_)
+            {
+                if(drums_)
+                    DrumStepKey(st);
+                else
+                    StepKey(st);
+            }
+        }
         if(k == kKeyView && view_down_)
         {
             // D#4 let go: a tap views the other half; after a shift the
@@ -491,6 +504,11 @@ class Ui
             return;
         if(knob_down_[knob])
             knob_turned_[knob] = true;
+        if(knob == 4 && step_held_ >= 0 && held_[step_key_] && mode_ == Mode::STEP)
+        {
+            TimeStep(inc); // a step held: its timing (not the knob's own job)
+            return;
+        }
         if(knob == 4 && view_down_ && held_[kKeyView] && mode_ == Mode::STEP)
         {
             // D#4 held + the purple wheel: this side's part shifted a step a
@@ -804,6 +822,8 @@ class Ui
             DrawDelayTime(f);
         if(now - scale_shown_at_ < kShowValueMs)
             DrawScale(f);
+        if(now - timing_shown_at_ < kShowValueMs)
+            DrawTiming(f);
 
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -1122,6 +1142,8 @@ class Ui
             DrawLength(f, pat.drum_length);
         if(now - scale_shown_at_ < kShowValueMs)
             DrawScale(f);
+        if(now - timing_shown_at_ < kShowValueMs)
+            DrawTiming(f);
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
                 f.key[k] = {1.f, 0.f, 0.f};
@@ -1445,11 +1467,19 @@ class Ui
                     memcpy(pat.drum_nudge[step], pat.drum_nudge[paste_src_], kDrumVoices);
                     memcpy(pat.drum_pitch[step], pat.drum_pitch[paste_src_], kDrumVoices);
                     memcpy(pat.drum_ratchet[step], pat.drum_ratchet[paste_src_], kDrumVoices);
+                    pat.drum_timed[step] = pat.drum_timed[paste_src_];
                     m_->PatternEdited();
                 }
             }
             return;
         }
+        HoldStep(k, step, true); // DrumStepKey when let go, unless timed meanwhile
+    }
+
+    /** A drum step key let go (not timed while held): the page's toggle. */
+    void DrumStepKey(int step)
+    {
+        Pattern& pat = m_->DrumPattern();
         if(drum_rat_page_)
             pat.drum_ratchet[step][drum_sel_] = static_cast<uint8_t>(pat.DrumHits(step, drum_sel_) % kMaxRatchet + 1);
         else if(drum_acc_page_)
@@ -1457,6 +1487,48 @@ class Ui
         else
             pat.SetDrumHit(step, drum_sel_, !pat.DrumHit(step, drum_sel_)); // on the grid
         m_->PatternEdited();
+    }
+
+    /** Step mode: a step key down. Its action (`act`) waits for it to be let
+     *  go; turning the purple knob meanwhile sets its timing instead. */
+    void HoldStep(int k, int step, bool act)
+    {
+        step_key_   = k;
+        step_held_  = step;
+        step_act_   = act;
+        step_timed_ = false;
+    }
+
+    /** Step mode, a step held + the purple knob: its timing, a tick a click,
+     *  from on the grid to the end of the step (late only: a step's notes
+     *  never come before it). Set so, it plays as set with quantize on. The
+     *  bass's step if it plays a note; the drums', the selected voice's hit. */
+    void TimeStep(int inc)
+    {
+        step_timed_   = true;
+        const int max = m_->Current().StepTicks() - 1; // the grid: the bass's scale
+        const int st  = step_held_;
+        if(drums_)
+        {
+            Pattern& pat = m_->DrumPattern();
+            if(!pat.DrumHit(st, drum_sel_))
+                return;
+            const int n                   = ClampInt(pat.drum_nudge[st][drum_sel_] + inc, 0, max);
+            pat.drum_nudge[st][drum_sel_] = static_cast<uint8_t>(n);
+            pat.SetDrumTimed(st, drum_sel_, n > 0);
+            timing_shown_ = n;
+        }
+        else
+        {
+            Step& s = m_->Current().steps[st];
+            if(!s.on || s.tie)
+                return;
+            s.nudge       = static_cast<uint8_t>(ClampInt(s.nudge + inc, 0, max));
+            s.timed       = s.nudge > 0;
+            timing_shown_ = s.nudge;
+        }
+        m_->PatternEdited();
+        timing_shown_at_ = last_tick_;
     }
 
     void DrumKeyUp(int k)
@@ -1523,7 +1595,10 @@ class Ui
                 {
                     p.drums[i] = static_cast<uint8_t>(p.drums[i] & ~mask);
                     if(mask != kDrumAccent)
+                    {
                         p.drum_nudge[i][drum_sel_] = 0, p.drum_pitch[i][drum_sel_] = 0, p.drum_ratchet[i][drum_sel_] = 0;
+                        p.SetDrumTimed(i, drum_sel_, false);
+                    }
                 }
                 m_->PatternEdited();
             }
@@ -1712,6 +1787,7 @@ class Ui
     static constexpr Rgb kBassColour         = {.55f, 0.f, 1.f};  // the bass's side: purple
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
     static constexpr Rgb kScaleColour        = {.55f, .35f, 1.f}; // the step scale (DrawScale): lavender
+    static constexpr Rgb kTimingColour       = {1.f, .75f, .3f};  // a step's timing (DrawTiming): warm white
     static constexpr Rgb kProtectColour      = {1.f, 0.f, 1.f};   // write protect on, side A: magenta
     static constexpr Rgb kUnprotectColour    = {.25f, .65f, 1.f}; // write protect off, side A: light blue
     static constexpr Rgb kClearColour        = {1.f, 0.f, 0.f};   // CLEAR (A#4): red
@@ -1877,6 +1953,18 @@ class Ui
             }
             return;
         }
+        if(w >= 0 && page_ != Page::PATTERN && !held_[kKeyCopy])
+        {
+            // A step key: selected now (notes page), its toggle when let go,
+            // unless held and the purple knob turned for its timing.
+            const int step = StepOfWhite(w);
+            if(w != 7)
+                half_ = w > 7 ? 1 : 0;
+            HoldStep(k, step, !(page_ == Page::NOTES && step != selected_));
+            if(page_ == Page::NOTES)
+                selected_ = step;
+            return;
+        }
         if(w >= 0)
         {
             const int step = StepOfWhite(w);
@@ -2013,6 +2101,7 @@ class Ui
         transpose_mode_ = false;
         paste_          = false;
         view_down_      = false;
+        step_held_      = -1;
         swapped_at_     = last_tick_;
     }
 
@@ -2501,6 +2590,15 @@ class Ui
             f.key[kWhite[i]] = Scale(kScaleColour, i == sc ? 1.f : 0.08f);
     }
 
+    /** A step's timing just set: white keys 1-6 (1/16; 4 or 8 on the
+     *  triplet scales) are on the grid to 5 ticks late, this one bright. */
+    void DrawTiming(LedFrame& f) const
+    {
+        const int ticks = m_->Current().StepTicks();
+        for(int i = 0; i < ticks && i < kWhiteKeys; i++)
+            f.key[kWhite[i]] = Scale(kTimingColour, i == timing_shown_ ? 1.f : 0.08f);
+    }
+
     void DrawDelayTime(LedFrame& f) const
     {
         const int d = StepIndex(m_->settings.params[DELAY_TIME], kDelayDivisions);
@@ -2758,6 +2856,12 @@ class Ui
     bool     drum_rat_page_         = false; // step mode: the selected voice's ratchet page
     uint32_t metronome_at_          = 0x80000000u; // when the metronome last switched
     bool     view_down_             = false; // step mode: D#4 down (a tap, or held to shift)
+    int      step_key_              = -1;    // step mode: the step key down (HoldStep)
+    int      step_held_             = -1;    // ...its step, -1 when none
+    bool     step_act_              = false; // ...toggle it when let go
+    bool     step_timed_            = false; // ...timed meanwhile: no toggle
+    int      timing_shown_          = 0;     // the timing just set (DrawTiming)
+    uint32_t timing_shown_at_       = 0x80000000u;
     bool     view_shifted_          = false; // ...and the part shifted meanwhile
     bool     copy_tap_              = false; // COPY down, nothing else pressed yet
     bool     paste_                 = false; // step mode, COPY tapped: the next step key pastes
@@ -2834,6 +2938,7 @@ constexpr Rgb Ui::kImportColour;
 constexpr Rgb Ui::kSideBColour;
 constexpr Rgb Ui::kProtectBColour;
 constexpr Rgb Ui::kScaleColour;
+constexpr Rgb Ui::kTimingColour;
 constexpr Rgb Ui::kClearColour;
 constexpr Rgb Ui::kUnprotectColour;
 constexpr Rgb Ui::kQuantizedColour;
