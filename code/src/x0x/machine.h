@@ -958,7 +958,7 @@ class Machine
             if(((s >> v) & 1) && DrumAudible(v) && !((skip >> v) & 1))
             {
                 const bool acc   = (s & kDrumAccent) != 0;
-                const int  nudge = quant ? 0 : pat.drum_nudge[drum_pos_][v];
+                const int  nudge = quant ? 0 : ClampInt(pat.drum_nudge[drum_pos_][v], 0, seq_.StepTicks() - 1); // within the step
                 const int  semis = pat.drum_pitch[drum_pos_][v];
                 if(nudge == 0)
                     PlayDrum(v, acc, semis);
@@ -992,8 +992,8 @@ class Machine
         else
         {
             step  = drum_pos_;
-            nudge = static_cast<int>(phase * kStepTicks + 0.5f);
-            if(nudge >= kStepTicks)
+            nudge = static_cast<int>(phase * seq_.StepTicks() + 0.5f); // the grid's step: the bass's scale
+            if(nudge >= seq_.StepTicks())
                 step = (step + 1) % len, nudge = 0;
         }
         if(roll && roll_rec_step_[v] == step && pat.DrumHit(step, v))
@@ -1158,8 +1158,8 @@ class Machine
         else
         {
             step  = cur;
-            nudge = static_cast<int>(phase * Sequencer::kTicksPerStep + 0.5f);
-            if(nudge >= Sequencer::kTicksPerStep)
+            nudge = static_cast<int>(phase * seq_.StepTicks() + 0.5f);
+            if(nudge >= seq_.StepTicks())
                 step = seq_.NextStep(), nudge = 0;
         }
         RecordAt(step, midi, nudge);

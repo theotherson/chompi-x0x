@@ -52,7 +52,7 @@ The drums keep to the grid: a bass note recorded late doesn't move the drums on 
 | Knob | Turn | With CHOMPI |
 |---|---|---|
 | Knob 1 | The selected voice's level (its colour) | **Pan**: the voice left / right (white, brighter off centre; the white keys show where it sits for a moment, the middle key being centre) |
-| Knob 1, page 2 | Accent level (blue): accented hits up to 3x as loud | The drum part's length, a step every two clicks (shown on the white keys) |
+| Knob 1, page 2 | Accent level (blue): accented hits up to 3x as loud; **push and turn**: the step scale, as on the bass side | The drum part's length, a step every two clicks (shown on the white keys) |
 | Knob 1, page 3 | **LFO speed** (green, moving with it): synced, 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32 (white keys 1-11 show it). One LFO for the kit, in time with the tempo, from the top of the bar when you press PLAY | **Shape**, a step every two clicks: off / triangle / ramp up / ramp down / sample and hold (white keys 1-5 show it) |
 | Knob 1, page 4 | **LFO depth** on this voice (pink) | **What the LFO moves on this voice**, a step every two clicks (white keys 1-7 show it, in the voice's colour): off, level (dips it, as far as silent), pan (swings it either side of its own), tuning (up to an octave either way), its own filter (a low-pass of its own, swept down from open by up to 9 octaves), feedback FM (adds it), decay (longer or shorter, hit by hit). Each voice its own |
 | Knob 2 | Attack: the voice's click / snap | **Tuning** of the selected voice: +-24 semitones, the 606's own in the middle (white, brighter away from it). The hats and cymbal share their oscillators, so the last one played sets their pitch |
@@ -124,13 +124,15 @@ The step lights only show while the pattern plays or you're recording; otherwise
 
 Turning the pattern length (knob 1, page 2), in either mode, shows it on the white keys for a moment: every step within the length dim white, the last one bright: white for steps 1-8, cyan from step 9 (middle C shows step 8 or 9, so the colour tells them apart).
 
+**Step scale (triplets).** Push and turn knob 1 on its length page, on either side, to set what a step is: 1/16 (the default), 1/16 triplets or 1/8 triplets; white keys 1-3 show it, in lavender. Twelve steps of 1/8 triplets make a bar (12/8), twelve of 1/16 triplets half a bar. The scale is saved with the pattern and covers its bassline and its drums. When the bass and the drums play different patterns, the bass's pattern sets the grid for both. A new scale takes over at the top of the pattern's next loop, so it never lurches mid-bar. Triplets aren't swung. Exported MIDI files keep the triplet timing; importing reads every file as sixteenths.
+
 Stepped controls (the wave, the lengths, the synced delay time, the LFO's shape and target) move a step every two clicks, so a nudge doesn't change them; turning back starts the count again. The knobs are read so that a bouncing contact never counts as a click either way.
 
 Click knob 1, knob 4 or the volume knob to step through their pages (knob 4 has four). The click comes when you let go, and not at all if you turned the knob while it was pushed (a single detent while pushed, as pressing an encoder can jog it, doesn't count, and doesn't change anything); each page has its own colour, and so does each CHOMPI function (the light changes colour while CHOMPI is held). A knob never goes darker than a fifth, so you can always see which page it's on. The knobs accelerate: clicked slowly, each click moves a setting about 1 % (fine control); turned at a normal pace, the whole range takes a turn or two; spun, under a turn. Env mod, decay, accent and slide time go a quarter faster still. Stepped settings move one position a click, and tempo 1 BPM a click turned slowly, up to 5 spun. CHOMPI + click sets both functions of that knob's page back to their defaults (pattern length back to 16); on knob 4 it resets all the effects, every page. Hold CHOMPI and push knob 1, 2 or 3 for 2 s to reset every page of that knob at once (the knob flashes white).
 
 | Knob | Page 1 | Page 1 + CHOMPI | Page 2 | Page 2 + CHOMPI |
 |---|---|---|---|---|
-| Knob 1 | Saw / square (amber / cyan) | Pulse width (magenta) | Pattern length (white) | Tuning, +/- 1 semitone (sky blue) |
+| Knob 1 | Saw / square (amber / cyan) | Pulse width (magenta) | Pattern length (white); **push and turn**: the step scale | Tuning, +/- 1 semitone (sky blue) |
 | Knob 2 | Env mod (green) | Accent (orange) | | |
 | Knob 3 | Decay (violet) | Slide time (blue) | | |
 | Knob 4 | Delay dry/wet (cyan); **push and turn**: free delay time, 30 ms to 1.9 s, gliding like tape | Synced delay time: 1/16T, 1/16, 1/8T, 1/8, 1/4T, 3/16, 1/4, 3/8, 1/2 (white; white keys 1-9 show it as you turn) | Tape feedback (amber) | Tape tone: dark to bright (lavender) |

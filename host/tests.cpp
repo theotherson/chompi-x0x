@@ -4018,6 +4018,109 @@ static void TestQuadrature()
     CHECK(feed({3, 2, 0, 1, 3}, 1) == 0);                // one-sample glitches don't count as changes
 }
 
+static void TestScale()
+{
+    printf("step scale: 1/16, 1/16T, 1/8T; at the top of the loop; saved; on knob 1\n");
+    // Steps in one second at 120 BPM: 8 sixteenths, 12 sixteenth triplets, 6 eighth triplets.
+    auto steps_in = [](int scale, float swing) {
+        Rig r;
+        DemoPattern(r.m.patterns[0]);
+        r.m.patterns[0].SetScale(scale);
+        r.m.settings.params[SWING] = swing;
+        r.m.Loaded();
+        r.m.Play();
+        const uint32_t s0 = r.m.StepCount();
+        r.Run(1000);
+        return static_cast<int>(r.m.StepCount() - s0);
+    };
+    CHECK(steps_in(kScale16, 0.f) == 8);
+    CHECK(steps_in(kScale16T, 0.f) == 12);
+    CHECK(steps_in(kScale8T, 0.f) == 6);
+    // Triplets aren't swung: the second step lands 4 ticks (83 ms) in, swing or not.
+    {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        DemoPattern(p);
+        p.SetScale(kScale16T);
+        r.m.settings.params[SWING] = 1.f;
+        r.m.Loaded();
+        r.m.Play();
+        int at = -1;
+        for(int ms = 0; ms < 200 && at < 0; ms++)
+        {
+            r.Run(1);
+            if(r.m.CurrentStep() == 1)
+                at = ms;
+        }
+        CHECK(at >= 82 && at <= 84);
+    }
+    // A change while playing takes over at the top of the loop.
+    {
+        Rig r;
+        Pattern& p = r.m.patterns[0];
+        DemoPattern(p);
+        r.m.Loaded();
+        r.m.Play();
+        r.Run(400); // step 4 of 16, in sixteenths
+        p.SetScale(kScale8T);
+        const uint32_t s0 = r.m.StepCount();
+        r.Run(1600); // the rest of the bar (12 steps, 1.5 s), then 1/8T (166.7 ms a step)
+        CHECK(r.m.StepCount() - s0 == 12 + 0 || r.m.StepCount() - s0 == 12 + 1);
+        const uint32_t s1 = r.m.StepCount();
+        r.Run(1000);
+        CHECK(r.m.StepCount() - s1 == 6);
+    }
+    // Saved with the pattern; absent is 1/16; timing clamped into a shorter step.
+    {
+        Pattern pats[kPatterns], back[kPatterns];
+        pats[2].SetScale(kScale8T);
+        pats[2].steps[0].on = true, pats[2].steps[0].nudge = 7;
+        pats[2].drums[0] = 1, pats[2].drum_nudge[0][0] = 6;
+        static char buf[16384];
+        const size_t n = WritePatterns(pats, kPatterns, buf, sizeof buf);
+        buf[n] = '\0';
+        CHECK(strstr(buf, "scale 2\n") != nullptr);
+        ReadPatterns(buf, back, kPatterns);
+        CHECK(back[2] == pats[2] && back[0].scale == kScale16);
+        back[2].SetScale(kScale16T);
+        CHECK(back[2].steps[0].nudge == 3 && back[2].drum_nudge[0][0] == 3);
+    }
+    // MIDI export: steps 16 file ticks apart at 1/16T (24 at 1/16).
+    {
+        Pattern p;
+        p.SetScale(kScale16T);
+        p.steps[0].on = p.steps[1].on = true;
+        std::vector<uint8_t> v(1024);
+        WriteMidiFile(p, 120.f, 0, "", v.data(), v.size());
+        // after the header (22), tempo (7), time sig (8), name (4): on, its delta 0; off at 8; next on at 16
+        const size_t at = 22 + 7 + 8 + 4;
+        CHECK(v[at] == 0 && v[at + 1] == 0x90);
+        CHECK(v[at + 4] == 8 && v[at + 5] == 0x80);
+        CHECK(v[at + 8] == 8 && v[at + 9] == 0x90);
+    }
+    // The panel: knob 1 pushed and turned on its length page, either side, two clicks a step.
+    {
+        Rig r;
+        r.ui.KnobClick(0, r.now); // page 2: length
+        r.Run(100);
+        r.ui.KnobDown(0);
+        r.ui.KnobTurn(0, 1, false); // the jog, ignored
+        r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
+        CHECK(r.m.Current().scale == kScale16T && r.m.Current().length == 16);
+        LedFrame f;
+        r.ui.Draw(f, r.now);
+        CHECK(f.key[Ui::kWhite[1]].b > 0.9f && f.key[Ui::kWhite[0]].b < 0.2f);
+        r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
+        r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false); // past the last: stays
+        CHECK(r.m.Current().scale == kScale8T);
+        r.ui.KnobUp(0, r.now);
+        CHECK(r.ui.KnobPage(0) == 1); // turned while pushed: no click
+        r.Run(100);
+        r.ui.KnobTurn(0, -1, false), r.ui.KnobTurn(0, -1, false); // not pushed: the length
+        CHECK(r.m.Current().length == 15 && r.m.Current().scale == kScale8T);
+    }
+}
+
 int main()
 {
     TestQuadrature();
@@ -4082,6 +4185,7 @@ int main()
     TestSettingsOptions();
     TestMidiClock();
     TestMidiEcho();
+    TestScale();
     printf(g_fail ? "%d FAILED\n" : "all passed\n", g_fail);
     return g_fail ? 1 : 0;
 }

@@ -453,6 +453,20 @@ class Ui
             return;
         if(knob_down_[knob])
             knob_turned_[knob] = true;
+        if(knob == 0 && knob_down_[0] && (drums_ ? drum_knob1_page_ == 1 : KnobPage(0) == 1))
+        {
+            // Knob 1 pushed and turned on its length page, either side: the
+            // step scale (1/16, 1/16T, 1/8T) of the bass's pattern, which
+            // sets the grid for both; from the top of its next loop.
+            Pattern& pat = m_->Current();
+            if(const int d = SlowStep(0, inc))
+            {
+                pat.SetScale(ClampInt(pat.scale + d, 0, kScales - 1));
+                m_->PatternEdited();
+            }
+            scale_shown_at_ = last_tick_;
+            return;
+        }
         if(drums_ && knob != 5)
         {
             DrumKnobTurn(knob, inc, dt_ms >= 0 ? static_cast<uint32_t>(dt_ms) : (fast ? 15u : 400u));
@@ -731,6 +745,8 @@ class Ui
             DrawArpSetting(f);
         if(now - delay_shown_at_ < kShowValueMs)
             DrawDelayTime(f);
+        if(now - scale_shown_at_ < kShowValueMs)
+            DrawScale(f);
 
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
@@ -1033,6 +1049,8 @@ class Ui
         }
         if(now - drum_len_shown_at_ < kShowLengthMs)
             DrawLength(f, pat.drum_length);
+        if(now - scale_shown_at_ < kShowValueMs)
+            DrawScale(f);
         if(now - cleared_at_ < 300)
             for(int k = 0; k < kKeyNotes; k++)
                 f.key[k] = {1.f, 0.f, 0.f};
@@ -1586,6 +1604,7 @@ class Ui
     static constexpr Rgb kDrumColour         = {1.f, .6f, 0.f};   // the drums' side: amber
     static constexpr Rgb kBassColour         = {.55f, 0.f, 1.f};  // the bass's side: purple
     static constexpr Rgb kQuantizedColour    = {.35f, .75f, 1.f}; // pattern quantized: light blue
+    static constexpr Rgb kScaleColour        = {.55f, .35f, 1.f}; // the step scale (DrawScale): lavender
     static constexpr Rgb kProtectColour      = {1.f, 0.f, 1.f};   // write protect on, side A: magenta
     static constexpr Rgb kUnprotectColour    = {.25f, .65f, 1.f}; // write protect off, side A: light blue
     static constexpr Rgb kClearColour        = {1.f, 0.f, 0.f};   // CLEAR (A#4): red
@@ -2307,6 +2326,15 @@ class Ui
     /** Turning the synced delay time: white keys 1-9 are its nine settings
      *  (1/16T, 1/16, 1/8T, 1/8, 1/4T, 3/16, 1/4, 3/8, 1/2), the one chosen
      *  bright, in knob 4's delay-time white. */
+    /** After knob 1 pushed and turned on the length page: white keys 1-3
+     *  show the step scale (1/16, 1/16T, 1/8T), this one bright. */
+    void DrawScale(LedFrame& f) const
+    {
+        const int sc = m_->Current().scale;
+        for(int i = 0; i < kScales; i++)
+            f.key[kWhite[i]] = Scale(kScaleColour, i == sc ? 1.f : 0.08f);
+    }
+
     void DrawDelayTime(LedFrame& f) const
     {
         const int d = StepIndex(m_->settings.params[DELAY_TIME], kDelayDivisions);
@@ -2541,6 +2569,7 @@ class Ui
     int      slow_[6]               = {};    // clicks toward a stepped control's next step (SlowStep)
     uint32_t knob_reset_at_[3]      = {0x80000000u, 0x80000000u, 0x80000000u};
     uint32_t delay_shown_at_        = 0x80000000u;
+    uint32_t scale_shown_at_        = 0x80000000u; // the step scale on the keys (DrawScale)
     uint32_t pat_key_at_            = 0;
     uint32_t copied_at_             = 0x80000000u;
     uint32_t last_export_seen_      = 0;
@@ -2627,6 +2656,7 @@ constexpr Rgb Ui::kDrumCol[kDrumVoices];
 constexpr Rgb Ui::kImportColour;
 constexpr Rgb Ui::kSideBColour;
 constexpr Rgb Ui::kProtectBColour;
+constexpr Rgb Ui::kScaleColour;
 constexpr Rgb Ui::kClearColour;
 constexpr Rgb Ui::kUnprotectColour;
 constexpr Rgb Ui::kQuantizedColour;

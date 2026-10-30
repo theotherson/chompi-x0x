@@ -3,11 +3,12 @@
  *  note, a tie holds the note before, slide holds the gate into the next note,
  *  which glides; the gate is otherwise half a step long.
  *
- *  Time is counted in MIDI clock ticks, 24 per beat, 6 per step. On the
+ *  Time is counted in MIDI clock ticks, 24 per beat, 6 per step (4 or 8 in
+ *  the pattern's triplet scales). On the
  *  internal clock the ticks come from the sample count, so every event lands
  *  on its exact sample within the audio block. On an external MIDI clock each
  *  incoming clock advances one tick. Swing delays every second step by up to
- *  2 ticks (a triplet feel at full swing).
+ *  2 ticks (a triplet feel at full swing); triplet scales aren't swung.
  *
  *  Events come out in time order with their sample offset in the block. The
  *  caller (Machine) turns them into voice notes and MIDI.
@@ -25,7 +26,6 @@ namespace x0x
 class Sequencer
 {
   public:
-    static constexpr int kTicksPerStep = kStepTicks;
     static constexpr int kMaxEvents    = 32;
 
     struct Event
@@ -69,6 +69,9 @@ class Sequencer
     bool Running() const { return running_; }
     int  CurrentStep() const { return running_ ? step_ : -1; }
     int  NextStep() const { return next_step_; }
+    /** MIDI clock ticks a step, by the pattern's scale. A new scale (or a
+     *  pattern with another) takes over at the top of the pattern. */
+    int StepTicks() const { return ticks_; }
 
     /** How far from the last GRID to the next, 0..1 (recording drums). */
     float GridPhase() const
@@ -123,6 +126,7 @@ class Sequencer
         grid_step_ = 0, grid_pos_ = 0.0, grid_base_ = 0.0, last_grid_pos_ = 0.0;
         drum_count_ = 0;
         roll_next_  = 0.0;
+        ticks_      = pat_ ? pat_->StepTicks() : kStepTicks;
         ScheduleStep();
     }
 
@@ -217,14 +221,17 @@ class Sequencer
         }
         if(grid_pos_ <= pos_ + 1e-9)
         {
-            // The grid first: a step's note is never before its place.
+            // The grid first: a step's note is never before its place. At
+            // the top, the scale of the pattern this loop plays.
+            if(grid_step_ == 0 && (queued_ || pat_))
+                ticks_ = (queued_ ? queued_ : pat_)->StepTicks();
             Event e{Event::GRID, off};
             e.step         = grid_step_;
             ev[count++]    = e;
             last_grid_pos_ = grid_pos_;
             grid_step_++;
             if(grid_step_ >= pat_->length)
-                grid_step_ = 0, grid_base_ += pat_->length * kTicksPerStep; // a wrap is never swung
+                grid_step_ = 0, grid_base_ += pat_->length * StepTicks(); // a wrap is never swung
             grid_pos_ = grid_base_ + GridStart(grid_step_);
         }
         if(step_pos_ <= pos_ + 1e-9)
@@ -254,16 +261,22 @@ class Sequencer
         }
     }
 
+    /** Swing, in ticks: the 1/16 scale only. */
+    double Swing() const { return ticks_ == kScaleTicks[kScale16] ? swing_ticks_ : 0.0; }
+
+    /** A step's recorded timing, within its step. */
+    int Nudge(const Step& s) const { return s.nudge < StepTicks() ? s.nudge : StepTicks() - 1; }
+
     /** Where step `step` sits on the grid, swing included. */
     double GridStart(int step) const
     {
-        return step * kTicksPerStep + (step % 2 == 1 ? swing_ticks_ : 0.0);
+        return step * StepTicks() + (step % 2 == 1 ? Swing() : 0.0);
     }
 
     /** When step `step` actually starts: its grid position plus its nudge. */
     double StepStart(int step) const
     {
-        const double nudge = pat_ && step >= 0 && step < kSteps ? At(step).nudge : 0;
+        const double nudge = pat_ && step >= 0 && step < kSteps ? Nudge(At(step)) : 0;
         return GridStart(step) + nudge;
     }
 
@@ -271,7 +284,7 @@ class Sequencer
      *  past the end when it wraps (so a wrap is never swung). */
     double NextGridStart() const
     {
-        return (step_ + 1) * kTicksPerStep + (next_step_ % 2 == 1 ? swing_ticks_ : 0.0);
+        return (step_ + 1) * StepTicks() + (next_step_ % 2 == 1 ? Swing() : 0.0);
     }
 
     void ScheduleStep() { step_pos_ = StepStart(next_step_); }
@@ -304,10 +317,10 @@ class Sequencer
             }
         }
         step_             = next_step_;
-        pat_length_ticks_ = pat_->length * kTicksPerStep;
+        pat_length_ticks_ = pat_->length * StepTicks();
         next_step_        = step_ + 1 < pat_->length ? step_ + 1 : 0;
         // The next step's start, in this pattern's ticks (a wrap counts on).
-        step_pos_ = NextGridStart() + At(next_step_).nudge;
+        step_pos_ = NextGridStart() + Nudge(At(next_step_));
 
         {
             Event e{Event::STEP, off};
@@ -357,7 +370,7 @@ class Sequencer
         hold_            = playing_ >= 0 && next.on && (next.tie || s.slide);
         // Half a step, but never past the next step's start (a late step
         // leaves less room).
-        const double off_at = StepStart(step_) + kTicksPerStep / 2;
+        const double off_at = StepStart(step_) + StepTicks() / 2.0;
         gate_off_ = hold_ || playing_ < 0 ? -1.0 : (off_at < step_pos_ ? off_at : step_pos_);
     }
 
@@ -385,7 +398,8 @@ class Sequencer
     double     step_pos_         = 0.0; // when the next step starts
     double     next_tick_        = 0.0;
     double     gate_off_         = -1.0;
-    int        pat_length_ticks_ = kSteps * kTicksPerStep;
+    int        pat_length_ticks_ = kSteps * kStepTicks;
+    int        ticks_            = kStepTicks; // a step, this loop (StepTicks)
     int        step_             = -1;
     int        next_step_        = 0;
     int        playing_          = -1;

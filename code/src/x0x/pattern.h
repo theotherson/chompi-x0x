@@ -16,6 +16,8 @@
  *
  *    pattern 1A
  *    length 16
+ *    scale 1                   the step scale: 1 = 1/16 triplets, 2 = 1/8
+ *                              triplets (absent: 1/16)
  *    step 1 12 0 1 1 0 0 0     step, note 0-24, octave, on, accent, slide, tie, nudge
  *    ...
  *    drums 16 81 00 40 ...     the drum part: its length, then each step as
@@ -23,7 +25,7 @@
  *                              CH), bit 7 the accent (absent: no drums)
  *    drum_nudge 0000000 0300000 ...
  *                              each step's hits' timing, a digit a voice:
- *                              0-5 ticks late, as a step's nudge (absent:
+ *                              ticks late, as a step's nudge (absent:
  *                              all on the grid)
  *    drum_pitch mmmmmmm mmmmmqm ...
  *                              each hit's pitch, played on the keys in live
@@ -70,7 +72,7 @@ struct Step
     bool    accent = false;
     bool    slide  = false;
     bool    tie    = false;
-    uint8_t nudge  = 0; // 0-5 ticks after the step's start
+    uint8_t nudge  = 0; // ticks after the step's start, within it (0-5 at 1/16)
 
     int Midi() const { return kBaseNote + note + 12 * octave; }
     bool operator==(const Step& o) const
@@ -80,7 +82,18 @@ struct Step
     }
 };
 
-constexpr int kStepTicks = 6; // MIDI clock ticks a step (nudge counts these)
+constexpr int kStepTicks = 6; // MIDI clock ticks a sixteenth (nudge counts ticks)
+
+/** A pattern's step scale: what a step is. 1/16 by default; the triplets
+ *  for triplet grooves (12 steps of 1/8T are a bar, 12 of 1/16T half one). */
+enum Scale : uint8_t
+{
+    kScale16,  // 1/16: 6 ticks a step
+    kScale16T, // 1/16 triplets: 4
+    kScale8T,  // 1/8 triplets: 8
+    kScales
+};
+constexpr int kScaleTicks[kScales] = {6, 4, 8};
 
 constexpr int     kDrumVoices = 7;    // BD SD LT HT CY OH CH, as x0x::Drum
 constexpr uint8_t kDrumAccent = 0x80; // a drum step's accent bit
@@ -89,11 +102,28 @@ struct Pattern
 {
     Step    steps[kSteps];
     uint8_t length = kSteps;
+    uint8_t scale  = kScale16; // the step scale (Scale), for the bass and the drums
+    /** MIDI clock ticks a step, by the scale. */
+    int StepTicks() const { return kScaleTicks[scale < kScales ? scale : 0]; }
+    /** A new scale; recorded timing kept within the (maybe shorter) step. */
+    void SetScale(int sc)
+    {
+        scale         = static_cast<uint8_t>(ClampInt(sc, 0, kScales - 1));
+        const int max = StepTicks() - 1;
+        for(int i = 0; i < kSteps; i++)
+        {
+            if(steps[i].nudge > max)
+                steps[i].nudge = static_cast<uint8_t>(max);
+            for(int v = 0; v < kDrumVoices; v++)
+                if(drum_nudge[i][v] > max)
+                    drum_nudge[i][v] = static_cast<uint8_t>(max);
+        }
+    }
     /** The drum part, linked to the bassline: per step, a bit for each
      *  voice and one for the accent; its own length (polymeters). */
     uint8_t drums[kSteps] = {};
     uint8_t drum_length   = kSteps;
-    /** Each hit's timing, recorded with quantize off: 0-5 ticks late. */
+    /** Each hit's timing, recorded with quantize off: ticks late, within the step. */
     uint8_t drum_nudge[kSteps][kDrumVoices] = {};
     /** Each hit's pitch, -12..12 semitones (recorded from the keys, live). */
     int8_t drum_pitch[kSteps][kDrumVoices] = {};
@@ -144,16 +174,17 @@ struct Pattern
         const Step& own = steps[i];
         if(grid <= 0 || (own.on && !own.tie && own.nudge == 0))
             return own;
-        const int gt   = grid * kStepTicks;
+        const int st   = StepTicks();
+        const int gt   = grid * st;
         int       best = -1, best_d = 1 << 30;
         for(int j = 0; j < length; j++)
         {
             const Step& s = steps[j];
             if(!s.on || s.tie || s.nudge == 0)
                 continue;
-            const int tick   = j * kStepTicks + s.nudge;
+            const int tick   = j * st + s.nudge;
             const int target = (tick + gt / 2) / gt * gt; // nearest grid point, in ticks
-            if((target / kStepTicks) % length != i)
+            if((target / st) % length != i)
                 continue;
             const int d = tick > target ? tick - target : target - tick;
             if(d < best_d)
@@ -180,6 +211,7 @@ struct Pattern
         for(int i = 0; i < kSteps; i++)
             steps[i] = Step{};
         length = kSteps;
+        scale  = kScale16;
     }
     /** The bassline alone (steps, length) from another pattern. */
     void CopyBassFrom(const Pattern& o)
@@ -187,6 +219,7 @@ struct Pattern
         for(int i = 0; i < kSteps; i++)
             steps[i] = o.steps[i];
         length = o.length;
+        scale  = o.scale;
     }
 
     /** The drum part alone (hits, timing, length) from another pattern. */
@@ -221,7 +254,7 @@ struct Pattern
 
     bool operator==(const Pattern& o) const
     {
-        if(length != o.length || drum_length != o.drum_length)
+        if(length != o.length || drum_length != o.drum_length || scale != o.scale)
             return false;
         for(int i = 0; i < kSteps; i++)
             if(!(steps[i] == o.steps[i]) || drums[i] != o.drums[i]
@@ -246,6 +279,13 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
         if(w <= 0 || static_cast<size_t>(w) >= size - len)
             return 0;
         len += w;
+        if(pat.scale != kScale16)
+        {
+            w = snprintf(buf + len, size - len, "scale %d\n", pat.scale);
+            if(w <= 0 || static_cast<size_t>(w) >= size - len)
+                return 0;
+            len += w;
+        }
         for(int i = 0; i < kSteps; i++)
         {
             const Step& s = pat.steps[i];
@@ -285,7 +325,7 @@ inline size_t WritePatterns(const Pattern* pats, int count, char* buf, size_t si
                 char d[kDrumVoices + 2];
                 d[0] = ' ';
                 for(int v = 0; v < kDrumVoices; v++)
-                    d[1 + v] = static_cast<char>('0' + ClampInt(pat.drum_nudge[i][v], 0, 5));
+                    d[1 + v] = static_cast<char>('0' + ClampInt(pat.drum_nudge[i][v], 0, 9));
                 d[kDrumVoices + 1] = '\0';
                 w = snprintf(buf + len, size - len, "%s", d);
                 if(w <= 0 || static_cast<size_t>(w) >= size - len)
@@ -374,7 +414,7 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                 {
                     if(*p < '0' || *p > '9')
                         break;
-                    pat->drum_nudge[i][v] = static_cast<uint8_t>(ClampInt(*p - '0', 0, 5));
+                    pat->drum_nudge[i][v] = static_cast<uint8_t>(ClampInt(*p - '0', 0, 9));
                     p++;
                 }
                 while(*p && *p != ' ')
@@ -401,6 +441,8 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
         }
         else if(pat && strncmp(line, "length ", 7) == 0)
             pat->length = static_cast<uint8_t>(ClampInt(atoi(line + 7), 1, kSteps));
+        else if(pat && strncmp(line, "scale ", 6) == 0)
+            pat->scale = static_cast<uint8_t>(ClampInt(atoi(line + 6), 0, kScales - 1));
         else if(pat && strncmp(line, "step ", 5) == 0)
         {
             char* p    = line + 5;
@@ -425,11 +467,13 @@ inline void ReadPatterns(char* text, Pattern* pats, int count)
                 s.accent = v[4] != 0;
                 s.slide  = v[5] != 0;
                 s.tie    = v[6] != 0;
-                s.nudge  = static_cast<uint8_t>(ClampInt(static_cast<int>(v[7]), 0, 5));
+                s.nudge  = static_cast<uint8_t>(ClampInt(static_cast<int>(v[7]), 0, 9));
             }
         }
         line = next;
     }
+    for(int p = 0; p < count; p++)
+        pats[p].SetScale(pats[p].scale); // timing within each step
 }
 
 /** A starter pattern for a fresh card, so PLAY does something. */
