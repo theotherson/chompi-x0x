@@ -534,7 +534,7 @@ class Ui
             Pattern& pat = m_->Current();
             if(const int d = SlowStep(0, inc))
             {
-                pat.SetScale(ClampInt(pat.scale + d, 0, kScales - 1));
+                pat.ChangeScale(ClampInt(pat.scale + d, 0, kScales - 1)); // a bar's length follows
                 m_->PatternEdited();
             }
             scale_shown_at_ = last_tick_;

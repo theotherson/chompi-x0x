@@ -4118,7 +4118,7 @@ static void TestScale()
         r.ui.KnobDown(0);
         r.ui.KnobTurn(0, 1, false); // the jog, ignored
         r.ui.KnobTurn(0, 1, false), r.ui.KnobTurn(0, 1, false);
-        CHECK(r.m.Current().scale == kScale16T && r.m.Current().length == 16);
+        CHECK(r.m.Current().scale == kScale16T && r.m.Current().length == 12 && r.m.Current().drum_length == 12); // a bar: 12
         LedFrame f;
         r.ui.Draw(f, r.now);
         CHECK(f.key[Ui::kWhite[1]].b > 0.9f && f.key[Ui::kWhite[0]].b < 0.2f);
@@ -4129,7 +4129,22 @@ static void TestScale()
         CHECK(r.ui.KnobPage(0) == 1); // turned while pushed: no click
         r.Run(100);
         r.ui.KnobTurn(0, -1, false), r.ui.KnobTurn(0, -1, false); // not pushed: the length
-        CHECK(r.m.Current().length == 15 && r.m.Current().scale == kScale8T);
+        CHECK(r.m.Current().length == 11 && r.m.Current().scale == kScale8T);
+        // Back to 1/16: the bar-long drums go back to 16, the bass's own 11 stays.
+        r.ui.KnobDown(0);
+        r.ui.KnobTurn(0, -1, false); // the jog
+        for(int i = 0; i < 4; i++)
+            r.ui.KnobTurn(0, -1, false);
+        r.ui.KnobUp(0, r.now);
+        CHECK(r.m.Current().scale == kScale16 && r.m.Current().length == 11 && r.m.Current().drum_length == 16);
+        // Steps past the length are kept: the 16 come back with the length.
+        Pattern q;
+        DemoPattern(q);
+        const Step last = q.steps[15];
+        q.ChangeScale(kScale8T);
+        CHECK(q.length == 12);
+        q.ChangeScale(kScale16);
+        CHECK(q.length == 16 && q.steps[15] == last);
     }
 }
 

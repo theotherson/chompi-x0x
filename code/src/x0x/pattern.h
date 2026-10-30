@@ -117,6 +117,22 @@ struct Pattern
     Step    steps[kSteps];
     uint8_t length = kSteps;
     uint8_t scale  = kScale16; // the step scale (Scale), for the bass and the drums
+    /** Steps in a bar (or half a bar) on a scale: 16 sixteenths, 12 triplets. */
+    static int BarSteps(int sc) { return sc == kScale16 ? kSteps : 12; }
+    /** A new scale from the panel: a part a bar long on the old scale
+     *  becomes a bar long on the new one (16 sixteenths <-> 12 triplets);
+     *  other lengths stay. Steps past the length are kept, not played. */
+    void ChangeScale(int sc)
+    {
+        const int was = scale;
+        SetScale(sc);
+        if(scale == was)
+            return;
+        if(length == BarSteps(was))
+            length = static_cast<uint8_t>(BarSteps(scale));
+        if(drum_length == BarSteps(was))
+            drum_length = static_cast<uint8_t>(BarSteps(scale));
+    }
     /** MIDI clock ticks a step, by the scale. */
     int StepTicks() const { return kScaleTicks[scale < kScales ? scale : 0]; }
     /** A new scale; recorded timing kept within the (maybe shorter) step. */
