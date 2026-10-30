@@ -4700,6 +4700,36 @@ static void TestStepTiming()
     }
 }
 
+static void TestTripletKeys()
+{
+    printf("triplet keys: on a triplet scale the white keys are steps 1-15 one for one\n");
+    Rig r;
+    Pattern& p = r.m.Current();
+    p.ChangeScale(kScale8T);
+    CHECK(p.length == 12);
+    r.White(7); // middle C: step 8, whichever half
+    CHECK(r.ui.Selected() == 7);
+    r.White(8); // white key 9: step 9 (not 10)
+    CHECK(r.ui.Selected() == 8);
+    r.White(7);
+    CHECK(r.ui.Selected() == 7);
+    r.White(11), r.White(11); // key 12: step 12, on
+    CHECK(p.steps[11].on && !p.steps[12].on);
+    // The lights: step 7 on key 7, step 12 on key 12, nothing dimmed as the other half.
+    p.steps[6].on = true, p.steps[6].accent = true;
+    LedFrame f;
+    r.Run(10);
+    r.ui.Draw(f, r.now);
+    CHECK(f.key[Ui::kWhite[6]].r > 0.9f && f.key[Ui::kWhite[11]].r > 0.3f);
+    // The pattern page and COPY + a key stay pattern numbers 1-16 (middle C 8 / 9).
+    r.ui.KeyDown(Ui::kKeyCopy, r.now), r.White(14), r.ui.KeyUp(Ui::kKeyCopy, r.now);
+    CHECK(r.m.patterns[15] == r.m.patterns[0]);
+    // Back on 1/16: the shared middle C again.
+    p.ChangeScale(kScale16);
+    r.White(8);
+    CHECK(r.ui.Selected() == 9);
+}
+
 int main()
 {
     TestQuadrature();
@@ -4743,6 +4773,7 @@ int main()
     TestMetronome();
     TestShift();
     TestStepTiming();
+    TestTripletKeys();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();

@@ -10,6 +10,7 @@
  *  step 9. The half in view (steps 1-8 or 9-16) is lit normally and the other
  *  dimmed; the view follows the half you last pressed a key in, and while the
  *  pattern runs it follows the playhead once the second half has notes.
+ *  On a triplet scale the white keys are steps 1-15 one for one (OneToOne).
  *
  *  Step lights: on = red, accent = bright red, tie = dim red.
  *
@@ -1902,9 +1903,20 @@ class Ui
         return -1;
     }
 
+    /** On a triplet scale (12 steps a bar) the white keys are the steps one
+     *  for one, 1-15: no middle C shared between 8 and 9, and a 12-step
+     *  pattern's halves split between keys 6 and 7. Not on the pattern page
+     *  or with COPY held, where the keys are pattern numbers 1-16. */
+    bool OneToOne() const
+    {
+        return m_->Current().scale != kScale16 && page_ != Page::PATTERN && !held_[kKeyCopy];
+    }
+
     /** The step white key w (0-14) stands for. */
     int StepOfWhite(int w) const
     {
+        if(OneToOne())
+            return w;
         if(w < 7)
             return w;
         if(w > 7)
@@ -1916,6 +1928,8 @@ class Ui
      *  or 9, whichever middle C isn't). */
     int WhiteOfStep(int s) const
     {
+        if(OneToOne())
+            return s < kWhiteKeys ? kWhite[s] : -1;
         if(s < 7)
             return kWhite[s];
         if(s > 8)
@@ -2236,7 +2250,7 @@ class Ui
                     const int w = WhiteIndex(k);
                     // Note entry: the next step's key (the one blinking)
                     // enters a rest. Middle C counts for step 8 or 9.
-                    if(w >= 0 && NoteEntry() && (StepOfWhite(w) == cursor_ || (w == 7 && (cursor_ == 7 || cursor_ == 8))))
+                    if(w >= 0 && NoteEntry() && (StepOfWhite(w) == cursor_ || (w == 7 && !OneToOne() && (cursor_ == 7 || cursor_ == 8))))
                         Append(Step{});
                     // White keys 1-3 pick the quantize grid while it's on.
                     else if(w >= 0 && w < 3 && Quantizing())
@@ -2393,7 +2407,7 @@ class Ui
             const int k = WhiteOfStep(s);
             if(k < 0)
                 continue;
-            const bool in_view = !dim || (s >= 8) == second;
+            const bool in_view = !dim || OneToOne() || (s >= 8) == second; // one for one: nothing hidden
             f.key[k]           = in_view ? colour(s) : Scale(colour(s), 0.2f);
         }
     }
@@ -2708,11 +2722,17 @@ class Ui
 
     void DrawLength(LedFrame& f, int len) const
     {
-        const bool second = len - 1 >= 8;
+        const bool second = len - 1 >= 8 && !OneToOne();
         for(int st = 0; st < kSteps; st++)
         {
             int k;
-            if(st < 7)
+            if(OneToOne())
+            {
+                if(st >= kWhiteKeys)
+                    continue;
+                k = kWhite[st];
+            }
+            else if(st < 7)
                 k = kWhite[st];
             else if(st > 8)
                 k = kWhite[st - 1];
