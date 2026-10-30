@@ -4338,6 +4338,58 @@ static void TestRatchet()
     }
 }
 
+static void TestStepPaste()
+{
+    printf("step paste: COPY tapped, then a step key; COPY again cancels\n");
+    // Bass: the selected step onto the next step key, which is then selected.
+    {
+        Rig r;
+        r.White(2), r.White(2); // select step 3, on
+        r.S(2).note = 7, r.S(2).accent = true, r.S(2).ratchet = 3;
+        r.Key(Ui::kKeyCopy);
+        LedFrame f;
+        bool copy_lit = false, copy_dark = false, src_lit = false, src_dark = false;
+        for(int i = 0; i < 400; i += 50)
+        {
+            r.ui.Draw(f, r.now + i);
+            (f.key[Ui::kKeyCopy].r > 0.9f ? copy_lit : copy_dark) = true;
+            (f.key[Ui::kWhite[2]].g > 0.9f ? src_lit : src_dark) = true;
+        }
+        CHECK(copy_lit && copy_dark && src_lit && src_dark); // both blink
+        r.White(10); // step 12
+        CHECK(r.S(11) == r.S(2) && r.ui.Selected() == 11);
+        r.White(4); // pasting is over: a plain select
+        CHECK(!r.S(4).on && r.ui.Selected() == 4);
+        // COPY + CLEAR undoes the paste.
+        r.ui.KeyDown(Ui::kKeyCopy, r.now), r.Key(Ui::kKeyClear), r.ui.KeyUp(Ui::kKeyCopy, r.now);
+        CHECK(!r.S(11).on);
+        // Tapped twice: cancelled; the step key selects as usual.
+        r.White(2);
+        r.Key(Ui::kKeyCopy), r.Key(Ui::kKeyCopy);
+        r.White(6);
+        CHECK(!r.S(6).on && r.ui.Selected() == 6);
+        // COPY held with a step key is still the pattern copy, not a paste.
+        r.ui.KeyDown(Ui::kKeyCopy, r.now), r.White(14), r.ui.KeyUp(Ui::kKeyCopy, r.now);
+        CHECK(r.m.patterns[15] == r.m.patterns[0]);
+        r.White(9);
+        CHECK(r.ui.Selected() == 10 && !r.S(10).on);
+    }
+    // Drums: the first step key picks the step (every voice), the next gets it.
+    {
+        Rig r;
+        r.ui.Loop(r.now); // the drums
+        Pattern& p = r.m.DrumPattern();
+        p.drums[0] = (1 << BD) | (1 << CH) | kDrumAccent, p.drum_ratchet[0][CH] = 2, p.drum_pitch[0][BD] = 3;
+        r.Key(Ui::kKeyCopy);
+        r.White(0);
+        CHECK(p.drums[0] == ((1 << BD) | (1 << CH) | kDrumAccent)); // picking doesn't toggle it
+        r.White(4); // step 5
+        CHECK(p.drums[4] == p.drums[0] && p.DrumHits(4, CH) == 2 && p.drum_pitch[4][BD] == 3);
+        r.White(5); // over: a plain toggle again
+        CHECK(p.DrumHit(5, BD)); // (BD selected)
+    }
+}
+
 int main()
 {
     TestQuadrature();
@@ -4377,6 +4429,7 @@ int main()
     TestDrumFilterLfo();
     TestDrumTimingAndLiveKeys();
     TestRatchet();
+    TestStepPaste();
     TestFastMathAndGuards();
     TestLoopSidesAndMutes();
     TestDrumTuneAndFm();

@@ -24,10 +24,10 @@
     --dacc: #0050ff; --pattA: #4aa8ff; --pattB: #f2c200;
   }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { size: 2000px 1980px; margin: 0; }
+  @page { size: 2000px 2020px; margin: 0; }
   html, body { margin: 0; background: #ddd; }
   body { font-family: "Poppins", "Helvetica Neue", Arial, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
-  .sheet { width: 2000px; height: 1980px; padding: 50px 60px 0; overflow: hidden; position: relative; background: var(--page); page-break-after: always; break-after: page; }
+  .sheet { width: 2000px; height: 2020px; padding: 50px 60px 0; overflow: hidden; position: relative; background: var(--page); page-break-after: always; break-after: page; }
   .sheet:last-child { page-break-after: auto; break-after: auto; }
   body.only-bass #drums, body.only-drums #bass { display: none; }
   #bass  { --page: #ece4f7; --card: #e1d4f2; --line: #cdbbe6; --hi: var(--violet); }
@@ -180,7 +180,7 @@
         <div class="a">PATTERN held + key</div><div>Holding the <b>PATTERN</b>&nbsp;key and selecting a slot plays&nbsp;<b>both</b> bass and drums from that slot. Otherwise select drum and bass patterns freely.</div>
         <div class="a">PATTERN held 2 s</div><div><b>Write Protect ON/OFF</b>&nbsp;(only while sequencer is stopped)</div>
         <div class="a">Pattern key held 2 s</div><div>Export <u>every</u> pattern as MIDI to <code>/X0X/MIDI</code></div>
-        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + pattern slot</div><div>Copy <b>bass pattern; </b>repeat on another pattern slot pastes the pattern&nbsp;· <b>COPY</b>&nbsp;<b>+ PATTERN</b>: Copy to its other side,&nbsp;<span style="font-weight: 700; color: rgb(31, 127, 214);">A</span>&nbsp;⇄&nbsp;<span style="color: rgb(185, 138, 0); font-weight: 700;">B</span></div>
+        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + pattern slot</div><div>Copy <b>bass pattern; </b>repeat on another pattern slot pastes the pattern&nbsp;· <b>Tap COPY</b>, then a step: pastes the selected step&nbsp;· <b>COPY</b>&nbsp;<b>+ PATTERN</b>: Copy to its other side,&nbsp;<span style="font-weight: 700; color: rgb(31, 127, 214);">A</span>&nbsp;⇄&nbsp;<span style="color: rgb(185, 138, 0); font-weight: 700;">B</span></div>
         <div class="a"><span class="chip" style="background:var(--red)">CLEAR</span></div><div>Tap: deletes currently selected step · Hold 1s: deletes current pattern</div>
         <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + <span class="chip" style="background:var(--red)">CLEAR</span></div><div>Undo the last clear (again: redo)</div>
         <div class="a">LOOP</div><div>Toggle to the <b style="color:#d98200">drums</b> · <span class="p">CHOMPI + LOOP:</span> mute/unmute the bass</div>
@@ -297,7 +297,7 @@
         <div class="a">PATTERN held + key</div><div>Holding the <b>PATTERN</b>&nbsp;key and selecting a slot plays&nbsp;<b>both</b> bass and drums from that slot. Otherwise select drum and bass patterns freely.</div>
         <div class="a">PATTERN held 2 s</div><div><b>Write Protect ON/OFF</b>&nbsp;(only while sequencer is stopped)</div>
         <div class="a">Pattern key held 2 s</div><div>Export <u>every</u> pattern as MIDI to <code>/X0X/MIDI</code></div>
-        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + pattern slot</div><div>Copy&nbsp;<b>drum pattern; </b>repeat on another pattern slot pastes the pattern&nbsp;· <b>COPY&nbsp;+ PATTERN</b>: Copy to its other side <b>A</b> ⇄ <b>B</b></div>
+        <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + pattern slot</div><div>Copy&nbsp;<b>drum pattern; </b>repeat on another pattern slot pastes the pattern&nbsp;· <b>Tap COPY</b>, a step, then another: pastes it&nbsp;· <b>COPY&nbsp;+ PATTERN</b>: Copy to its other side <b>A</b> ⇄ <b>B</b></div>
         <div class="a"><span class="chip" style="background:var(--red)">CLEAR</span></div><div>Tap: delete all steps for that voice · Hold 1s: delete entire drum sequence</div>
         <div class="a"><span class="chip" style="background:var(--grey)">COPY</span> + <span class="chip" style="background:var(--red)">CLEAR</span></div><div>Undo the last clear (again: redo)</div>
         <div class="a">LOOP</div><div>Toggle to the <b style="color:var(--violet)">bass</b> · <span class="p">CHOMPI + LOOP:</span> mute/unmute the drums</div>

@@ -51,7 +51,9 @@
  *    black key 9 (G#4)             COPY: hold it and press a step key to copy
  *                                  this pattern to that pattern number (on the
  *                                  side shown on the pattern page, else this
- *                                  pattern's side)
+ *                                  pattern's side). Tap: paste the selected
+ *                                  step to the next step key (both blink;
+ *                                  COPY again cancels)
  *    black key 10 (A#4)            CLEAR: tap clears the selected step, hold
  *                                  1 s clears the pattern
  *    LOOP                          tap tempo
@@ -254,6 +256,7 @@ class Ui
         pat_key_step_   = -1;
         mode_           = mode;
         page_           = Page::NOTES;
+        paste_          = false;
         transpose_mode_ = false;
         m_->SetRecording(false);
     }
@@ -295,6 +298,11 @@ class Ui
             return;
         Touched();
         held_[k] = true;
+        // COPY alone (nothing else pressed while it's down) is a tap: paste.
+        if(k == kKeyCopy)
+            copy_tap_ = true;
+        else if(held_[kKeyCopy])
+            copy_tap_ = false;
         if(page_ == Page::PATTERN && WhiteIndex(k) >= 0)
         {
             // A pattern key with PATTERN held: both sides go there (and the
@@ -321,6 +329,18 @@ class Ui
         held_[k] = false;
         if(k == kKeyTranspose)
             c4_held_ = false;
+        if(k == kKeyCopy && copy_tap_)
+        {
+            // Step mode, COPY tapped: paste a step (it and COPY blink) to
+            // the next step key; tapped again, cancelled. The bass's source
+            // is the selected step, the drums' the next step key.
+            copy_tap_ = false;
+            if(mode_ == Mode::STEP && page_ != Page::PATTERN && !chompi_)
+            {
+                paste_     = !paste_;
+                paste_src_ = drums_ ? -1 : selected_;
+            }
+        }
         if(sounding_[k])
             Sound(k, false);
         if(drums_)
@@ -989,6 +1009,8 @@ class Ui
                         c = {.05f, .05f, .05f}; // other voices' hits, dim
                     if(lit && ds == step)
                         c = {1.f, 1.f, 1.f};
+                    if(paste_ && step == paste_src_)
+                        c = blink ? Rgb{1.f, 1.f, 1.f} : Rgb{}; // the step to paste
                     return c;
                 },
                 f);
@@ -1035,7 +1057,7 @@ class Ui
             const float k = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
             f.key[kKeyPattern] = Scale(m_->Protected() ? kUnprotectColour : kProtectColour, k);
         }
-        f.key[kKeyCopy] = held_[kKeyCopy] ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
+        f.key[kKeyCopy] = held_[kKeyCopy] || (paste_ && blink) ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
         if(held_[kKeyClear] && drum_clear_down_ && !clear_done_)
             f.key[kKeyClear] = Scale(kClearColour, 0.2f + 0.8f * Clamp((now - clear_down_) / static_cast<float>(kClearHoldMs), 0.f, 1.f));
         else
@@ -1375,6 +1397,28 @@ class Ui
         if(w != 7)
             half_ = w > 7 ? 1 : 0;
         Pattern& pat = m_->DrumPattern();
+        if(paste_)
+        {
+            // Pasting: the first step key picks the step (every voice, its
+            // accent, timing, pitch and ratchets), the next gets it; the
+            // same key again cancels.
+            if(paste_src_ < 0)
+                paste_src_ = step;
+            else
+            {
+                paste_ = false;
+                if(step != paste_src_)
+                {
+                    SaveUndo(true); // COPY + CLEAR undoes it
+                    pat.drums[step] = pat.drums[paste_src_];
+                    memcpy(pat.drum_nudge[step], pat.drum_nudge[paste_src_], kDrumVoices);
+                    memcpy(pat.drum_pitch[step], pat.drum_pitch[paste_src_], kDrumVoices);
+                    memcpy(pat.drum_ratchet[step], pat.drum_ratchet[paste_src_], kDrumVoices);
+                    m_->PatternEdited();
+                }
+            }
+            return;
+        }
         if(drum_rat_page_)
             pat.drum_ratchet[step][drum_sel_] = static_cast<uint8_t>(pat.DrumHits(step, drum_sel_) % kMaxRatchet + 1);
         else if(drum_acc_page_)
@@ -1785,6 +1829,23 @@ class Ui
             return;
         }
         const int w = WhiteIndex(k);
+        if(w >= 0 && paste_ && page_ != Page::PATTERN && !held_[kKeyCopy])
+        {
+            // Pasting: the selected step onto this one, which is selected
+            // next (its own key: cancelled).
+            const int step = StepOfWhite(w);
+            if(w != 7)
+                half_ = w > 7 ? 1 : 0;
+            paste_ = false;
+            if(step != paste_src_)
+            {
+                SaveUndo(false); // COPY + CLEAR undoes it
+                m_->Current().steps[step] = m_->Current().steps[paste_src_];
+                m_->PatternEdited();
+                selected_ = step;
+            }
+            return;
+        }
         if(w >= 0)
         {
             const int step = StepOfWhite(w);
@@ -1833,7 +1894,12 @@ class Ui
         }
     }
 
-    void TogglePage(Page p) { page_ = page_ == p ? Page::NOTES : p; }
+    void TogglePage(Page p)
+    {
+        page_ = page_ == p ? Page::NOTES : p;
+        if(page_ == Page::PATTERN)
+            paste_ = false;
+    }
 
     /** The volume knob's CHOMPI layer is each side's own distortion: the
      *  bass's drive, or on the drums' side theirs. */
@@ -1914,6 +1980,7 @@ class Ui
         ReleaseAll();
         drums_          = !drums_;
         transpose_mode_ = false;
+        paste_          = false;
         swapped_at_     = last_tick_;
     }
 
@@ -2259,6 +2326,8 @@ class Ui
                 }
                 if(step_lit && cur_step == step && page_ != Page::PATTERN)
                     c = {1.f, 1.f, 1.f}; // the playhead (not over the patterns)
+                if(paste_ && step == paste_src_ && page_ != Page::PATTERN)
+                    c = blink ? Rgb{1.f, 1.f, 1.f} : Rgb{}; // the step to paste
                 return c;
             },
             f);
@@ -2281,7 +2350,7 @@ class Ui
             const float b = Clamp((now - pattern_down_at_) / static_cast<float>(kProtectHoldMs), 0.f, 1.f);
             f.key[kKeyPattern] = Scale(m_->Protected() ? kUnprotectColour : kProtectColour, b);
         }
-        f.key[kKeyCopy]      = held_[kKeyCopy] ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
+        f.key[kKeyCopy]      = held_[kKeyCopy] || (paste_ && blink) ? Rgb{1.f, 1.f, 1.f} : Rgb{.08f, .08f, .08f};
         if(held_[kKeyClear] && !clear_done_)
         {
             const float b = 0.2f + 0.8f * Clamp((now - clear_down_) / static_cast<float>(kClearHoldMs), 0.f, 1.f);
@@ -2651,6 +2720,9 @@ class Ui
     uint32_t solo_at_               = 0x80000000u;
     bool     drum_acc_page_         = false; // step mode: the accent page
     bool     drum_rat_page_         = false; // step mode: the selected voice's ratchet page
+    bool     copy_tap_              = false; // COPY down, nothing else pressed yet
+    bool     paste_                 = false; // step mode, COPY tapped: the next step key pastes
+    int      paste_src_             = -1;    // the step to paste (drums: -1 until picked)
     int      drum_knob1_page_       = 0;     // level / pan, accent / length, the LFO, its target / depth
     int      drum_knob4_page_       = 0;     // reverb, delay, crush
     int      drum_knob2_page_       = 0;     // attack, the filter
